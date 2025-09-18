@@ -1,0 +1,741 @@
+openapi: 3.0.3
+info:
+  title: NIRAJ Trading System API
+  version: 1.0.0
+  description: RESTful API for NIRAJ algorithmic trading system
+  contact:
+    name: Pranay Gajbhiye
+    email: developer@niraj-trading.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development server
+  - url: https://api.niraj-trading.com/v1
+    description: Production server
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user for real trading mode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pin
+              properties:
+                pin:
+                  type: string
+                  description: 4-digit PIN for real trading authentication
+                  example: "1937"
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid PIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/status:
+    get:
+      summary: Get current authentication status
+      responses:
+        '200':
+          description: Authentication status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatus'
+
+  /portfolio:
+    get:
+      summary: Get portfolio summary
+      responses:
+        '200':
+          description: Portfolio data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portfolio'
+    put:
+      summary: Update portfolio settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortfolioUpdate'
+      responses:
+        '200':
+          description: Portfolio updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portfolio'
+
+  /portfolio/positions:
+    get:
+      summary: Get current positions
+      parameters:
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          description: Filter by symbol
+      responses:
+        '200':
+          description: Positions data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Position'
+
+  /trades:
+    get:
+      summary: Get trade history
+      parameters:
+        - name: strategy_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by strategy
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, EXECUTED, CANCELLED, REJECTED]
+          description: Filter by trade status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Number of trades to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of trades to skip
+      responses:
+        '200':
+          description: Trade history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trades:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Trade'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+    post:
+      summary: Execute manual trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TradeRequest'
+      responses:
+        '201':
+          description: Trade executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trade'
+        '400':
+          description: Invalid trade request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /strategies:
+    get:
+      summary: Get available strategies
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [PREDATORY, QUANTITATIVE, PSYCHOLOGICAL, MATHEMATICAL, EXTREME]
+          description: Filter by category
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Return only active strategies
+      responses:
+        '200':
+          description: Strategies list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Strategy'
+
+    post:
+      summary: Create new strategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrategyCreate'
+      responses:
+        '201':
+          description: Strategy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+
+  /strategies/{strategy_id}:
+    get:
+      summary: Get strategy details
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Strategy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+        '404':
+          description: Strategy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update strategy
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrategyUpdate'
+      responses:
+        '200':
+          description: Strategy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Strategy'
+
+    delete:
+      summary: Delete strategy
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Strategy deleted
+        '404':
+          description: Strategy not found
+
+  /market-data:
+    get:
+      summary: Get market data
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Trading symbol
+        - name: timeframe
+          in: query
+          schema:
+            type: string
+            enum: [15MIN, 1DAY]
+            default: 15MIN
+          description: Data timeframe
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Number of data points
+      responses:
+        '200':
+          description: Market data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketData'
+
+  /ai/analyze:
+    post:
+      summary: Request AI analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIAnalysisRequest'
+      responses:
+        '200':
+          description: AI analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIAnalysisResponse'
+
+  /risk/metrics:
+    get:
+      summary: Get risk metrics
+      responses:
+        '200':
+          description: Risk metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskMetrics'
+
+  /system/status:
+    get:
+      summary: Get system status
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /system/config:
+    get:
+      summary: Get system configuration
+      responses:
+        '200':
+          description: System configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemConfig'
+    put:
+      summary: Update system configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemConfig'
+
+components:
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: JWT token for authenticated session
+        expires_at:
+          type: string
+          format: date-time
+          description: Token expiration time
+
+    AuthStatus:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        trading_mode:
+          type: string
+          enum: [PAPER, REAL]
+        expires_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+    Portfolio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        total_capital:
+          type: number
+          format: decimal
+        available_balance:
+          type: number
+          format: decimal
+        margin_used:
+          type: number
+          format: decimal
+        unrealized_pnl:
+          type: number
+          format: decimal
+        realized_pnl:
+          type: number
+          format: decimal
+        total_pnl:
+          type: number
+          format: decimal
+        risk_metrics:
+          $ref: '#/components/schemas/RiskMetrics'
+
+    PortfolioUpdate:
+      type: object
+      properties:
+        total_capital:
+          type: number
+          format: decimal
+        risk_limits:
+          type: object
+
+    Position:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        quantity:
+          type: integer
+        average_price:
+          type: number
+          format: decimal
+        current_price:
+          type: number
+          format: decimal
+        unrealized_pnl:
+          type: number
+          format: decimal
+        market_value:
+          type: number
+          format: decimal
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        quantity:
+          type: integer
+        price:
+          type: number
+          format: decimal
+        order_type:
+          type: string
+          enum: [BUY, SELL]
+        order_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        strategy_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, EXECUTED, CANCELLED, REJECTED]
+        profit_loss:
+          type: number
+          format: decimal
+
+    TradeRequest:
+      type: object
+      required:
+        - symbol
+        - quantity
+        - order_type
+      properties:
+        symbol:
+          type: string
+        quantity:
+          type: integer
+        order_type:
+          type: string
+          enum: [BUY, SELL]
+        price:
+          type: number
+          format: decimal
+        strategy_id:
+          type: string
+          format: uuid
+
+    Strategy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [PREDATORY, QUANTITATIVE, PSYCHOLOGICAL, MATHEMATICAL, EXTREME]
+        risk_level:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, EXTREME]
+        profit_potential:
+          type: string
+        confidence_score:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+        is_active:
+          type: boolean
+        parameters:
+          type: object
+        performance_metrics:
+          type: object
+
+    StrategyCreate:
+      type: object
+      required:
+        - name
+        - category
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [PREDATORY, QUANTITATIVE, PSYCHOLOGICAL, MATHEMATICAL, EXTREME]
+        risk_level:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, EXTREME]
+        parameters:
+          type: object
+
+    StrategyUpdate:
+      type: object
+      properties:
+        is_active:
+          type: boolean
+        parameters:
+          type: object
+        confidence_score:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+
+    MarketData:
+      type: object
+      properties:
+        symbol:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        timeframe:
+          type: string
+          enum: [15MIN, 1DAY]
+        open:
+          type: number
+          format: decimal
+        high:
+          type: number
+          format: decimal
+        low:
+          type: number
+          format: decimal
+        close:
+          type: number
+          format: decimal
+        volume:
+          type: integer
+        change_percent:
+          type: number
+          format: decimal
+
+    AIAnalysisRequest:
+      type: object
+      required:
+        - context
+      properties:
+        context:
+          type: string
+          description: Market context for analysis
+        strategy_type:
+          type: string
+          enum: [PREDATORY, QUANTITATIVE, PSYCHOLOGICAL, MATHEMATICAL, EXTREME]
+        market_data:
+          type: object
+
+    AIAnalysisResponse:
+      type: object
+      properties:
+        analysis:
+          type: string
+        confidence_score:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+        recommendations:
+          type: array
+          items:
+            type: string
+        risk_assessment:
+          type: string
+
+    RiskMetrics:
+      type: object
+      properties:
+        var_95:
+          type: number
+          format: decimal
+          description: Value at Risk (95% confidence)
+        max_drawdown:
+          type: number
+          format: decimal
+        sharpe_ratio:
+          type: number
+          format: decimal
+        win_rate:
+          type: number
+          format: decimal
+        profit_factor:
+          type: number
+          format: decimal
+
+    SystemStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [HEALTHY, DEGRADED, UNHEALTHY]
+        uptime:
+          type: integer
+          description: Uptime in seconds
+        active_strategies:
+          type: integer
+        active_connections:
+          type: integer
+        last_market_data_update:
+          type: string
+          format: date-time
+        ai_model_status:
+          type: string
+          enum: [READY, LOADING, ERROR]
+
+    SystemConfig:
+      type: object
+      properties:
+        trading_mode:
+          type: string
+          enum: [PAPER, REAL]
+        max_risk_per_trade:
+          type: number
+          format: decimal
+        max_daily_loss:
+          type: number
+          format: decimal
+        ai_confidence_threshold:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+        data_update_interval:
+          type: integer
+          description: Update interval in seconds
+
+    SystemConfigUpdate:
+      type: object
+      properties:
+        max_risk_per_trade:
+          type: number
+          format: decimal
+        max_daily_loss:
+          type: number
+          format: decimal
+        ai_confidence_threshold:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+        data_update_interval:
+          type: integer
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

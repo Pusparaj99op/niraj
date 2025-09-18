@@ -1,0 +1,149 @@
+# NIRAJ System Configuration
+# Development Environment
+
+application:
+  name: "NIRAJ"
+  version: "0.1.0"
+  description: "Advanced Self-Learning Algorithmic AI Personal Trading System"
+  environment: "development"
+  debug: true
+
+server:
+  host: "localhost"
+  port: 8000
+  reload: true
+  workers: 1
+
+database:
+  url: "sqlite:///./data/niraj.db"
+  echo: false
+  pool_pre_ping: true
+  pool_recycle: 3600
+
+redis:
+  url: "redis://localhost:6379/0"
+  max_connections: 20
+  retry_on_timeout: true
+  socket_keepalive: true
+
+auth:
+  secret_key: "dev-secret-key-change-in-production"
+  algorithm: "HS256"
+  access_token_expire_minutes: 1440
+  live_trading_pin: "1937"
+
+trading:
+  default_mode: "paper"
+  max_position_size: 100000
+  risk_percentage: 2.0
+  enable_paper_trading: true
+  enable_live_trading: false
+
+brokers:
+  angel_one:
+    enabled: true
+    base_url: "https://apiconnect.angelbroking.com"
+    timeout: 30
+  
+  dhan:
+    enabled: false
+    base_url: "https://api.dhan.co"
+    timeout: 30
+
+external_apis:
+  news:
+    provider: "newsapi"
+    base_url: "https://newsapi.org/v2"
+    timeout: 10
+  
+  weather:
+    provider: "openweathermap"
+    base_url: "https://api.openweathermap.org/data/2.5"
+    timeout: 10
+
+ai:
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "gemma3:4b-it-q4_K_M"
+    timeout: 120
+    max_tokens: 4096
+    temperature: 0.7
+  
+  features:
+    enable_predictions: true
+    enable_sentiment_analysis: true
+    enable_risk_assessment: true
+    prediction_confidence_threshold: 0.7
+
+strategies:
+  max_concurrent: 5
+  default_risk_per_trade: 1.0
+  enable_paper_mode_by_default: true
+  
+  predatory:
+    enabled: true
+    max_positions: 3
+  
+  quantitative: 
+    enabled: true
+    max_positions: 5
+  
+  psychological:
+    enabled: true
+    max_positions: 2
+
+market_data:
+  cache_duration: 300  # 5 minutes
+  real_time_enabled: true
+  historical_lookback_days: 365
+  
+  timeframes:
+    - "1m"
+    - "5m" 
+    - "15m"
+    - "1h"
+    - "1d"
+
+risk_management:
+  max_daily_loss_percentage: 5.0
+  max_drawdown_percentage: 10.0
+  position_sizing_method: "fixed_percentage"
+  enable_circuit_breakers: true
+  
+  circuit_breakers:
+    max_consecutive_losses: 3
+    cooldown_period_minutes: 30
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/niraj.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  
+  loggers:
+    - name: "niraj"
+      level: "INFO"
+    - name: "trading"  
+      level: "DEBUG"
+    - name: "ai"
+      level: "INFO"
+
+monitoring:
+  enable_health_checks: true
+  health_check_interval: 60  # seconds
+  enable_metrics: true
+  metrics_port: 9090
+
+websocket:
+  heartbeat_interval: 30
+  max_connections: 100
+  message_queue_size: 1000
+
+features:
+  paper_trading: true
+  live_trading: false  # Requires PIN
+  ai_analysis: true
+  real_time_data: true
+  backtesting: true
+  portfolio_optimization: true

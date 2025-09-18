@@ -1,0 +1,157 @@
+# NIRAJ System Configuration
+# Testing Environment
+
+application:
+  name: "NIRAJ-TEST"
+  version: "0.1.0"
+  description: "NIRAJ Testing Environment"
+  environment: "testing"
+  debug: true
+
+server:
+  host: "localhost"
+  port: 8001  # Different port for testing
+  reload: false
+  workers: 1
+
+database:
+  url: "sqlite:///./data/test_niraj.db"
+  echo: false
+  pool_pre_ping: true
+  pool_recycle: 3600
+
+redis:
+  url: "redis://localhost:6379/1"  # Different DB for testing
+  max_connections: 10
+  retry_on_timeout: true
+
+auth:
+  secret_key: "test-secret-key"
+  algorithm: "HS256"
+  access_token_expire_minutes: 60
+  live_trading_pin: "1937"
+
+trading:
+  default_mode: "paper"
+  max_position_size: 10000  # Small amounts for testing
+  risk_percentage: 5.0  # Higher risk OK for testing
+  enable_paper_trading: true
+  enable_live_trading: false  # Never enable in testing
+
+brokers:
+  angel_one:
+    enabled: false  # Disabled in testing
+    base_url: "https://apiconnect.angelbroking.com"
+    timeout: 10
+  
+  dhan:
+    enabled: false  # Disabled in testing
+    base_url: "https://api.dhan.co"
+    timeout: 10
+
+external_apis:
+  news:
+    provider: "mock"  # Use mock data
+    base_url: "http://localhost:8001/mock/news"
+    timeout: 5
+  
+  weather:
+    provider: "mock"  # Use mock data
+    base_url: "http://localhost:8001/mock/weather"
+    timeout: 5
+
+ai:
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "gemma3:4b-it-q4_K_M"
+    timeout: 30
+    max_tokens: 1024  # Smaller for faster tests
+    temperature: 0.1  # Deterministic for testing
+  
+  features:
+    enable_predictions: true
+    enable_sentiment_analysis: true
+    enable_risk_assessment: true
+    prediction_confidence_threshold: 0.5
+
+strategies:
+  max_concurrent: 2
+  default_risk_per_trade: 2.0
+  enable_paper_mode_by_default: true
+  
+  predatory:
+    enabled: true
+    max_positions: 1
+  
+  quantitative:
+    enabled: true
+    max_positions: 1
+  
+  psychological:
+    enabled: true
+    max_positions: 1
+
+market_data:
+  cache_duration: 60  # 1 minute for faster testing
+  real_time_enabled: false  # Use mock data
+  historical_lookback_days: 30  # Smaller dataset
+  
+  timeframes:
+    - "1m"
+    - "5m"
+    - "1h"
+
+risk_management:
+  max_daily_loss_percentage: 10.0
+  max_drawdown_percentage: 20.0
+  position_sizing_method: "fixed_amount"
+  enable_circuit_breakers: true
+  
+  circuit_breakers:
+    max_consecutive_losses: 5
+    cooldown_period_minutes: 1  # Short for testing
+
+logging:
+  level: "DEBUG"  # Verbose for testing
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/test_niraj.log"
+  max_file_size: "1MB"
+  backup_count: 2
+  
+  loggers:
+    - name: "niraj"
+      level: "DEBUG"
+    - name: "trading"
+      level: "DEBUG"
+    - name: "ai"
+      level: "DEBUG"
+
+monitoring:
+  enable_health_checks: true
+  health_check_interval: 10  # Frequent for testing
+  enable_metrics: false
+  metrics_port: 9091
+
+websocket:
+  heartbeat_interval: 10  # Frequent for testing
+  max_connections: 10
+  message_queue_size: 100
+
+testing:
+  mock_data: true
+  mock_external_apis: true
+  deterministic_ai: true
+  fast_mode: true
+  
+  timeouts:
+    api_calls: 5
+    database: 5
+    ai_inference: 10
+
+features:
+  paper_trading: true
+  live_trading: false
+  ai_analysis: true
+  real_time_data: false  # Use mock data
+  backtesting: true
+  portfolio_optimization: true

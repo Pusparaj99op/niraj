@@ -1,0 +1,170 @@
+# NIRAJ System Configuration
+# Production Environment
+
+application:
+  name: "NIRAJ"
+  version: "0.1.0" 
+  description: "Advanced Self-Learning Algorithmic AI Personal Trading System"
+  environment: "production"
+  debug: false
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+  workers: 4
+
+database:
+  url: "${DATABASE_URL}"  # From environment variable
+  echo: false
+  pool_pre_ping: true
+  pool_recycle: 1800
+  pool_size: 20
+  max_overflow: 0
+
+redis:
+  url: "${REDIS_URL}"  # From environment variable
+  max_connections: 50
+  retry_on_timeout: true
+  socket_keepalive: true
+
+auth:
+  secret_key: "${JWT_SECRET_KEY}"  # From environment variable
+  algorithm: "HS256"
+  access_token_expire_minutes: 720  # 12 hours (shorter for production)
+  live_trading_pin: "${LIVE_TRADING_PIN}"
+
+trading:
+  default_mode: "paper"
+  max_position_size: 1000000  # 10 lakh
+  risk_percentage: 1.0  # Conservative for production
+  enable_paper_trading: true
+  enable_live_trading: true
+
+brokers:
+  angel_one:
+    enabled: true
+    base_url: "https://apiconnect.angelbroking.com"
+    timeout: 30
+    rate_limit: 100  # requests per minute
+  
+  dhan:
+    enabled: true
+    base_url: "https://api.dhan.co"
+    timeout: 30
+    rate_limit: 100
+
+external_apis:
+  news:
+    provider: "newsapi"
+    base_url: "https://newsapi.org/v2"
+    timeout: 15
+    rate_limit: 1000  # requests per day
+  
+  weather:
+    provider: "openweathermap"
+    base_url: "https://api.openweathermap.org/data/2.5"
+    timeout: 15
+    rate_limit: 1000
+
+ai:
+  ollama:
+    base_url: "${OLLAMA_BASE_URL}"
+    model: "gemma3:4b-it-q4_K_M"
+    timeout: 60  # Shorter timeout for production
+    max_tokens: 2048
+    temperature: 0.5  # More conservative
+  
+  features:
+    enable_predictions: true
+    enable_sentiment_analysis: true
+    enable_risk_assessment: true
+    prediction_confidence_threshold: 0.8  # Higher threshold
+
+strategies:
+  max_concurrent: 3  # Conservative
+  default_risk_per_trade: 0.5  # Conservative
+  enable_paper_mode_by_default: true
+  
+  predatory:
+    enabled: true
+    max_positions: 2
+  
+  quantitative:
+    enabled: true
+    max_positions: 3
+  
+  psychological:
+    enabled: false  # Disabled in production initially
+
+market_data:
+  cache_duration: 180  # 3 minutes
+  real_time_enabled: true
+  historical_lookback_days: 730  # 2 years
+  
+  timeframes:
+    - "1m"
+    - "5m"
+    - "15m"
+    - "1h"
+    - "1d"
+
+risk_management:
+  max_daily_loss_percentage: 2.0  # Very conservative
+  max_drawdown_percentage: 5.0   # Very conservative
+  position_sizing_method: "risk_parity"
+  enable_circuit_breakers: true
+  
+  circuit_breakers:
+    max_consecutive_losses: 2
+    cooldown_period_minutes: 60
+
+logging:
+  level: "WARNING"  # Less verbose in production
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/var/log/niraj/niraj.log"
+  max_file_size: "50MB"
+  backup_count: 10
+  
+  loggers:
+    - name: "niraj"
+      level: "WARNING"
+    - name: "trading"
+      level: "INFO"
+    - name: "ai"
+      level: "WARNING"
+
+monitoring:
+  enable_health_checks: true
+  health_check_interval: 30
+  enable_metrics: true
+  metrics_port: 9090
+  
+  alerts:
+    email_enabled: true
+    slack_enabled: false
+    
+websocket:
+  heartbeat_interval: 60
+  max_connections: 500
+  message_queue_size: 5000
+
+security:
+  cors_origins:
+    - "https://yourdomain.com"
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+  
+  ssl:
+    enabled: true
+    cert_file: "/etc/ssl/certs/niraj.crt"
+    key_file: "/etc/ssl/private/niraj.key"
+
+features:
+  paper_trading: true
+  live_trading: true
+  ai_analysis: true
+  real_time_data: true
+  backtesting: true
+  portfolio_optimization: true
