@@ -11,7 +11,7 @@
    → Structure: Web app (backend/ + frontend/)
 2. Load optional design documents ✅:
    → data-model.md: 13 entities extracted → model tasks
-   → contracts/: REST API + WebSocket → contract test tasks  
+   → contracts/: REST API + WebSocket → contract test tasks
    → research.md: Decisions extracted → setup tasks
 3. Generate tasks by category ✅:
    → Setup: Poetry, Ollama, configs, DB setup
@@ -56,35 +56,35 @@
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
 
 ### T011-T025: REST API Contract Tests
-- [ ] T011 [P] Contract test POST /api/v1/auth/login in backend/tests/contract/test_auth_login.py
-- [ ] T012 [P] Contract test POST /api/v1/auth/switch-mode in backend/tests/contract/test_auth_switch_mode.py
-- [ ] T013 [P] Contract test GET /api/v1/strategies in backend/tests/contract/test_strategies_list.py
-- [ ] T014 [P] Contract test POST /api/v1/strategies in backend/tests/contract/test_strategies_create.py
-- [ ] T015 [P] Contract test GET /api/v1/strategies/{id} in backend/tests/contract/test_strategies_get.py
-- [ ] T016 [P] Contract test PUT /api/v1/strategies/{id} in backend/tests/contract/test_strategies_update.py
-- [ ] T017 [P] Contract test POST /api/v1/strategies/{id}/backtest in backend/tests/contract/test_strategies_backtest.py
-- [ ] T018 [P] Contract test GET /api/v1/trades in backend/tests/contract/test_trades_list.py
-- [ ] T019 [P] Contract test POST /api/v1/trades in backend/tests/contract/test_trades_create.py
-- [ ] T020 [P] Contract test GET /api/v1/trades/{id} in backend/tests/contract/test_trades_get.py
-- [ ] T021 [P] Contract test PATCH /api/v1/trades/{id} in backend/tests/contract/test_trades_update.py
-- [ ] T022 [P] Contract test GET /api/v1/portfolio in backend/tests/contract/test_portfolio_get.py
-- [ ] T023 [P] Contract test GET /api/v1/market-data/{symbol} in backend/tests/contract/test_market_data_get.py
-- [ ] T024 [P] Contract test GET /api/v1/ai/predictions in backend/tests/contract/test_ai_predictions.py
-- [ ] T025 [P] Contract test GET /api/v1/system/status in backend/tests/contract/test_system_status.py
+- [x] T011 [P] Contract test POST /api/v1/auth/login in backend/tests/contract/test_auth_login.py
+- [x] T012 [P] Contract test POST /api/v1/auth/switch-mode in backend/tests/contract/test_auth_switch_mode.py
+- [x] T013 [P] Contract test GET /api/v1/strategies in backend/tests/contract/test_strategies_list.py
+- [x] T014 [P] Contract test POST /api/v1/strategies in backend/tests/contract/test_strategies_create.py
+- [x] T015 [P] Contract test GET /api/v1/strategies/{id} in backend/tests/contract/test_strategies_get.py
+- [x] T016 [P] Contract test PUT /api/v1/strategies/{id} in backend/tests/contract/test_strategies_update.py
+- [x] T017 [P] Contract test POST /api/v1/strategies/{id}/backtest in backend/tests/contract/test_strategies_backtest.py
+- [x] T018 [P] Contract test GET /api/v1/trades in backend/tests/contract/test_trades_list.py
+- [x] T019 [P] Contract test POST /api/v1/trades in backend/tests/contract/test_trades_create.py
+- [x] T020 [P] Contract test GET /api/v1/trades/{id} in backend/tests/contract/test_trades_get.py
+- [x] T021 [P] Contract test PATCH /api/v1/trades/{id} in backend/tests/contract/test_trades_update.py
+- [x] T022 [P] Contract test GET /api/v1/portfolio in backend/tests/contract/test_portfolio_get.py
+- [x] T023 [P] Contract test GET /api/v1/market-data/{symbol} in backend/tests/contract/test_market_data_get.py
+- [x] T024 [P] Contract test GET /api/v1/ai/predictions in backend/tests/contract/test_ai_predictions.py
+- [x] T025 [P] Contract test GET /api/v1/system/status in backend/tests/contract/test_system_status.py
 
 ### T026-T030: WebSocket Contract Tests
-- [ ] T026 [P] WebSocket auth flow test in backend/tests/contract/test_websocket_auth.py
-- [ ] T027 [P] WebSocket subscription test in backend/tests/contract/test_websocket_subscribe.py
-- [ ] T028 [P] WebSocket market data stream test in backend/tests/contract/test_websocket_market_data.py
-- [ ] T029 [P] WebSocket trade signals stream test in backend/tests/contract/test_websocket_signals.py
-- [ ] T030 [P] WebSocket portfolio updates stream test in backend/tests/contract/test_websocket_portfolio.py
+- [x] T026 [P] WebSocket auth flow test in backend/tests/contract/test_websocket_auth.py
+- [x] T027 [P] WebSocket subscription test in backend/tests/contract/test_websocket_subscribe.py
+- [x] T028 [P] WebSocket market data stream test in backend/tests/contract/test_websocket_market_data.py
+- [x] T029 [P] WebSocket trade signals stream test in backend/tests/contract/test_websocket_signals.py
+- [x] T030 [P] WebSocket portfolio updates stream test in backend/tests/contract/test_websocket_portfolio.py
 
 ### T031-T040: Integration Tests
-- [ ] T031 [P] Paper trading workflow integration test in backend/tests/integration/test_paper_trading.py
-- [ ] T032 [P] Live trading mode switch integration test in backend/tests/integration/test_live_trading.py
-- [ ] T033 [P] Strategy activation and signal generation integration test in backend/tests/integration/test_strategy_flow.py
-- [ ] T034 [P] AI prediction and confidence tracking integration test in backend/tests/integration/test_ai_integration.py
-- [ ] T035 [P] Market data ingestion and processing integration test in backend/tests/integration/test_data_flow.py
+- [x] T031 [P] Paper trading workflow integration test in backend/tests/integration/test_paper_trading.py
+- [x] T032 [P] Live trading mode switch integration test in backend/tests/integration/test_live_trading.py
+- [x] T033 [P] Strategy activation and signal generation integration test in backend/tests/integration/test_strategy_flow.py
+- [x] T034 [P] AI prediction and confidence tracking integration test in backend/tests/integration/test_ai_integration.py
+- [x] T035 [P] Market data ingestion and processing integration test in backend/tests/integration/test_data_flow.py
 - [ ] T036 [P] Risk management and circuit breaker integration test in backend/tests/integration/test_risk_management.py
 - [ ] T037 [P] Angel One API connection integration test in backend/tests/integration/test_angel_one_api.py
 - [ ] T038 [P] Database operations and data integrity integration test in backend/tests/integration/test_database.py
@@ -119,7 +119,7 @@
 
 ### T059-T063: Broker and Data APIs
 - [ ] T059 [P] Angel One Smart API client in backend/src/api/angel_one_client.py
-- [ ] T060 [P] Dhan HQ API client in backend/src/api/dhan_client.py  
+- [ ] T060 [P] Dhan HQ API client in backend/src/api/dhan_client.py
 - [ ] T061 [P] News API client in backend/src/api/news_client.py
 - [ ] T062 [P] Weather API client in backend/src/api/weather_client.py
 - [ ] T063 Authentication manager for API credentials in backend/src/api/auth_manager.py (depends on T059-T062)
@@ -202,7 +202,7 @@
 ```bash
 # Launch contract tests in parallel
 Task: "Contract test POST /api/v1/auth/login in backend/tests/contract/test_auth_login.py"
-Task: "Contract test GET /api/v1/strategies in backend/tests/contract/test_strategies_list.py" 
+Task: "Contract test GET /api/v1/strategies in backend/tests/contract/test_strategies_list.py"
 Task: "Contract test GET /api/v1/trades in backend/tests/contract/test_trades_list.py"
 Task: "WebSocket auth flow test in backend/tests/contract/test_websocket_auth.py"
 ```
@@ -217,7 +217,7 @@ Task: "Strategy entity model in backend/src/models/strategy.py"
 ```
 
 ### Phase 3.4: API Clients (independent integrations)
-```bash  
+```bash
 # Launch API client development in parallel
 Task: "Angel One Smart API client in backend/src/api/angel_one_client.py"
 Task: "Dhan HQ API client in backend/src/api/dhan_client.py"
@@ -227,7 +227,7 @@ Task: "Weather API client in backend/src/api/weather_client.py"
 
 ### Phase 3.7: Frontend Components (independent UI)
 ```bash
-# Launch React component development in parallel  
+# Launch React component development in parallel
 Task: "Main dashboard component in frontend/src/components/Dashboard.tsx"
 Task: "AI monitoring component in frontend/src/components/AIMonitor.tsx"
 Task: "Trading interface component in frontend/src/components/TradingInterface.tsx"
@@ -237,11 +237,11 @@ Task: "Strategy performance component in frontend/src/components/StrategyPerform
 ## Task Generation Rules Applied
 
 ### From REST API Contracts (25 endpoints)
-✅ Each endpoint → contract test task [P]  
-✅ Each endpoint → implementation task  
+✅ Each endpoint → contract test task [P]
+✅ Each endpoint → implementation task
 ✅ Authentication, strategies, trades, portfolio, market-data, AI, system endpoints covered
 
-### From WebSocket API Contracts  
+### From WebSocket API Contracts
 ✅ Auth flow → contract test [P]
 ✅ Each stream type → contract test [P]
 ✅ Real-time communication → implementation task
@@ -253,7 +253,7 @@ Task: "Strategy performance component in frontend/src/components/StrategyPerform
 
 ### From Quickstart Scenarios
 ✅ Paper trading workflow → integration test [P]
-✅ Live trading switch → integration test [P] 
+✅ Live trading switch → integration test [P]
 ✅ Strategy activation → integration test [P]
 ✅ AI analysis → integration test [P]
 ✅ System startup → integration test [P]
@@ -267,7 +267,7 @@ Task: "Strategy performance component in frontend/src/components/StrategyPerform
 *GATE: Validated before task completion*
 
 - [✅] All REST API endpoints have corresponding contract tests (T011-T025)
-- [✅] All WebSocket streams have contract tests (T026-T030) 
+- [✅] All WebSocket streams have contract tests (T026-T030)
 - [✅] All 13 entities have model creation tasks (T041-T053)
 - [✅] All quickstart scenarios have integration tests (T031-T040)
 - [✅] All contract tests come before implementation (T011-T040 before T041+)
@@ -287,5 +287,5 @@ Task: "Strategy performance component in frontend/src/components/StrategyPerform
 
 ---
 **Status**: Ready for execution - 89 tasks generated following constitutional TDD principles
-**Estimated Timeline**: 12-16 weeks for full system implementation  
+**Estimated Timeline**: 12-16 weeks for full system implementation
 **Parallel Capacity**: Up to 15 tasks can run simultaneously during model/API/component phases
