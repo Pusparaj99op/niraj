@@ -44,7 +44,7 @@ brokers:
     enabled: true
     base_url: "https://apiconnect.angelbroking.com"
     timeout: 30
-  
+
   dhan:
     enabled: false
     base_url: "https://api.dhan.co"
@@ -52,14 +52,100 @@ brokers:
 
 external_apis:
   news:
-    provider: "newsapi"
-    base_url: "https://newsapi.org/v2"
-    timeout: 10
-  
+    default_language: "en"
+    default_country: "in"
+    default_category: "business"
+    max_articles_per_request: 100
+    enable_sentiment_analysis: false
+    enable_content_filtering: true
+
+    # NewsAPI.org configuration
+    newsapi:
+      enabled: true
+      base_url: "https://newsapi.org/v2"
+      api_key: ""  # Set your NewsAPI key here
+      timeout: 15
+      max_retries: 3
+      retry_delay: 1.0
+      rate_limit_requests_per_day: 1000
+      rate_limit_requests_per_hour: 100
+      cache_duration_minutes: 15
+
+    # Financial Modeling Prep configuration
+    fmp:
+      enabled: false
+      base_url: "https://financialmodelingprep.com/api/v3"
+      api_key: ""  # Set your FMP key here
+      timeout: 20
+      max_retries: 3
+      retry_delay: 1.0
+      rate_limit_requests_per_minute: 250
+      cache_duration_minutes: 30
+
+    # Alpha Vantage News configuration
+    alphavantage:
+      enabled: false
+      base_url: "https://www.alphavantage.co/query"
+      api_key: ""  # Set your Alpha Vantage key here
+      timeout: 15
+      max_retries: 3
+      retry_delay: 1.0
+      rate_limit_requests_per_minute: 5
+      cache_duration_minutes: 60
+
+    # RSS Feeds configuration
+    rss:
+      enabled: true
+      timeout: 20
+      max_retries: 3
+      retry_delay: 2.0
+      cache_duration_minutes: 10
+      feeds:
+        - name: "Economic Times Markets"
+          url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
+        - name: "Moneycontrol Markets"
+          url: "https://www.moneycontrol.com/rss/markets.xml"
+        - name: "Business Standard Markets"
+          url: "https://www.business-standard.com/rss/markets-106.rss"
+        - name: "Reuters Business"
+          url: "https://feeds.reuters.com/reuters/businessNews"
+        - name: "Yahoo Finance"
+          url: "https://feeds.finance.yahoo.com/rss/2.0/headline"
+
   weather:
-    provider: "openweathermap"
+    api_key: "${WEATHER_API_KEY:}"  # Set your OpenWeatherMap API key here
     base_url: "https://api.openweathermap.org/data/2.5"
-    timeout: 10
+    geocoding_url: "http://api.openweathermap.org/geo/1.0"
+    onecall_url: "https://api.openweathermap.org/data/3.0"
+
+    timeout: 15
+    max_retries: 3
+    retry_delay: 1.0
+
+    # Rate limiting (OpenWeatherMap free tier: 60 calls/minute, 1000 calls/day)
+    rate_limit_calls_per_minute: 50
+    rate_limit_calls_per_month: 1000000
+
+    # Cache settings for different data types
+    current_weather_cache_minutes: 10
+    forecast_cache_minutes: 60
+    alerts_cache_minutes: 5
+    historical_cache_minutes: 1440
+
+    # Default settings
+    default_units: "metric"  # metric, imperial, kelvin
+    default_language: "en"   # en, hi, mr, bn, gu, ta, te
+
+    # Trading-specific features
+    enable_commodity_analysis: true
+    enable_weather_alerts: true
+    enable_agricultural_insights: true
+    enable_energy_insights: true
+
+    # Circuit breaker for API resilience
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout: 60
 
 ai:
   ollama:
@@ -68,7 +154,7 @@ ai:
     timeout: 120
     max_tokens: 4096
     temperature: 0.7
-  
+
   features:
     enable_predictions: true
     enable_sentiment_analysis: true
@@ -79,15 +165,15 @@ strategies:
   max_concurrent: 5
   default_risk_per_trade: 1.0
   enable_paper_mode_by_default: true
-  
+
   predatory:
     enabled: true
     max_positions: 3
-  
-  quantitative: 
+
+  quantitative:
     enabled: true
     max_positions: 5
-  
+
   psychological:
     enabled: true
     max_positions: 2
@@ -96,10 +182,10 @@ market_data:
   cache_duration: 300  # 5 minutes
   real_time_enabled: true
   historical_lookback_days: 365
-  
+
   timeframes:
     - "1m"
-    - "5m" 
+    - "5m"
     - "15m"
     - "1h"
     - "1d"
@@ -109,7 +195,7 @@ risk_management:
   max_drawdown_percentage: 10.0
   position_sizing_method: "fixed_percentage"
   enable_circuit_breakers: true
-  
+
   circuit_breakers:
     max_consecutive_losses: 3
     cooldown_period_minutes: 30
@@ -120,11 +206,11 @@ logging:
   file: "logs/niraj.log"
   max_file_size: "10MB"
   backup_count: 5
-  
+
   loggers:
     - name: "niraj"
       level: "INFO"
-    - name: "trading"  
+    - name: "trading"
       level: "DEBUG"
     - name: "ai"
       level: "INFO"
