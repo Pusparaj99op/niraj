@@ -33,6 +33,7 @@ aiohttp = "^3.9.1"
 backoff = "^2.2.1"
 pydantic = "^1.10.0"
 qrcode = "^8.2"
+feedparser = "^6.0.10"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"

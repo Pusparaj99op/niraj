@@ -20,9 +20,9 @@ API Versions:
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -31,8 +31,23 @@ import uvicorn
 
 from .core.config import config
 from .core.database import DatabaseManager
-from .core.cache import CacheManager
-from .ai.gemma3_integration import Gemma3Client
+try:
+    from .core.cache import CacheManager
+    CACHE_AVAILABLE = True
+except ImportError:
+    CacheManager = None
+    CACHE_AVAILABLE = False
+try:
+    from .ai.gemma3_integration import Gemma3Client
+    AI_AVAILABLE = True
+except ImportError:
+    Gemma3Client = None
+    AI_AVAILABLE = False
+try:
+    from .api.websocket_server import init_websocket_server, shutdown_websocket_server
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    WEBSOCKET_AVAILABLE = False
 from .api.routes.auth import init_auth_routes, SecurityHeadersMiddleware
 from .api.routes.strategies import init_strategy_routes
 from .api.routes.trades import init_trade_routes
@@ -44,8 +59,9 @@ logger = structlog.get_logger(__name__)
 
 # Global service instances
 _db_manager: Optional[DatabaseManager] = None
-_cache_manager: Optional[CacheManager] = None
-_ai_integration: Optional[Gemma3Client] = None
+_cache_manager: Optional[Any] = None
+_ai_integration: Optional[Any] = None
+_websocket_server: Optional[Any] = None
 
 
 @asynccontextmanager
@@ -85,7 +101,7 @@ async def lifespan(app: FastAPI):
 
 async def initialize_services():
     """Initialize all core services"""
-    global _db_manager, _cache_manager, _ai_integration
+    global _db_manager, _cache_manager, _ai_integration, _websocket_server
 
     try:
         # Load configuration
@@ -98,9 +114,13 @@ async def initialize_services():
         await _db_manager.initialize()
 
         # Initialize cache manager
-        _cache_manager = CacheManager(
-            redis_url=config.get('redis_url', 'redis://localhost:6379')
-        )
+        if CACHE_AVAILABLE:
+            _cache_manager = CacheManager(
+                redis_url=config.get('redis_url', 'redis://localhost:6379')
+            )
+        else:
+            logger.warning("Cache manager not available - Redis not installed")
+            _cache_manager = None
 
         # Initialize AI integration (optional)
         try:
@@ -113,6 +133,22 @@ async def initialize_services():
         except Exception as e:
             logger.warning("AI integration not available", error=str(e))
             _ai_integration = None
+
+        # Initialize WebSocket server
+        if WEBSOCKET_AVAILABLE:
+            try:
+                from .services.auth_service import AuthenticationService
+                auth_service = AuthenticationService(_db_manager, _cache_manager)
+                _websocket_server = await init_websocket_server(
+                    _db_manager, _cache_manager, auth_service
+                )
+                logger.info("WebSocket server initialized")
+            except Exception as e:
+                logger.warning("WebSocket server not available", error=str(e))
+                _websocket_server = None
+        else:
+            logger.warning("WebSocket server not available - websockets not installed")
+            _websocket_server = None
 
         logger.info("Core services initialized successfully")
 
@@ -149,6 +185,10 @@ async def shutdown_services():
         # Shutdown AI integration
         if _ai_integration:
             await _ai_integration.close()
+
+        # Shutdown WebSocket server
+        if _websocket_server:
+            await shutdown_websocket_server()
 
         # Shutdown cache manager
         if _cache_manager:
@@ -316,6 +356,30 @@ def create_application() -> FastAPI:
             "api_version": "v1",
             "environment": os.getenv("ENVIRONMENT", "development")
         }
+
+    # WebSocket endpoint for real-time data streaming
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+        """WebSocket endpoint for real-time data streaming"""
+        if not _websocket_server:
+            await websocket.close(code=1011)  # Internal server error
+            return
+
+        # Accept the connection
+        await websocket.accept()
+
+        # Create a path-like string for the WebSocket server
+        path = f"/ws?token={token}" if token else "/ws"
+
+        # Delegate to the WebSocket server
+        try:
+            await _websocket_server.handle_connection(websocket, path)
+        except Exception as e:
+            logger.error("WebSocket connection error", error=str(e))
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
 
     # Initialize and include API routes
     try:

@@ -71,7 +71,7 @@ class AlertSeverity(str, Enum):
 class StreamData:
     """Base class for all stream data"""
     stream_type: StreamType
-    timestamp: datetime
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     symbol: Optional[str] = None
     data: Dict[str, Any] = field(default_factory=dict)
     source: str = "unknown"

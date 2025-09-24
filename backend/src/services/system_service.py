@@ -7,7 +7,6 @@ for the NIRAJ trading system. Includes health checks, metrics collection, and sy
 
 import asyncio
 import json
-import psutil
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
@@ -16,11 +15,38 @@ from enum import Enum
 
 import structlog
 
-from ..core.database_manager import DatabaseManager
-from ..core.cache import CacheManager
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    psutil = None
+    PSUTIL_AVAILABLE = False
+
+from ..core.database import DatabaseManager
+try:
+    from ..core.cache import CacheManager
+    CACHE_AVAILABLE = True
+    CacheManagerType = CacheManager
+except ImportError:
+    CacheManager = None
+    CACHE_AVAILABLE = False
+    CacheManagerType = Any
 from ..core.config import config
-from ..ai.gemma3_integration import Gemma3Client
-from ..models.ai_prediction import AIPrediction, PredictionStatus
+try:
+    from ..ai.gemma3_integration import Gemma3Client
+    AI_AVAILABLE = True
+    Gemma3ClientType = Gemma3Client
+except ImportError:
+    Gemma3Client = None
+    AI_AVAILABLE = False
+    Gemma3ClientType = Any
+
+# Import AI prediction classes directly to avoid models package issues
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'models'))
+from ai_prediction import AIPrediction, PredictionStatus
+
 from ..api.angel_one_client import AngelOneClient
 from ..api.dhan_client import DhanClient
 
@@ -99,8 +125,8 @@ class SystemService:
     def __init__(
         self,
         db_manager: DatabaseManager,
-        cache_manager: Optional[CacheManager] = None,
-        ai_client: Optional[Gemma3Client] = None,
+        cache_manager: Optional[Any] = None,
+        ai_client: Optional[Any] = None,
         angel_one_client: Optional[AngelOneClient] = None,
         dhan_client: Optional[DhanClient] = None
     ):
@@ -397,6 +423,18 @@ class SystemService:
     async def _get_system_metrics(self) -> Dict[str, Any]:
         """Get system performance metrics"""
         try:
+            if not PSUTIL_AVAILABLE:
+                return {
+                    "cpu_usage_pct": 0.0,
+                    "memory_usage_pct": 0.0,
+                    "disk_usage_pct": 0.0,
+                    "active_strategies": 0,
+                    "open_positions": 0,
+                    "total_predictions_today": 0,
+                    "successful_predictions_today": 0,
+                    "uptime_seconds": time.time() - self._start_time
+                }
+
             # CPU usage
             cpu_usage = psutil.cpu_percent(interval=1)
 

@@ -20,9 +20,21 @@ from pydantic import BaseModel
 import structlog
 
 from ...core.database import DatabaseManager
-from ...core.cache import CacheManager
+try:
+    from ...core.cache import CacheManager
+    CACHE_AVAILABLE = True
+except ImportError:
+    CacheManager = None
+    CACHE_AVAILABLE = False
+
+try:
+    from ...ai.gemma3_integration import Gemma3Client
+    AI_AVAILABLE = True
+except ImportError:
+    Gemma3Client = None
+    AI_AVAILABLE = False
+
 from ...services.system_service import SystemService, SystemServiceError
-from ...ai.gemma3_integration import Gemma3Client
 
 # Initialize router with comprehensive configuration
 router = APIRouter(
@@ -340,8 +352,8 @@ async def get_ai_predictions(
 # Service initialization functions
 def init_system_routes(
     db_manager: DatabaseManager,
-    cache_manager: Optional[CacheManager] = None,
-    ai_client: Optional[Gemma3Client] = None,
+    cache_manager: Optional[Any] = None,
+    ai_client: Optional[Any] = None,
     angel_one_client: Optional[Any] = None,
     dhan_client: Optional[Any] = None
 ) -> APIRouter:
