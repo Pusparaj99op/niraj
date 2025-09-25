@@ -1154,7 +1154,7 @@ All API endpoints return structured error responses:
 The API implements rate limiting to ensure fair usage:
 
 - **Authentication endpoints**: 10 requests per minute
-- **Trading endpoints**: 100 requests per minute  
+- **Trading endpoints**: 100 requests per minute
 - **Market data endpoints**: 500 requests per minute
 - **General endpoints**: 1000 requests per hour
 

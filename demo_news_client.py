@@ -73,7 +73,15 @@ async def demo_news_client():
                 if article.tags:
                     print(f"    Stock symbols found: {', '.join(article.tags)}")
                 print()
+    #this is the hiraj file, the one this is the waorld is so good for you adn the os hta
 
+# this is the file the i have the makee nut the is not pointn to may this fucking comment,the is the file this so wow!!
+
+
+# thisis the file the i have the makee nut the is not pointn to may this fucking comment,the is the file this so wow!!
+    # theerer the yaour
+    #
+    #
         except Exception as e:
             print(f"❌ Error fetching market news: {e}")
 
@@ -190,3 +198,8 @@ def run_demo():
 
 if __name__ == "__main__":
     run_demo()
+
+
+
+
+"""Hello! How can I assist you further?"""

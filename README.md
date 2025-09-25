@@ -152,7 +152,7 @@ cd NIRAJ
 ./scripts/run_dev.sh
 ```
 
-That's it! 🎉 
+That's it! 🎉
 
 - Frontend: http://localhost:3005
 - Backend API: http://localhost:8000
@@ -264,7 +264,7 @@ VITE_ENVIRONMENT=development
 NIRAJ uses YAML configuration files in `backend/config/`:
 
 - `development.yaml`: Development environment settings
-- `production.yaml`: Production environment settings  
+- `production.yaml`: Production environment settings
 - `testing.yaml`: Test environment settings
 
 Example configuration:
@@ -565,15 +565,15 @@ security:
     secret_key: "${JWT_SECRET_KEY}"
     algorithm: "HS256"
     expire_minutes: 30
-  
+
   mfa:
     enabled: true
     methods: ["totp", "sms"]
-  
+
   encryption:
     algorithm: "AES-256-GCM"
     key_rotation_days: 90
-  
+
   rate_limiting:
     requests_per_minute: 100
     burst_limit: 200
