@@ -250,6 +250,16 @@ class ApiService {
     return response.strategies.filter(strategy => strategy.status === 'active');
   }
 
+  async getStrategyPerformance(strategyId: string): Promise<any> {
+    const response: AxiosResponse<any> = await apiClient.get(`/api/v1/strategies/${strategyId}/performance`);
+    return response.data;
+  }
+
+  async getStrategyBacktest(strategyId: string, params?: any): Promise<any> {
+    const response: AxiosResponse<any> = await apiClient.post(`/api/v1/strategies/${strategyId}/backtest`, params);
+    return response.data;
+  }
+
   // Trade endpoints
   async getRecentTrades(limit = 20, offset = 0): Promise<TradesResponse> {
     const response: AxiosResponse<TradesResponse> = await apiClient.get('/api/v1/trades', {

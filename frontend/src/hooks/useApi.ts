@@ -11,7 +11,7 @@ import type {
   Trade,
   AIPrediction
 } from '../services/api';
-import websocketService from '../services/websocket';
+import websocketService from '../services/websocket-legacy';
 
 // Query keys for React Query
 export const QUERY_KEYS = {
@@ -263,6 +263,32 @@ export const useAIPredictions = (
   }, [queryClient, symbol, strategy_id, min_confidence, limit, offset]);
 
   return query;
+};
+
+// Strategy Performance hooks
+export const useStrategyPerformance = (strategyId?: string) => {
+  return useQuery({
+    queryKey: ['strategy-performance', strategyId],
+    queryFn: () => strategyId ? apiService.getStrategyPerformance(strategyId) : Promise.resolve(null),
+    enabled: !!strategyId,
+    refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 10000,
+  });
+};
+
+export const useStrategyBacktest = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ strategyId, params }: { strategyId: string; params?: any }) =>
+      apiService.getStrategyBacktest(strategyId, params),
+    onSuccess: (data, variables) => {
+      // Update strategy performance cache
+      queryClient.setQueryData(['strategy-performance', variables.strategyId], data);
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['strategies'] });
+    },
+  });
 };
 
 // AI-specific hooks
