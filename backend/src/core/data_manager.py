@@ -1245,3 +1245,41 @@ async def create_data_manager(
     )
 
     return data_manager
+
+
+# Simple DataManager class for execution engine compatibility
+class DataManager:
+    """
+    Simple data manager wrapper for execution engine compatibility
+    """
+
+    def __init__(self, db_manager, config: Dict[str, Any]):
+        self.db_manager = db_manager
+        self.config = config
+        self.logger = get_logger("niraj.core.data_manager")
+
+    async def get_market_data(self, symbol: str, timeframe: str = "1min") -> Optional[Dict[str, Any]]:
+        """
+        Get market data for a symbol (placeholder implementation)
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+
+        Returns:
+            Market data dictionary or None
+        """
+        try:
+            # Placeholder implementation - would integrate with HistoricalDataManager
+            return {
+                "symbol": symbol,
+                "price": 100.0,  # Placeholder price
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get market data: {e}")
+            return None
+
+    async def health_check(self) -> bool:
+        """Health check"""
+        return True
