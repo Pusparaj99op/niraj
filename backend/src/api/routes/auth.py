@@ -40,7 +40,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import structlog
 import pyotp
 import qrcode
@@ -121,19 +121,22 @@ class LoginRequestModel(BaseModel):
     mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if enabled")
     client_fingerprint: Optional[str] = Field(None, description="Device fingerprint for security")
 
-    @validator('pin')
+    @field_validator('pin')
+    @classmethod
     def validate_pin_format(cls, v):
         if not v.isdigit():
             raise ValueError("PIN must contain only digits")
         return v
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username_format(cls, v):
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
         return v
 
-    @validator('mfa_code')
+    @field_validator('mfa_code')
+    @classmethod
     def validate_mfa_code(cls, v):
         if v and not v.isdigit():
             raise ValueError("MFA code must contain only digits")
@@ -147,25 +150,23 @@ class SwitchModeRequestModel(BaseModel):
     mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if required")
     confirmation_message: Optional[str] = Field(None, description="User confirmation message")
 
-    @validator('mode')
+    @field_validator('mode')
+    @classmethod
     def validate_mode(cls, v):
         if v not in ['paper', 'live']:
             raise ValueError("Mode must be 'paper' or 'live'")
         return v
 
-    @validator('pin')
-    def validate_pin_for_live_mode(cls, v, values):
-        if values.get('mode') == 'live' and not v:
-            raise ValueError("PIN required for live trading mode")
-        if v and not v.isdigit():
+    @model_validator(mode='after')
+    def validate_live_mode_requirements(self):
+        if self.mode == 'live':
+            if not self.pin:
+                raise ValueError("PIN required for live trading mode")
+            if not self.confirmation_message:
+                raise ValueError("Confirmation message required for live trading mode")
+        if self.pin and not self.pin.isdigit():
             raise ValueError("PIN must contain only digits")
-        return v
-
-    @validator('confirmation_message')
-    def validate_confirmation(cls, v, values):
-        if values.get('mode') == 'live' and not v:
-            raise ValueError("Confirmation message required for live trading mode")
-        return v
+        return self
 
 
 class ChangePasswordRequestModel(BaseModel):
@@ -175,11 +176,11 @@ class ChangePasswordRequestModel(BaseModel):
     confirm_pin: str = Field(min_length=4, max_length=4, pattern=r'^\d{4}$', description="Confirm new PIN")
     mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if enabled")
 
-    @root_validator
-    def validate_pin_change(cls, values):
-        new_pin = values.get('new_pin')
-        confirm_pin = values.get('confirm_pin')
-        current_pin = values.get('current_pin')
+    @model_validator(mode='after')
+    def validate_pin_change(self):
+        new_pin = self.new_pin
+        confirm_pin = self.confirm_pin
+        current_pin = self.current_pin
 
         if new_pin != confirm_pin:
             raise ValueError("New PIN and confirmation PIN do not match")
@@ -191,14 +192,15 @@ class ChangePasswordRequestModel(BaseModel):
         if new_pin in ['0000', '1234', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999']:
             raise ValueError("PIN too weak, avoid common patterns")
 
-        return values
+        return self
 
 
 class MFASetupRequestModel(BaseModel):
     """MFA setup request model"""
     method: str = Field(description="MFA method ('totp', 'sms', 'email')")
 
-    @validator('method')
+    @field_validator('method')
+    @classmethod
     def validate_method(cls, v):
         if v not in ['totp', 'sms', 'email']:
             raise ValueError("MFA method must be 'totp', 'sms', or 'email'")
@@ -210,7 +212,8 @@ class MFAVerifyRequestModel(BaseModel):
     code: str = Field(min_length=6, max_length=8, description="MFA verification code")
     method: str = Field(description="MFA method used")
 
-    @validator('code')
+    @field_validator('code')
+    @classmethod
     def validate_code(cls, v):
         if not v.isdigit():
             raise ValueError("MFA code must contain only digits")

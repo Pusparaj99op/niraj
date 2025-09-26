@@ -53,6 +53,11 @@ from .api.routes.strategies import init_strategy_routes
 from .api.routes.trades import init_trade_routes
 from .api.routes.portfolio import init_portfolio_routes
 from .api.routes.system import init_system_routes
+from .api.routes.market_data import init_market_data_routes
+from .api.routes.news import init_news_routes
+from .api.routes.weather import init_weather_routes
+from .api.routes.ai_analysis import init_ai_routes
+from .api.routes.technical_indicators import init_indicators_routes
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -74,7 +79,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting NIRAJ Trading System")
 
     try:
-        # Initialize core services
+        # Initialize remaining async services
         await initialize_services()
 
         # Start background tasks
@@ -104,38 +109,11 @@ async def initialize_services():
     global _db_manager, _cache_manager, _ai_integration, _websocket_server
 
     try:
-        # Load configuration
-        config.load_config()
-
-        # Initialize database manager
-        _db_manager = DatabaseManager(
-            database_url=config.get('database_url', 'sqlite:///niraj.db')
-        )
-        await _db_manager.initialize()
-
-        # Initialize cache manager
-        if CACHE_AVAILABLE:
-            _cache_manager = CacheManager(
-                redis_url=config.get('redis_url', 'redis://localhost:6379')
-            )
-        else:
-            logger.warning("Cache manager not available - Redis not installed")
-            _cache_manager = None
-
-        # Initialize AI integration (optional)
-        try:
-            _ai_integration = Gemma3Client(
-                base_url=config.get('ai.ollama.base_url', 'http://localhost:11434'),
-                model_name=config.get('ai.ollama.model', 'gemma3:4b-it-q4_K_M'),
-                timeout=config.get('ai.timeout', 120)
-            )
-            logger.info("AI integration initialized")
-        except Exception as e:
-            logger.warning("AI integration not available", error=str(e))
-            _ai_integration = None
+        # Services are already initialized in create_application()
+        # Only initialize WebSocket server here
 
         # Initialize WebSocket server
-        if WEBSOCKET_AVAILABLE:
+        if WEBSOCKET_AVAILABLE and _db_manager:
             try:
                 from .services.auth_service import AuthenticationService
                 auth_service = AuthenticationService(_db_manager, _cache_manager)
@@ -147,7 +125,7 @@ async def initialize_services():
                 logger.warning("WebSocket server not available", error=str(e))
                 _websocket_server = None
         else:
-            logger.warning("WebSocket server not available - websockets not installed")
+            logger.warning("WebSocket server not available - websockets not installed or db_manager not ready")
             _websocket_server = None
 
         logger.info("Core services initialized successfully")
@@ -161,15 +139,15 @@ async def start_background_tasks():
     """Start all background tasks and services"""
     try:
         # Start database maintenance tasks
-        if _db_manager:
+        if _db_manager and hasattr(_db_manager, 'start_background_tasks'):
             await _db_manager.start_background_tasks()
 
         # Start cache maintenance tasks
-        if _cache_manager:
+        if _cache_manager and hasattr(_cache_manager, 'start_background_tasks'):
             await _cache_manager.start_background_tasks()
 
         # Start AI background tasks
-        if _ai_integration:
+        if _ai_integration and hasattr(_ai_integration, 'start_background_tasks'):
             await _ai_integration.start_background_tasks()
 
         logger.info("Background tasks started successfully")
@@ -213,6 +191,55 @@ def create_application() -> FastAPI:
     """
     # Load configuration
     config.load_config()
+
+    # Initialize core services here instead of in lifespan
+    global _db_manager, _cache_manager, _ai_integration, _websocket_server
+
+    try:
+        # Load configuration
+        config.load_config()
+
+        # Initialize database manager
+        _db_manager = DatabaseManager()
+        # Note: Database URL is configured via environment/config files
+        if hasattr(_db_manager, 'initialize'):
+            # Cannot use asyncio.run here as we're not in sync context
+            pass
+
+        # Initialize cache manager
+        if CACHE_AVAILABLE:
+            _cache_manager = CacheManager(
+                redis_url=config.get('redis_url', 'redis://localhost:6379')
+            )
+        else:
+            logger.warning("Cache manager not available - Redis not installed")
+            _cache_manager = None
+
+        # Initialize AI integration (optional)
+        try:
+            _ai_integration = Gemma3Client()
+            logger.info("AI integration initialized")
+        except Exception as e:
+            logger.warning("AI integration not available", error=str(e))
+            _ai_integration = None
+
+        # Initialize WebSocket server
+        if WEBSOCKET_AVAILABLE:
+            try:
+                _websocket_server = None  # Cannot initialize websocket here without async
+                logger.info("WebSocket server will be initialized in lifespan")
+            except Exception as e:
+                logger.warning("WebSocket server not available", error=str(e))
+                _websocket_server = None
+        else:
+            logger.warning("WebSocket server not available - websockets not installed")
+            _websocket_server = None
+
+        logger.info("Core services initialized successfully")
+
+    except Exception as e:
+        logger.error("Failed to initialize services", error=str(e))
+        raise
 
     # Create FastAPI app
     app = FastAPI(
@@ -402,6 +429,71 @@ def create_application() -> FastAPI:
         # System and AI routes
         system_router = init_system_routes(_db_manager, _cache_manager, _ai_integration)
         app.include_router(system_router, prefix="/api/v1")
+
+        # Market data routes
+        try:
+            from .api.auth_manager import AuthenticationManager
+            from .api.angel_one_client import AngelOneClient
+            from .api.dhan_client import DhanClient
+
+            # Initialize broker clients (if credentials available)
+            auth_manager = AuthenticationManager()
+
+            # Setup development credentials
+            try:
+                from .api.auth_manager import setup_development_credentials
+                setup_development_credentials(auth_manager)
+                logger.info("Development credentials setup completed")
+            except Exception as e:
+                logger.warning("Failed to setup development credentials", error=str(e))
+
+            # Clients will be created on-demand via auth_manager
+            angel_client = AngelOneClient(
+                api_key=config.get('brokers.angel_one.api_key', 'dummy_angel_api_key'),
+                client_code=config.get('brokers.angel_one.client_code', 'dummy_client_code'),
+                client_pin=config.get('brokers.angel_one.password', 'dummy_password'),
+                totp_secret=config.get('brokers.angel_one.totp_secret')
+            )
+            dhan_client = DhanClient(
+                client_id=config.get('brokers.dhan.client_id', 'dummy_dhan_client_id'),
+                access_token=config.get('brokers.dhan.access_token', 'dummy_dhan_token')
+            )
+
+            market_data_router = init_market_data_routes(
+                _db_manager, _cache_manager, auth_manager, angel_client, dhan_client
+            )
+            app.include_router(market_data_router, prefix="/api/v1")
+
+        except Exception as e:
+            logger.warning("Market data routes not initialized", error=str(e))
+
+        # News routes
+        try:
+            news_router = init_news_routes(_db_manager, _cache_manager)
+            app.include_router(news_router, prefix="/api/v1")
+        except Exception as e:
+            logger.warning("News routes not initialized", error=str(e))
+
+        # Weather routes
+        try:
+            weather_router = init_weather_routes(_db_manager, _cache_manager)
+            app.include_router(weather_router, prefix="/api/v1")
+        except Exception as e:
+            logger.warning("Weather routes not initialized", error=str(e))
+
+        # AI analysis routes
+        try:
+            ai_router = init_ai_routes(_db_manager, _cache_manager, _ai_integration)
+            app.include_router(ai_router, prefix="/api/v1")
+        except Exception as e:
+            logger.warning("AI analysis routes not initialized", error=str(e))
+
+        # Technical indicators routes
+        try:
+            indicators_router = init_indicators_routes(_db_manager, _cache_manager)
+            app.include_router(indicators_router, prefix="/api/v1")
+        except Exception as e:
+            logger.warning("Technical indicators routes not initialized", error=str(e))
 
         logger.info("API routes initialized successfully")
 

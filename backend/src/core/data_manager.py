@@ -694,9 +694,7 @@ class HistoricalDataManager:
             max_workers=self.max_concurrent_requests
         )
 
-        self.logger.info("Historical Data Manager initialized",
-                        sources=list(self.adapters.keys()),
-                        cache_enabled=self.cache is not None)
+        self.logger.info(f"Historical Data Manager initialized with sources: {list(self.adapters.keys())}, cache_enabled: {self.cache is not None}")
 
     @asynccontextmanager
     async def _request_context(self, request: DataRequest):

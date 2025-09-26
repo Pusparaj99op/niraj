@@ -72,9 +72,8 @@ class TradeCreateRequestModel(BaseModel):
     take_profit: Optional[float] = Field(None, gt=0, description="Take profit price")
     strategy_id: Optional[str] = Field(None, description="Strategy ID if trade is from a strategy")
 
-    class Config:
-        """Pydantic configuration"""
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "symbol": "BANKNIFTY",
                 "trade_type": "BUY",
@@ -85,6 +84,7 @@ class TradeCreateRequestModel(BaseModel):
                 "strategy_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
+    }
 
 
 class TradeUpdateRequestModel(BaseModel):
@@ -92,14 +92,14 @@ class TradeUpdateRequestModel(BaseModel):
     stop_loss: Optional[float] = Field(None, gt=0, description="Updated stop loss price")
     take_profit: Optional[float] = Field(None, gt=0, description="Updated take profit price")
 
-    class Config:
-        """Pydantic configuration"""
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "stop_loss": 44500.00,
                 "take_profit": 46500.00
             }
         }
+    }
 
 
 class ErrorResponse(BaseModel):

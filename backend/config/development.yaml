@@ -43,11 +43,17 @@ brokers:
   angel_one:
     enabled: true
     base_url: "https://apiconnect.angelbroking.com"
+    api_key: "dummy_angel_api_key"
+    client_code: "dummy_client_code"
+    password: "dummy_password"
+    totp_secret: "dummy_totp_secret"
     timeout: 30
 
   dhan:
-    enabled: false
+    enabled: true
     base_url: "https://api.dhan.co"
+    client_id: "dummy_dhan_client_id"
+    access_token: "dummy_dhan_token"
     timeout: 30
 
 external_apis:

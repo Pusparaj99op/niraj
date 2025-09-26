@@ -73,15 +73,6 @@ async def demo_news_client():
                 if article.tags:
                     print(f"    Stock symbols found: {', '.join(article.tags)}")
                 print()
-    #this is the hiraj file, the one this is the waorld is so good for you adn the os hta
-
-# this is the file the i have the makee nut the is not pointn to may this fucking comment,the is the file this so wow!!
-
-
-# thisis the file the i have the makee nut the is not pointn to may this fucking comment,the is the file this so wow!!
-    # theerer the yaour
-    #
-    #
         except Exception as e:
             print(f"❌ Error fetching market news: {e}")
 
@@ -95,7 +86,6 @@ async def demo_news_client():
                 NewsFilter(min_relevance_score=0.2, page_size=3),
                 providers=["rss"]
             )
-
             print(f"✓ Found {len(search_results)} articles matching search")
             for article in search_results:
                 print(f"  • {article.title}")

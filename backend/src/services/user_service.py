@@ -27,7 +27,7 @@ from functools import wraps
 import bcrypt
 from sqlalchemy.exc import IntegrityError as SQLIntegrityError
 from sqlalchemy import and_, or_, func, text, desc, asc
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from ..models.user import (
     User, UserORM, TradingMode, UserAuthenticationError,
@@ -174,13 +174,15 @@ class UserProfileUpdate(BaseModel):
     max_daily_loss: Optional[Decimal] = Field(None, gt=0, max_digits=15, decimal_places=2)
     preferences: Optional[Dict[str, Any]] = None
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username_format(cls, v):
         if v and not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
         return v
 
-    @validator('preferences')
+    @field_validator('preferences')
+    @classmethod
     def validate_preferences_structure(cls, v):
         if v is not None:
             # Validate JSON serializability

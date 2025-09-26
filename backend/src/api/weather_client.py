@@ -14,7 +14,7 @@ import secrets
 from enum import Enum
 
 import httpx
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 try:
     from ..utils.logger import get_logger, log_performance, LogContext
@@ -152,7 +152,8 @@ class CurrentWeather(BaseModel):
     units: WeatherUnits
     raw_data: Dict[str, Any] = Field(default_factory=dict)
 
-    @validator('timestamp', 'sunrise', 'sunset', pre=True)
+    @field_validator('timestamp', 'sunrise', 'sunset', mode='before')
+    @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
             return datetime.fromtimestamp(v)
@@ -183,7 +184,8 @@ class WeatherForecast(BaseModel):
 
     probability_of_precipitation: float  # 0-1
 
-    @validator('timestamp', pre=True)
+    @field_validator('timestamp', mode='before')
+    @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
             return datetime.fromtimestamp(v)
@@ -200,7 +202,8 @@ class WeatherAlert(BaseModel):
     description: str
     tags: List[str] = Field(default_factory=list)
 
-    @validator('start', 'end', pre=True)
+    @field_validator('start', 'end', mode='before')
+    @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
             return datetime.fromtimestamp(v)
@@ -244,7 +247,8 @@ class LocationQuery(BaseModel):
     state_code: Optional[str] = None  # US state or country subdivision
     country_code: Optional[str] = None  # ISO 3166 country code
 
-    @validator('city_name')
+    @field_validator('city_name')
+    @classmethod
     def validate_city_name(cls, v):
         if v and len(v.strip()) < 2:
             raise ValueError("City name must be at least 2 characters")

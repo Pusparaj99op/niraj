@@ -1201,10 +1201,10 @@ async def setup_development_credentials(
         logger = get_logger("niraj.auth_manager.setup")
 
         # Angel One
-        angel_api_key = get_config('angel_one_api_key')
-        angel_client_code = get_config('angel_one_client_code')
-        angel_password = get_config('angel_one_password')
-        angel_totp_secret = get_config('angel_one_totp_secret')
+        angel_api_key = get_config('brokers.angel_one.api_key')
+        angel_client_code = get_config('brokers.angel_one.client_code')
+        angel_password = get_config('brokers.angel_one.password')
+        angel_totp_secret = get_config('brokers.angel_one.totp_secret')
 
         if angel_api_key and angel_client_code and angel_password:
             auth_manager.add_credentials(
@@ -1218,8 +1218,8 @@ async def setup_development_credentials(
             logger.info("Added Angel One credentials")
 
         # Dhan
-        dhan_client_id = get_config('dhan_client_id')
-        dhan_token = get_config('dhan_api_token')
+        dhan_client_id = get_config('brokers.dhan.client_id')
+        dhan_token = get_config('brokers.dhan.access_token')
 
         if dhan_client_id and dhan_token:
             auth_manager.add_credentials(

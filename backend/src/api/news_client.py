@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 import feedparser
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 try:
     from ..utils.logger import get_logger, log_performance, LogContext
@@ -144,7 +144,8 @@ class Article(BaseModel):
     sentiment_score: Optional[float] = None  # -1 to 1, if sentiment analysis enabled
     relevance_score: Optional[float] = None  # 0 to 1, calculated relevance to trading
 
-    @validator('published_at', pre=True)
+    @field_validator('published_at', mode='before')
+    @classmethod
     def parse_published_at(cls, v):
         if isinstance(v, str):
             # Handle various date formats
@@ -473,7 +474,7 @@ class NewsClient:
                             # Cache successful response
                             self.cache.set(provider, cache_key, params or {}, data, cache_ttl)
                             return data
-                        except json.JSONDecodeError as e:
+                        except json.JSONDecodeError:
                             # Some providers return non-JSON data
                             text_data = response.text
                             result = {"content": text_data, "content_type": response.headers.get("content-type")}
@@ -1103,7 +1104,7 @@ class NewsClient:
         health_status["cache_status"] = {
             "cached_entries": len(self.cache.cache),
             "expired_entries": len([k for k, v in self.cache.expiry.items()
-                                  if datetime.now() > v])
+                                    if datetime.now() > v])
         }
 
         self.logger.info(f"Health check completed: {health_status['overall_status']}")
@@ -1134,7 +1135,7 @@ class NewsClient:
             "cache_stats": {
                 "entries": len(self.cache.cache),
                 "expired_entries": len([k for k, v in self.cache.expiry.items()
-                                      if datetime.now() > v])
+                                        if datetime.now() > v])
             }
         }
 

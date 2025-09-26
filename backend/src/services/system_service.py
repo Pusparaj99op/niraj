@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import structlog
+from sqlalchemy import text
 
 try:
     import psutil
@@ -287,8 +288,9 @@ class SystemService:
             params.extend([limit, offset])
 
             # Execute query
-            async with self.db_manager.get_connection() as conn:
-                rows = await conn.fetch_all(query, params)
+            async with self.db_manager.get_connection() as session:
+                result = await session.execute(text(query), params)
+                rows = result.fetchall()
 
             # Convert to prediction objects
             predictions = []
@@ -396,12 +398,8 @@ class SystemService:
         # Analysis engine (AI service)
         services["analysis_engine"] = await self._check_ai_health()
 
-        # Execution engine (placeholder - not implemented yet)
-        services["execution_engine"] = {
-            "status": ServiceStatus.NOT_CONFIGURED.value,
-            "last_check": datetime.now(timezone.utc).isoformat(),
-            "message": "Execution engine not yet implemented"
-        }
+        # Execution engine
+        services["execution_engine"] = await self._check_execution_engine_health()
 
         # AI service
         services["ai_service"] = await self._check_ai_health()
@@ -489,8 +487,9 @@ class SystemService:
             start_time = time.time()
 
             # Simple health check query
-            async with self.db_manager.get_connection() as conn:
-                await conn.fetch_one("SELECT 1 as health_check")
+            async with self.db_manager.get_connection() as session:
+                result = await session.execute(text("SELECT 1 as health_check"))
+                row = result.fetchone()
 
             response_time = (time.time() - start_time) * 1000
 
@@ -551,6 +550,42 @@ class SystemService:
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
                 "message": "AI service check failed"
+            }
+
+    async def _check_execution_engine_health(self) -> Dict[str, Any]:
+        """Check execution engine health"""
+        try:
+            # Check if execution engine can be imported and basic components are available
+            from ..core.execution_engine import ExecutionEngine
+
+            # Check if broker clients are available
+            has_brokers = self.angel_one_client is not None or self.dhan_client is not None
+
+            if has_brokers:
+                return {
+                    "status": ServiceStatus.RUNNING.value,
+                    "last_check": datetime.now(timezone.utc).isoformat(),
+                    "message": "Execution engine ready"
+                }
+            else:
+                return {
+                    "status": ServiceStatus.NOT_CONFIGURED.value,
+                    "last_check": datetime.now(timezone.utc).isoformat(),
+                    "message": "Execution engine available but no broker clients configured"
+                }
+
+        except ImportError:
+            return {
+                "status": ServiceStatus.NOT_CONFIGURED.value,
+                "last_check": datetime.now(timezone.utc).isoformat(),
+                "message": "Execution engine not implemented"
+            }
+        except Exception as e:
+            return {
+                "status": ServiceStatus.ERROR.value,
+                "last_check": datetime.now(timezone.utc).isoformat(),
+                "error_message": str(e),
+                "message": "Execution engine check failed"
             }
 
     async def _check_angel_one_connection(self) -> Dict[str, Any]:

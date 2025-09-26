@@ -14,7 +14,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
 
-from api.weather_client import (
+from src.api.weather_client import (
     WeatherClient, WeatherConfig, LocationQuery, WeatherUnits, WeatherLang,
     CurrentWeather, WeatherForecast, WeatherAlert, WeatherInsights,
     WeatherError, AuthenticationError, RateLimitError, ValidationError,
