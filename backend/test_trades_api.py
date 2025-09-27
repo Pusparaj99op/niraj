@@ -14,6 +14,7 @@ async def test_trades_endpoints():
 
     # Create test client
     from fastapi.testclient import TestClient
+
     app = create_application()
     client = TestClient(app)
 
@@ -42,7 +43,7 @@ async def test_trades_endpoints():
         "quantity": 25,
         "price": 45000.50,
         "stop_loss": 44000.00,
-        "take_profit": 46000.00
+        "take_profit": 46000.00,
     }
     response = client.post("/api/v1/trades", json=trade_data)
     print(f"Status: {response.status_code}")
@@ -88,10 +89,7 @@ async def test_trades_endpoints():
 
     # Test 5: PATCH /api/v1/trades/{trade_id}
     print(f"\n5. Testing PATCH /api/v1/trades/{trade_id}")
-    update_data = {
-        "stop_loss": 44500.00,
-        "take_profit": 46500.00
-    }
+    update_data = {"stop_loss": 44500.00, "take_profit": 46500.00}
     response = client.patch(f"/api/v1/trades/{trade_id}", json=update_data)
     print(f"Status: {response.status_code}")
     if response.status_code == 200:

@@ -2,30 +2,20 @@
 WebSocket Server for NIRAJ Advanced Trading System
 
 Provides real-time data streaming capabilities with:
-- Enterprise-grade authentication and authorization
-- Multiple stream types (market_data, trade_signals, portfolio, ai_insights)
-- Subscription management with rate limiting
-- Connection pooling and resource management
-- Comprehensive error handling and monitoring
-- Heartbeat and connection health monitoring
-- Message validation and security
+- Enterprise-grade authentication and authorization - Multiple stream types (market_data, trade_signals, portfolio, ai_insights) - Subscription management with rate limiting - Connection pooling and resource management - Comprehensive error handling and monitoring - Heartbeat and connection health monitoring -
+Message validation and security
 
 Stream Types:
-- market_data: Real-time OHLCV data with technical indicators and quotes
-- trade_signals: Trading signals from active strategies
-- portfolio: Portfolio position and P&L updates
-- ai_insights: AI predictions and market analysis
+- market_data: Real-time OHLCV data with technical indicators and quotes - trade_signals: Trading signals from active strategies - portfolio: Portfolio position and P&L updates -
+ai_insights: AI predictions and market analysis
 
 Connection Limits:
-- Maximum 5 concurrent connections per user
-- Maximum 50 active subscriptions per connection
-- Rate limiting on message frequency
+- Maximum 5 concurrent connections per user - Maximum 50 active subscriptions per connection -
+Rate limiting on message frequency
 
 Security Features:
-- JWT token authentication (query param or message-based)
-- Session validation and user context
-- Message encryption and validation
-- Connection timeout and cleanup
+- JWT token authentication (query param or message-based) - Session validation and user context - Message encryption and validation -
+Connection timeout and cleanup
 """
 
 import asyncio
@@ -33,17 +23,12 @@ import json
 import uuid
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
-from contextlib import asynccontextmanager
-import functools
-import hashlib
-import hmac
 
-import structlog
 import websockets
-from websockets.exceptions import ConnectionClosedError, WebSocketException
+from websockets.exceptions import ConnectionClosedError
 from jose import jwt
 
 from ..core.config import config
@@ -51,14 +36,14 @@ from ..core.database import DatabaseManager
 from ..core.cache import CacheManager
 from ..core.data_manager import HistoricalDataManager
 from ..core.information_processor import InformationProcessor
-from ..services.auth_service import AuthenticationService, TokenError, AuthenticationError
+from ..services.auth_service import (
+    AuthenticationService,
+    TokenError,
+    AuthenticationError,
+)
 from ..services.portfolio_service import PortfolioService
 from ..ai.confidence_tracker import AdvancedConfidenceTracker
 from ..models.user import UserORM, TradingMode
-from ..models.market_data import MarketDataORM
-from ..models.strategy_signal import StrategySignalORM
-from ..models.portfolio import PortfolioORM
-from ..models.ai_prediction import AIPredictionORM
 from ..utils.logger import get_structured_logger
 
 # Initialize logger
@@ -66,32 +51,33 @@ logger = get_structured_logger(__name__)
 
 # WebSocket configuration
 WS_CONFIG = {
-    'host': '0.0.0.0',
-    'port': 8001,  # Separate port from HTTP API
-    'max_connections_per_user': 5,
-    'max_subscriptions_per_connection': 50,
-    'heartbeat_interval': 30,  # seconds
-    'connection_timeout': 300,  # 5 minutes
-    'auth_timeout': 10,  # 10 seconds to authenticate
-    'max_message_size': 65536,  # 64KB
-    'rate_limit_messages': 100,  # messages per minute
-    'rate_limit_window': 60,  # seconds
-    'message_batch_size': 10,
-    'message_batch_timeout': 0.1,
-    'circuit_breaker_threshold': 5,
-    'circuit_breaker_timeout': 60,
-    'max_retry_attempts': 3,
-    'retry_backoff_factor': 2.0,
-    'ip_whitelist': [],
-    'ip_blacklist': [],
-    'encryption_enabled': False,
-    'enable_load_balancing': False,
-    'horizontal_scaling': False
+    "host": "0.0.0.0",
+    "port": 8001,  # Separate port from HTTP API
+    "max_connections_per_user": 5,
+    "max_subscriptions_per_connection": 50,
+    "heartbeat_interval": 30,  # seconds
+    "connection_timeout": 300,  # 5 minutes
+    "auth_timeout": 10,  # 10 seconds to authenticate
+    "max_message_size": 65536,  # 64KB
+    "rate_limit_messages": 100,  # messages per minute
+    "rate_limit_window": 60,  # seconds
+    "message_batch_size": 10,
+    "message_batch_timeout": 0.1,
+    "circuit_breaker_threshold": 5,
+    "circuit_breaker_timeout": 60,
+    "max_retry_attempts": 3,
+    "retry_backoff_factor": 2.0,
+    "ip_whitelist": [],
+    "ip_blacklist": [],
+    "encryption_enabled": False,
+    "enable_load_balancing": False,
+    "horizontal_scaling": False,
 }
 
 
 class StreamType(str, Enum):
     """Supported WebSocket stream types"""
+
     MARKET_DATA = "market_data"
     TRADE_SIGNALS = "trade_signals"
     PORTFOLIO = "portfolio"
@@ -100,6 +86,7 @@ class StreamType(str, Enum):
 
 class MessageType(str, Enum):
     """WebSocket message types"""
+
     AUTH = "auth"
     AUTH_RESPONSE = "auth_response"
     SUBSCRIBE = "subscribe"
@@ -116,6 +103,7 @@ class MessageType(str, Enum):
 
 class ErrorCode(str, Enum):
     """WebSocket error codes"""
+
     INVALID_REQUEST_FORMAT = "INVALID_REQUEST_FORMAT"
     AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
     AUTHORIZATION_FAILED = "AUTHORIZATION_FAILED"
@@ -132,6 +120,7 @@ class ErrorCode(str, Enum):
 @dataclass
 class Subscription:
     """WebSocket subscription configuration"""
+
     subscription_id: str
     stream_type: StreamType
     user_id: str
@@ -146,8 +135,8 @@ class Subscription:
         stream_type: StreamType,
         user_id: str,
         connection_id: str,
-        config: Dict[str, Any]
-    ) -> 'Subscription':
+        config: Dict[str, Any],
+    ) -> "Subscription":
         """Create a new subscription"""
         now = time.time()
         return cls(
@@ -157,13 +146,14 @@ class Subscription:
             connection_id=connection_id,
             config=config,
             created_at=now,
-            last_active=now
+            last_active=now,
         )
 
 
 @dataclass
 class WebSocketConnection:
     """WebSocket connection state"""
+
     connection_id: str
     websocket: websockets.WebSocketServerProtocol
     user_id: Optional[str] = None
@@ -183,7 +173,7 @@ class WebSocketConnection:
 
     def can_subscribe(self) -> bool:
         """Check if connection can add more subscriptions"""
-        return len(self.subscriptions) < WS_CONFIG['max_subscriptions_per_connection']
+        return len(self.subscriptions) < WS_CONFIG["max_subscriptions_per_connection"]
 
     def update_heartbeat(self):
         """Update last heartbeat timestamp"""
@@ -191,19 +181,19 @@ class WebSocketConnection:
 
     def is_expired(self) -> bool:
         """Check if connection has expired"""
-        return (time.time() - self.created_at) > WS_CONFIG['connection_timeout']
+        return (time.time() - self.created_at) > WS_CONFIG["connection_timeout"]
 
     def check_rate_limit(self) -> bool:
         """Check if message rate limit is exceeded"""
         now = time.time()
 
         # Reset window if needed
-        if now - self.rate_limit_window_start >= WS_CONFIG['rate_limit_window']:
+        if now - self.rate_limit_window_start >= WS_CONFIG["rate_limit_window"]:
             self.message_count = 0
             self.rate_limit_window_start = now
 
         # Check limit
-        if self.message_count >= WS_CONFIG['rate_limit_messages']:
+        if self.message_count >= WS_CONFIG["rate_limit_messages"]:
             return False
 
         self.message_count += 1
@@ -215,47 +205,61 @@ class WebSocketMetricsCollector:
 
     def __init__(self):
         self.metrics = {
-            'total_connections': 0,
-            'active_connections': 0,
-            'total_messages_sent': 0,
-            'total_messages_received': 0,
-            'total_errors': 0,
-            'connection_durations': [],
-            'message_latencies': []
+            "total_connections": 0,
+            "active_connections": 0,
+            "total_messages_sent": 0,
+            "total_messages_received": 0,
+            "total_errors": 0,
+            "connection_durations": [],
+            "message_latencies": [],
         }
 
     def record_connection(self):
         """Record a new connection"""
-        self.metrics['total_connections'] += 1
-        self.metrics['active_connections'] += 1
+        self.metrics["total_connections"] += 1
+        self.metrics["active_connections"] += 1
 
     def record_disconnection(self, duration: float):
         """Record a disconnection with duration"""
-        self.metrics['active_connections'] -= 1
-        self.metrics['connection_durations'].append(duration)
+        self.metrics["active_connections"] -= 1
+        self.metrics["connection_durations"].append(duration)
 
     def record_message_sent(self):
         """Record a message sent"""
-        self.metrics['total_messages_sent'] += 1
+        self.metrics["total_messages_sent"] += 1
 
     def record_message_received(self):
         """Record a message received"""
-        self.metrics['total_messages_received'] += 1
+        self.metrics["total_messages_received"] += 1
 
     def record_error(self):
         """Record an error"""
-        self.metrics['total_errors'] += 1
+        self.metrics["total_errors"] += 1
 
     def record_message_latency(self, latency: float):
         """Record message processing latency"""
-        self.metrics['message_latencies'].append(latency)
+        self.metrics["message_latencies"].append(latency)
 
     def get_summary(self) -> Dict[str, Any]:
         """Get metrics summary"""
         return {
             **self.metrics,
-            'avg_connection_duration': sum(self.metrics['connection_durations']) / len(self.metrics['connection_durations']) if self.metrics['connection_durations'] else 0,
-            'avg_message_latency': sum(self.metrics['message_latencies']) / len(self.metrics['message_latencies']) if self.metrics['message_latencies'] else 0
+            "avg_connection_duration": (
+                (
+                    sum(self.metrics["connection_durations"])
+                    / len(self.metrics["connection_durations"])
+                )
+                if self.metrics["connection_durations"]
+                else 0
+            ),
+            "avg_message_latency": (
+                (
+                    sum(self.metrics["message_latencies"])
+                    / len(self.metrics["message_latencies"])
+                )
+                if self.metrics["message_latencies"]
+                else 0
+            ),
         }
 
 
@@ -272,10 +276,10 @@ class WebSocketHealthMonitor:
         self.last_health_check = time.time()
 
         health_data = {
-            'status': self.health_status,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'uptime': time.time() - self.last_health_check,
-            'issues': self.issues.copy()
+            "status": self.health_status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "uptime": time.time() - self.last_health_check,
+            "issues": self.issues.copy(),
         }
 
         # Reset issues after reporting
@@ -285,10 +289,9 @@ class WebSocketHealthMonitor:
 
     def report_issue(self, issue: str):
         """Report a health issue"""
-        self.issues.append({
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'issue': issue
-        })
+        self.issues.append(
+            {"timestamp": datetime.now(timezone.utc).isoformat(), "issue": issue}
+        )
 
         if len(self.issues) > 10:  # Keep only last 10 issues
             self.issues = self.issues[-10:]
@@ -304,9 +307,9 @@ class WebSocketLoadBalancer:
     def add_node(self, node_id: str, url: str, capacity: int = 100):
         """Add a node to the load balancer"""
         self.nodes[node_id] = {
-            'url': url,
-            'capacity': capacity,
-            'active_connections': 0
+            "url": url,
+            "capacity": capacity,
+            "active_connections": 0,
         }
 
     def get_next_node(self) -> Optional[str]:
@@ -319,8 +322,10 @@ class WebSocketLoadBalancer:
             node_id = list(self.nodes.keys())[self.current_node_index]
             node = self.nodes[node_id]
 
-            if node['active_connections'] < node['capacity']:
-                self.current_node_index = (self.current_node_index + 1) % len(self.nodes)
+            if node["active_connections"] < node["capacity"]:
+                self.current_node_index = (self.current_node_index + 1) % len(
+                    self.nodes
+                )
                 return node_id
 
             self.current_node_index = (self.current_node_index + 1) % len(self.nodes)
@@ -330,12 +335,14 @@ class WebSocketLoadBalancer:
     def record_connection(self, node_id: str):
         """Record a connection to a node"""
         if node_id in self.nodes:
-            self.nodes[node_id]['active_connections'] += 1
+            self.nodes[node_id]["active_connections"] += 1
 
     def record_disconnection(self, node_id: str):
         """Record a disconnection from a node"""
         if node_id in self.nodes:
-            self.nodes[node_id]['active_connections'] = max(0, self.nodes[node_id]['active_connections'] - 1)
+            self.nodes[node_id]["active_connections"] = max(
+                0, self.nodes[node_id]["active_connections"] - 1
+            )
 
 
 class CircuitBreaker:
@@ -396,7 +403,7 @@ class RetryPolicy:
             except Exception as e:
                 last_exception = e
                 if attempt < self.max_attempts - 1:
-                    delay = self.backoff_factor ** attempt
+                    delay = self.backoff_factor**attempt
                     await asyncio.sleep(delay)
 
         raise last_exception
@@ -413,11 +420,13 @@ class WebSocketServer:
         data_manager: Optional[HistoricalDataManager] = None,
         info_processor: Optional[InformationProcessor] = None,
         portfolio_service: Optional[PortfolioService] = None,
-        confidence_tracker: Optional[AdvancedConfidenceTracker] = None
+        confidence_tracker: Optional[AdvancedConfidenceTracker] = None,
     ):
         self.db_manager = db_manager
         self.cache_manager = cache_manager
-        self.auth_service = auth_service or AuthenticationService(db_manager, cache_manager)
+        self.auth_service = auth_service or AuthenticationService(
+            db_manager, cache_manager
+        )
         self.data_manager = data_manager
         self.info_processor = info_processor
         self.portfolio_service = portfolio_service
@@ -428,7 +437,9 @@ class WebSocketServer:
         self.user_connections: Dict[str, Set[str]] = {}  # user_id -> connection_ids
 
         # Subscription management
-        self.active_subscriptions: Dict[str, Subscription] = {}  # subscription_id -> subscription
+        self.active_subscriptions: Dict[str, Subscription] = (
+            {}
+        )  # subscription_id -> subscription
 
         # Background tasks
         self.background_tasks: Set[asyncio.Task] = set()
@@ -443,33 +454,39 @@ class WebSocketServer:
         self.last_health_check = time.time()
 
         # Performance optimizations
-        self.connection_pool: Dict[str, asyncio.Queue] = {}  # Connection pooling for batching
-        self.message_batch_size = WS_CONFIG.get('message_batch_size', 10)
-        self.message_batch_timeout = WS_CONFIG.get('message_batch_timeout', 0.1)
+        self.connection_pool: Dict[str, asyncio.Queue] = (
+            {}
+        )  # Connection pooling for batching
+        self.message_batch_size = WS_CONFIG.get("message_batch_size", 10)
+        self.message_batch_timeout = WS_CONFIG.get("message_batch_timeout", 0.1)
 
         # Security enhancements
-        self.ip_whitelist: Set[str] = set(WS_CONFIG.get('ip_whitelist', []))
-        self.ip_blacklist: Set[str] = set(WS_CONFIG.get('ip_blacklist', []))
-        self.encryption_enabled = WS_CONFIG.get('encryption_enabled', False)
-        self.encryption_key = WS_CONFIG.get('encryption_key')
+        self.ip_whitelist: Set[str] = set(WS_CONFIG.get("ip_whitelist", []))
+        self.ip_blacklist: Set[str] = set(WS_CONFIG.get("ip_blacklist", []))
+        self.encryption_enabled = WS_CONFIG.get("encryption_enabled", False)
+        self.encryption_key = WS_CONFIG.get("encryption_key")
 
         # Monitoring and metrics
         self.metrics_collector = WebSocketMetricsCollector()
         self.health_monitor = WebSocketHealthMonitor()
 
         # Scalability features
-        self.load_balancer = WebSocketLoadBalancer() if WS_CONFIG.get('enable_load_balancing', False) else None
-        self.horizontal_scaling = WS_CONFIG.get('horizontal_scaling', False)
+        self.load_balancer = (
+            WebSocketLoadBalancer()
+            if WS_CONFIG.get("enable_load_balancing", False)
+            else None
+        )
+        self.horizontal_scaling = WS_CONFIG.get("horizontal_scaling", False)
         self.cluster_nodes: Dict[str, str] = {}  # node_id -> node_url
 
         # Advanced error recovery
         self.circuit_breaker = CircuitBreaker(
-            failure_threshold=WS_CONFIG.get('circuit_breaker_threshold', 5),
-            recovery_timeout=WS_CONFIG.get('circuit_breaker_timeout', 60)
+            failure_threshold=WS_CONFIG.get("circuit_breaker_threshold", 5),
+            recovery_timeout=WS_CONFIG.get("circuit_breaker_timeout", 60),
         )
         self.retry_policy = RetryPolicy(
-            max_attempts=WS_CONFIG.get('max_retry_attempts', 3),
-            backoff_factor=WS_CONFIG.get('retry_backoff_factor', 2.0)
+            max_attempts=WS_CONFIG.get("max_retry_attempts", 3),
+            backoff_factor=WS_CONFIG.get("retry_backoff_factor", 2.0),
         )
 
         logger.info("WebSocket server initialized with advanced features")
@@ -479,12 +496,8 @@ class WebSocketServer:
         self.running = True
 
         # Start background maintenance tasks
-        self.background_tasks.add(
-            asyncio.create_task(self._connection_cleanup_task())
-        )
-        self.background_tasks.add(
-            asyncio.create_task(self._heartbeat_monitor_task())
-        )
+        self.background_tasks.add(asyncio.create_task(self._connection_cleanup_task()))
+        self.background_tasks.add(asyncio.create_task(self._heartbeat_monitor_task()))
 
         # Start data streaming tasks
         await self._start_data_streaming_tasks()
@@ -519,15 +532,16 @@ class WebSocketServer:
 
         logger.info("WebSocket server stopped")
 
-    async def handle_connection(self, websocket: websockets.WebSocketServerProtocol, path: str):
+    async def handle_connection(
+        self, websocket: websockets.WebSocketServerProtocol, path: str
+    ):
         """Handle incoming WebSocket connection"""
         connection_id = str(uuid.uuid4())
         query_params = self._parse_query_params(path)
 
         # Create connection object
         connection = WebSocketConnection(
-            connection_id=connection_id,
-            websocket=websocket
+            connection_id=connection_id, websocket=websocket
         )
 
         self.connections[connection_id] = connection
@@ -543,22 +557,21 @@ class WebSocketServer:
         except ConnectionClosedError:
             logger.info("WebSocket connection closed", connection_id=connection_id)
         except Exception as e:
-            logger.error("WebSocket connection error",
-                         connection_id=connection_id, error=str(e))
+            logger.error(
+                "WebSocket connection error", connection_id=connection_id, error=str(e)
+            )
         finally:
             # Cleanup connection
             await self._cleanup_connection(connection_id)
 
     async def _handle_authentication(
-        self,
-        connection: WebSocketConnection,
-        query_params: Dict[str, str]
+        self, connection: WebSocketConnection, query_params: Dict[str, str]
     ):
         """Handle WebSocket authentication"""
-        auth_timeout = time.time() + WS_CONFIG['auth_timeout']
+        auth_timeout = time.time() + WS_CONFIG["auth_timeout"]
 
         # Check for token in query parameters
-        token = query_params.get('token')
+        token = query_params.get("token")
         if token:
             try:
                 await self._authenticate_with_token(connection, token)
@@ -571,53 +584,64 @@ class WebSocketServer:
         while time.time() < auth_timeout and not connection.is_authenticated():
             try:
                 message_raw = await asyncio.wait_for(
-                    connection.websocket.recv(),
-                    timeout=1.0
+                    connection.websocket.recv(), timeout=1.0
                 )
 
                 message = json.loads(message_raw)
 
-                if message.get('type') == MessageType.AUTH:
-                    token = message.get('token')
+                if message.get("type") == MessageType.AUTH:
+                    token = message.get("token")
                     if token:
                         await self._authenticate_with_token(connection, token)
                         # Send auth success response
                         await self._send_auth_response(connection, True)
                         break
                     else:
-                        await self._send_error(connection, ErrorCode.MISSING_REQUIRED_PARAMS,
-                                               "Missing token in auth message")
+                        await self._send_error(
+                            connection,
+                            ErrorCode.MISSING_REQUIRED_PARAMS,
+                            "Missing token in auth message",
+                        )
                         break
                 else:
                     # Non-auth message before authentication
-                    await self._send_error(connection, ErrorCode.AUTHENTICATION_FAILED,
-                                           "Authentication required")
+                    await self._send_error(
+                        connection,
+                        ErrorCode.AUTHENTICATION_FAILED,
+                        "Authentication required",
+                    )
                     break
 
             except asyncio.TimeoutError:
                 continue
             except json.JSONDecodeError:
-                await self._send_error(connection, ErrorCode.INVALID_REQUEST_FORMAT,
-                                     "Invalid JSON format")
+                await self._send_error(
+                    connection, ErrorCode.INVALID_REQUEST_FORMAT, "Invalid JSON format"
+                )
                 break
 
         # Check if authentication succeeded
         if not connection.is_authenticated():
-            await self._send_error(connection, ErrorCode.AUTHENTICATION_FAILED,
-                                 "Authentication timeout or failed")
+            await self._send_error(
+                connection,
+                ErrorCode.AUTHENTICATION_FAILED,
+                "Authentication timeout or failed",
+            )
             raise AuthenticationError("Authentication failed")
 
-    async def _authenticate_with_token(self, connection: WebSocketConnection, token: str):
+    async def _authenticate_with_token(
+        self, connection: WebSocketConnection, token: str
+    ):
         """Authenticate connection with JWT token"""
         try:
             # Validate JWT token
             payload = jwt.decode(
                 token,
-                config.get('jwt_secret_key'),
-                algorithms=[config.get('jwt_algorithm')]
+                config.get("jwt_secret_key"),
+                algorithms=[config.get("jwt_algorithm")],
             )
 
-            user_id = payload.get('sub')
+            user_id = payload.get("sub")
             if not user_id:
                 raise TokenError("Invalid token: missing user ID")
 
@@ -633,7 +657,7 @@ class WebSocketServer:
 
                 # Check connection limits
                 user_connection_ids = self.user_connections.get(str(user.id), set())
-                if len(user_connection_ids) >= WS_CONFIG['max_connections_per_user']:
+                if len(user_connection_ids) >= WS_CONFIG["max_connections_per_user"]:
                     raise AuthenticationError("Connection limit exceeded")
 
                 # Update connection state
@@ -647,10 +671,12 @@ class WebSocketServer:
                 user_connection_ids.add(connection.connection_id)
                 self.user_connections[str(user.id)] = user_connection_ids
 
-                logger.info("WebSocket authentication successful",
-                           connection_id=connection.connection_id,
-                           user_id=user.id,
-                           trading_mode=user.trading_mode.value)
+                logger.info(
+                    "WebSocket authentication successful",
+                    connection_id=connection.connection_id,
+                    user_id=user.id,
+                    trading_mode=user.trading_mode.value,
+                )
 
         except jwt.ExpiredSignatureError:
             raise TokenError("Token has expired")
@@ -666,15 +692,18 @@ class WebSocketServer:
             try:
                 # Check rate limiting
                 if not connection.check_rate_limit():
-                    await self._send_error(connection, ErrorCode.RATE_LIMIT_EXCEEDED,
-                                         "Message rate limit exceeded")
+                    await self._send_error(
+                        connection,
+                        ErrorCode.RATE_LIMIT_EXCEEDED,
+                        "Message rate limit exceeded",
+                    )
                     await asyncio.sleep(1)  # Brief pause
                     continue
 
                 # Receive message
                 message_raw = await asyncio.wait_for(
                     connection.websocket.recv(),
-                    timeout=WS_CONFIG['heartbeat_interval'] * 2
+                    timeout=WS_CONFIG["heartbeat_interval"] * 2,
                 )
 
                 message = json.loads(message_raw)
@@ -685,24 +714,36 @@ class WebSocketServer:
 
             except asyncio.TimeoutError:
                 # Check if connection is still alive
-                if time.time() - connection.last_heartbeat > WS_CONFIG['heartbeat_interval'] * 3:
-                    logger.warning("Connection heartbeat timeout",
-                                 connection_id=connection.connection_id)
+                if (
+                    time.time() - connection.last_heartbeat
+                    > WS_CONFIG["heartbeat_interval"] * 3
+                ):
+                    logger.warning(
+                        "Connection heartbeat timeout",
+                        connection_id=connection.connection_id,
+                    )
                     break
             except json.JSONDecodeError:
-                await self._send_error(connection, ErrorCode.INVALID_REQUEST_FORMAT,
-                                     "Invalid JSON format")
+                await self._send_error(
+                    connection, ErrorCode.INVALID_REQUEST_FORMAT, "Invalid JSON format"
+                )
             except ConnectionClosedError:
                 break
             except Exception as e:
-                logger.error("Message handling error",
-                           connection_id=connection.connection_id, error=str(e))
-                await self._send_error(connection, ErrorCode.INTERNAL_ERROR,
-                                     "Internal server error")
+                logger.error(
+                    "Message handling error",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
+                await self._send_error(
+                    connection, ErrorCode.INTERNAL_ERROR, "Internal server error"
+                )
 
-    async def _process_message(self, connection: WebSocketConnection, message: Dict[str, Any]):
+    async def _process_message(
+        self, connection: WebSocketConnection, message: Dict[str, Any]
+    ):
         """Process incoming WebSocket message"""
-        message_type = message.get('type')
+        message_type = message.get("type")
 
         if message_type == MessageType.PING:
             await self._handle_ping(connection)
@@ -711,31 +752,48 @@ class WebSocketServer:
         elif message_type == MessageType.UNSUBSCRIBE:
             await self._handle_unsubscribe(connection, message)
         else:
-            await self._send_error(connection, ErrorCode.INVALID_REQUEST_FORMAT,
-                                 f"Unknown message type: {message_type}")
+            await self._send_error(
+                connection,
+                ErrorCode.INVALID_REQUEST_FORMAT,
+                f"Unknown message type: {message_type}",
+            )
 
     async def _handle_ping(self, connection: WebSocketConnection):
         """Handle ping message"""
-        await self._send_message(connection, {
-            "type": MessageType.PONG,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        await self._send_message(
+            connection,
+            {
+                "type": MessageType.PONG,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
-    async def _handle_subscribe(self, connection: WebSocketConnection, message: Dict[str, Any]):
+    async def _handle_subscribe(
+        self, connection: WebSocketConnection, message: Dict[str, Any]
+    ):
         """Handle subscription request"""
         try:
-            data = message.get('data', {})
-            streams = data.get('streams', [])
+            data = message.get("data", {})
+            streams = data.get("streams", [])
 
             if not streams:
-                await self._send_error(connection, ErrorCode.MISSING_REQUIRED_PARAMS,
-                                     "Missing streams in subscription request")
+                await self._send_error(
+                    connection,
+                    ErrorCode.MISSING_REQUIRED_PARAMS,
+                    "Missing streams in subscription request",
+                )
                 return
 
             # Validate subscription limits
-            if len(streams) + len(connection.subscriptions) > WS_CONFIG['max_subscriptions_per_connection']:
-                await self._send_error(connection, ErrorCode.SUBSCRIPTION_LIMIT_EXCEEDED,
-                                     "Subscription limit exceeded")
+            if (
+                len(streams) + len(connection.subscriptions)
+                > WS_CONFIG["max_subscriptions_per_connection"]
+            ):
+                await self._send_error(
+                    connection,
+                    ErrorCode.SUBSCRIPTION_LIMIT_EXCEEDED,
+                    "Subscription limit exceeded",
+                )
                 return
 
             active_subscriptions = []
@@ -744,20 +802,28 @@ class WebSocketServer:
             for stream_config in streams:
                 try:
                     # Validate stream configuration
-                    stream_type = stream_config.get('stream_type')
-                    if not stream_type or stream_type not in [s.value for s in StreamType]:
-                        failed_subscriptions.append({
-                            "stream_type": stream_type,
-                            "error": "Invalid or unsupported stream type"
-                        })
+                    stream_type = stream_config.get("stream_type")
+                    if not stream_type or stream_type not in [
+                        s.value for s in StreamType
+                    ]:
+                        failed_subscriptions.append(
+                            {
+                                "stream_type": stream_type,
+                                "error": "Invalid or unsupported stream type",
+                            }
+                        )
                         continue
 
                     # Validate required parameters
-                    if not self._validate_stream_config(StreamType(stream_type), stream_config):
-                        failed_subscriptions.append({
-                            "stream_type": stream_type,
-                            "error": "Missing required parameters"
-                        })
+                    if not self._validate_stream_config(
+                        StreamType(stream_type), stream_config
+                    ):
+                        failed_subscriptions.append(
+                            {
+                                "stream_type": stream_type,
+                                "error": "Missing required parameters",
+                            }
+                        )
                         continue
 
                     # Create subscription
@@ -765,29 +831,39 @@ class WebSocketServer:
                         stream_type=StreamType(stream_type),
                         user_id=connection.user_id,
                         connection_id=connection.connection_id,
-                        config=stream_config
+                        config=stream_config,
                     )
 
                     # Store subscription
-                    connection.subscriptions[subscription.subscription_id] = subscription
-                    self.active_subscriptions[subscription.subscription_id] = subscription
+                    connection.subscriptions[subscription.subscription_id] = (
+                        subscription
+                    )
+                    self.active_subscriptions[subscription.subscription_id] = (
+                        subscription
+                    )
 
-                    active_subscriptions.append({
-                        "subscription_id": subscription.subscription_id,
-                        "stream_type": stream_type
-                    })
+                    active_subscriptions.append(
+                        {
+                            "subscription_id": subscription.subscription_id,
+                            "stream_type": stream_type,
+                        }
+                    )
 
-                    logger.info("Subscription created",
-                               subscription_id=subscription.subscription_id,
-                               stream_type=stream_type,
-                               user_id=connection.user_id)
+                    logger.info(
+                        "Subscription created",
+                        subscription_id=subscription.subscription_id,
+                        stream_type=stream_type,
+                        user_id=connection.user_id,
+                    )
 
                 except Exception as e:
                     logger.error("Subscription creation error", error=str(e))
-                    failed_subscriptions.append({
-                        "stream_type": stream_config.get('stream_type'),
-                        "error": "Internal error during subscription creation"
-                    })
+                    failed_subscriptions.append(
+                        {
+                            "stream_type": stream_config.get("stream_type"),
+                            "error": "Internal error during subscription creation",
+                        }
+                    )
 
             # Send response
             response = {
@@ -796,26 +872,34 @@ class WebSocketServer:
                 "data": {
                     "status": "success" if active_subscriptions else "failed",
                     "active_subscriptions": active_subscriptions,
-                    "failed_subscriptions": failed_subscriptions
-                }
+                    "failed_subscriptions": failed_subscriptions,
+                },
             }
 
             await self._send_message(connection, response)
 
         except Exception as e:
             logger.error("Subscribe handling error", error=str(e))
-            await self._send_error(connection, ErrorCode.INTERNAL_ERROR,
-                                 "Failed to process subscription request")
+            await self._send_error(
+                connection,
+                ErrorCode.INTERNAL_ERROR,
+                "Failed to process subscription request",
+            )
 
-    async def _handle_unsubscribe(self, connection: WebSocketConnection, message: Dict[str, Any]):
+    async def _handle_unsubscribe(
+        self, connection: WebSocketConnection, message: Dict[str, Any]
+    ):
         """Handle unsubscription request"""
         try:
-            data = message.get('data', {})
-            subscription_ids = data.get('subscription_ids', [])
+            data = message.get("data", {})
+            subscription_ids = data.get("subscription_ids", [])
 
             if not subscription_ids:
-                await self._send_error(connection, ErrorCode.MISSING_REQUIRED_PARAMS,
-                                     "Missing subscription_ids in unsubscription request")
+                await self._send_error(
+                    connection,
+                    ErrorCode.MISSING_REQUIRED_PARAMS,
+                    "Missing subscription_ids in unsubscription request",
+                )
                 return
 
             successful_unsubscriptions = []
@@ -829,14 +913,15 @@ class WebSocketServer:
                     del self.active_subscriptions[sub_id]
                     successful_unsubscriptions.append(sub_id)
 
-                    logger.info("Subscription removed",
-                               subscription_id=sub_id,
-                               user_id=connection.user_id)
+                    logger.info(
+                        "Subscription removed",
+                        subscription_id=sub_id,
+                        user_id=connection.user_id,
+                    )
                 else:
-                    failed_unsubscriptions.append({
-                        "subscription_id": sub_id,
-                        "error": "Subscription not found"
-                    })
+                    failed_unsubscriptions.append(
+                        {"subscription_id": sub_id, "error": "Subscription not found"}
+                    )
 
             # Send response
             status = "success" if successful_unsubscriptions else "failed"
@@ -846,21 +931,26 @@ class WebSocketServer:
                 "data": {
                     "status": status,
                     "unsubscribed": successful_unsubscriptions,
-                    "failed_unsubscriptions": failed_unsubscriptions
-                }
+                    "failed_unsubscriptions": failed_unsubscriptions,
+                },
             }
 
             await self._send_message(connection, response)
 
         except Exception as e:
             logger.error("Unsubscribe handling error", error=str(e))
-            await self._send_error(connection, ErrorCode.INTERNAL_ERROR,
-                                 "Failed to process unsubscription request")
+            await self._send_error(
+                connection,
+                ErrorCode.INTERNAL_ERROR,
+                "Failed to process unsubscription request",
+            )
 
-    def _validate_stream_config(self, stream_type: StreamType, config: Dict[str, Any]) -> bool:
+    def _validate_stream_config(
+        self, stream_type: StreamType, config: Dict[str, Any]
+    ) -> bool:
         """Validate stream configuration parameters"""
         if stream_type == StreamType.MARKET_DATA:
-            return 'symbols' in config and 'timeframe' in config
+            return "symbols" in config and "timeframe" in config
         elif stream_type == StreamType.TRADE_SIGNALS:
             return True  # strategy_ids is optional
         elif stream_type == StreamType.PORTFOLIO:
@@ -869,7 +959,9 @@ class WebSocketServer:
             return True  # min_confidence is optional
         return False
 
-    async def _send_auth_response(self, connection: WebSocketConnection, success: bool, error: str = None):
+    async def _send_auth_response(
+        self, connection: WebSocketConnection, success: bool, error: str = None
+    ):
         """Send authentication response"""
         response = {
             "type": MessageType.AUTH_RESPONSE,
@@ -877,9 +969,11 @@ class WebSocketServer:
             "data": {
                 "status": "authenticated" if success else "failed",
                 "user_id": connection.user_id,
-                "trading_mode": connection.trading_mode.value if connection.trading_mode else None,
-                "session_id": connection.session_id
-            }
+                "trading_mode": (
+                    connection.trading_mode.value if connection.trading_mode else None
+                ),
+                "session_id": connection.session_id,
+            },
         }
 
         if not success and error:
@@ -887,26 +981,30 @@ class WebSocketServer:
 
         await self._send_message(connection, response)
 
-    async def _send_error(self, connection: WebSocketConnection, error_code: ErrorCode, message: str):
+    async def _send_error(
+        self, connection: WebSocketConnection, error_code: ErrorCode, message: str
+    ):
         """Send error message"""
         error_response = {
             "type": MessageType.ERROR,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": {
-                "error_code": error_code,
-                "error_message": message
-            }
+            "data": {"error_code": error_code, "error_message": message},
         }
 
         await self._send_message(connection, error_response)
 
-    async def _send_message(self, connection: WebSocketConnection, message: Dict[str, Any]):
+    async def _send_message(
+        self, connection: WebSocketConnection, message: Dict[str, Any]
+    ):
         """Send message to connection"""
         try:
             await connection.websocket.send(json.dumps(message))
         except Exception as e:
-            logger.error("Failed to send message",
-                        connection_id=connection.connection_id, error=str(e))
+            logger.error(
+                "Failed to send message",
+                connection_id=connection.connection_id,
+                error=str(e),
+            )
 
     async def _cleanup_connection(self, connection_id: str):
         """Clean up connection resources"""
@@ -935,11 +1033,11 @@ class WebSocketServer:
     def _parse_query_params(self, path: str) -> Dict[str, str]:
         """Parse query parameters from WebSocket path"""
         params = {}
-        if '?' in path:
-            query_string = path.split('?', 1)[1]
-            for pair in query_string.split('&'):
-                if '=' in pair:
-                    key, value = pair.split('=', 1)
+        if "?" in path:
+            query_string = path.split("?", 1)[1]
+            for pair in query_string.split("&"):
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
                     params[key] = value
         return params
 
@@ -955,7 +1053,9 @@ class WebSocketServer:
                         expired_connections.append(conn_id)
 
                 for conn_id in expired_connections:
-                    logger.warning("Cleaning up expired connection", connection_id=conn_id)
+                    logger.warning(
+                        "Cleaning up expired connection", connection_id=conn_id
+                    )
                     await self._cleanup_connection(conn_id)
 
             except Exception as e:
@@ -965,7 +1065,7 @@ class WebSocketServer:
         """Background task to monitor connection heartbeats"""
         while self.running:
             try:
-                await asyncio.sleep(WS_CONFIG['heartbeat_interval'])
+                await asyncio.sleep(WS_CONFIG["heartbeat_interval"])
 
                 # Send ping to all connections
                 ping_tasks = []
@@ -982,33 +1082,36 @@ class WebSocketServer:
     async def _send_ping_to_connection(self, connection: WebSocketConnection):
         """Send ping to a specific connection"""
         try:
-            await self._send_message(connection, {
-                "type": MessageType.PING,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-        except Exception as e:
+            await self._send_message(
+                connection,
+                {
+                    "type": MessageType.PING,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except Exception:
             # Connection may be dead, will be cleaned up by cleanup task
             pass
 
     async def _start_data_streaming_tasks(self):
         """Start background data streaming tasks"""
         # Market data streaming
-        self.stream_tasks['market_data'] = asyncio.create_task(
+        self.stream_tasks["market_data"] = asyncio.create_task(
             self._market_data_streaming_task()
         )
 
         # Trade signals streaming
-        self.stream_tasks['trade_signals'] = asyncio.create_task(
+        self.stream_tasks["trade_signals"] = asyncio.create_task(
             self._trade_signals_streaming_task()
         )
 
         # Portfolio updates streaming
-        self.stream_tasks['portfolio'] = asyncio.create_task(
+        self.stream_tasks["portfolio"] = asyncio.create_task(
             self._portfolio_streaming_task()
         )
 
         # AI insights streaming
-        self.stream_tasks['ai_insights'] = asyncio.create_task(
+        self.stream_tasks["ai_insights"] = asyncio.create_task(
             self._ai_insights_streaming_task()
         )
 
@@ -1020,7 +1123,8 @@ class WebSocketServer:
 
                 # Get market data subscriptions
                 market_subscriptions = {
-                    sub_id: sub for sub_id, sub in self.active_subscriptions.items()
+                    sub_id: sub
+                    for sub_id, sub in self.active_subscriptions.items()
                     if sub.stream_type == StreamType.MARKET_DATA
                 }
 
@@ -1037,19 +1141,27 @@ class WebSocketServer:
 
                 # Fetch and send market data for each group
                 for key, subs in symbol_timeframe_groups.items():
-                    symbols, timeframe = key.split('_', 1)
-                    symbols_list = symbols.strip('[]').replace("'", "").split(',') if symbols != '[]' else []
+                    symbols, timeframe = key.split("_", 1)
+                    symbols_list = (
+                        symbols.strip("[]").replace("'", "").split(",")
+                        if symbols != "[]"
+                        else []
+                    )
 
                     for symbol in symbols_list:
                         # Fetch latest market data (mock for now)
-                        market_data = await self._fetch_market_data(symbol.strip(), timeframe)
+                        market_data = await self._fetch_market_data(
+                            symbol.strip(), timeframe
+                        )
 
                         if market_data:
                             # Send to all subscriptions for this symbol/timeframe
                             for sub in subs:
                                 connection = self.connections.get(sub.connection_id)
                                 if connection and connection.is_authenticated():
-                                    await self._send_market_data(connection, market_data)
+                                    await self._send_market_data(
+                                        connection, market_data
+                                    )
                                     sub.last_active = time.time()
 
             except Exception as e:
@@ -1064,7 +1176,8 @@ class WebSocketServer:
 
                 # Get trade signal subscriptions
                 signal_subscriptions = {
-                    sub_id: sub for sub_id, sub in self.active_subscriptions.items()
+                    sub_id: sub
+                    for sub_id, sub in self.active_subscriptions.items()
                     if sub.stream_type == StreamType.TRADE_SIGNALS
                 }
 
@@ -1080,13 +1193,19 @@ class WebSocketServer:
                         connection = self.connections.get(sub.connection_id)
                         if connection and connection.is_authenticated():
                             # Check strategy filter
-                            strategy_ids = sub.config.get('strategy_ids')
-                            if strategy_ids and signal.get('strategy_id') not in strategy_ids:
+                            strategy_ids = sub.config.get("strategy_ids")
+                            if (
+                                strategy_ids
+                                and signal.get("strategy_id") not in strategy_ids
+                            ):
                                 continue
 
                             # Check confidence filter
-                            min_confidence = sub.config.get('min_confidence')
-                            if min_confidence and signal.get('confidence', 0) < min_confidence:
+                            min_confidence = sub.config.get("min_confidence")
+                            if (
+                                min_confidence
+                                and signal.get("confidence", 0) < min_confidence
+                            ):
                                 continue
 
                             await self._send_trade_signal(connection, signal)
@@ -1104,7 +1223,8 @@ class WebSocketServer:
 
                 # Get portfolio subscriptions
                 portfolio_subscriptions = {
-                    sub_id: sub for sub_id, sub in self.active_subscriptions.items()
+                    sub_id: sub
+                    for sub_id, sub in self.active_subscriptions.items()
                     if sub.stream_type == StreamType.PORTFOLIO
                 }
 
@@ -1116,14 +1236,18 @@ class WebSocketServer:
                 for sub in portfolio_subscriptions.values():
                     user_id = sub.user_id
                     if user_id not in user_updates:
-                        user_updates[user_id] = await self._fetch_portfolio_data(user_id)
+                        user_updates[user_id] = await self._fetch_portfolio_data(
+                            user_id
+                        )
 
                 for sub in portfolio_subscriptions.values():
                     connection = self.connections.get(sub.connection_id)
                     if connection and connection.is_authenticated():
                         portfolio_data = user_updates.get(sub.user_id)
                         if portfolio_data:
-                            await self._send_portfolio_update(connection, portfolio_data)
+                            await self._send_portfolio_update(
+                                connection, portfolio_data
+                            )
                             sub.last_active = time.time()
 
             except Exception as e:
@@ -1138,7 +1262,8 @@ class WebSocketServer:
 
                 # Get AI insights subscriptions
                 ai_subscriptions = {
-                    sub_id: sub for sub_id, sub in self.active_subscriptions.items()
+                    sub_id: sub
+                    for sub_id, sub in self.active_subscriptions.items()
                     if sub.stream_type == StreamType.AI_INSIGHTS
                 }
 
@@ -1153,8 +1278,11 @@ class WebSocketServer:
                         connection = self.connections.get(sub.connection_id)
                         if connection and connection.is_authenticated():
                             # Check confidence filter
-                            min_confidence = sub.config.get('min_confidence')
-                            if min_confidence and insight.get('confidence', 0) < min_confidence:
+                            min_confidence = sub.config.get("min_confidence")
+                            if (
+                                min_confidence
+                                and insight.get("confidence", 0) < min_confidence
+                            ):
                                 continue
 
                             await self._send_ai_insight(connection, insight)
@@ -1164,29 +1292,41 @@ class WebSocketServer:
                 logger.error("AI insights streaming error", error=str(e))
                 await asyncio.sleep(5)
 
-    async def _fetch_market_data(self, symbol: str, timeframe: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_market_data(
+        self, symbol: str, timeframe: str
+    ) -> Optional[Dict[str, Any]]:
         """Fetch market data for symbol and timeframe"""
         try:
             # Try to get real market data from information processor
             if self.info_processor:
                 try:
                     # Get real-time market data
-                    market_data = await self.info_processor.get_market_data(symbol, timeframe)
+                    market_data = await self.info_processor.get_market_data(
+                        symbol, timeframe
+                    )
                     if market_data:
                         return self._format_market_data(market_data)
                 except Exception as e:
-                    logger.warning("Failed to get real market data, falling back to cached data",
-                                 symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Failed to get real market data, falling back to cached data",
+                        symbol=symbol,
+                        error=str(e),
+                    )
 
             # Fallback to historical data manager
             if self.data_manager:
                 try:
-                    historical_data = await self.data_manager.get_latest_data(symbol, timeframe)
+                    historical_data = await self.data_manager.get_latest_data(
+                        symbol, timeframe
+                    )
                     if historical_data:
                         return self._format_market_data(historical_data)
                 except Exception as e:
-                    logger.warning("Failed to get historical market data",
-                                 symbol=symbol, error=str(e))
+                    logger.warning(
+                        "Failed to get historical market data",
+                        symbol=symbol,
+                        error=str(e),
+                    )
 
             # Last resort: mock data for development
             return self._generate_mock_market_data(symbol, timeframe)
@@ -1202,25 +1342,29 @@ class WebSocketServer:
             if isinstance(raw_data, dict):
                 # Already formatted
                 return raw_data
-            elif hasattr(raw_data, 'to_dict'):
+            elif hasattr(raw_data, "to_dict"):
                 # ORM object
                 return raw_data.to_dict()
             else:
                 # Raw data - format it
                 return {
-                    "symbol": getattr(raw_data, 'symbol', 'UNKNOWN'),
-                    "timeframe": getattr(raw_data, 'timeframe', '15min'),
+                    "symbol": getattr(raw_data, "symbol", "UNKNOWN"),
+                    "timeframe": getattr(raw_data, "timeframe", "15min"),
                     "ohlcv": {
-                        "timestamp": getattr(raw_data, 'timestamp', datetime.now(timezone.utc).isoformat()),
-                        "open": float(getattr(raw_data, 'open_price', 0)),
-                        "high": float(getattr(raw_data, 'high_price', 0)),
-                        "low": float(getattr(raw_data, 'low_price', 0)),
-                        "close": float(getattr(raw_data, 'close_price', 0)),
-                        "volume": int(getattr(raw_data, 'volume', 0)),
-                        "change_percent": float(getattr(raw_data, 'change_percent', 0))
+                        "timestamp": getattr(
+                            raw_data,
+                            "timestamp",
+                            datetime.now(timezone.utc).isoformat(),
+                        ),
+                        "open": float(getattr(raw_data, "open_price", 0)),
+                        "high": float(getattr(raw_data, "high_price", 0)),
+                        "low": float(getattr(raw_data, "low_price", 0)),
+                        "close": float(getattr(raw_data, "close_price", 0)),
+                        "volume": int(getattr(raw_data, "volume", 0)),
+                        "change_percent": float(getattr(raw_data, "change_percent", 0)),
                     },
-                    "indicators": getattr(raw_data, 'indicators', {}),
-                    "quote": getattr(raw_data, 'quote', {})
+                    "indicators": getattr(raw_data, "indicators", {}),
+                    "quote": getattr(raw_data, "quote", {}),
                 }
         except Exception as e:
             logger.error("Failed to format market data", error=str(e))
@@ -1229,6 +1373,7 @@ class WebSocketServer:
     def _generate_mock_market_data(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """Generate mock market data for development/testing"""
         import random
+
         base_price = 1000 + random.uniform(-50, 50)
 
         return {
@@ -1241,19 +1386,19 @@ class WebSocketServer:
                 "low": round(base_price - random.uniform(0, 10), 2),
                 "close": round(base_price + random.uniform(-5, 5), 2),
                 "volume": random.randint(1000, 10000),
-                "change_percent": round(random.uniform(-2, 2), 2)
+                "change_percent": round(random.uniform(-2, 2), 2),
             },
             "indicators": {
                 "rsi": round(random.uniform(30, 70), 2),
                 "macd": round(random.uniform(-1, 1), 2),
-                "sma_20": round(base_price + random.uniform(-10, 10), 2)
+                "sma_20": round(base_price + random.uniform(-10, 10), 2),
             },
             "quote": {
                 "bid": round(base_price - 0.1, 2),
                 "ask": round(base_price + 0.1, 2),
                 "last_price": round(base_price, 2),
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            }
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            },
         }
 
     async def _fetch_trade_signals(self) -> List[Dict[str, Any]]:
@@ -1281,17 +1426,19 @@ class WebSocketServer:
                         db_signals = recent_signals.fetchall()
 
                         for signal in db_signals:
-                            signals.append({
-                                "signal_id": str(signal.id),
-                                "strategy_id": signal.strategy_id,
-                                "symbol": signal.symbol,
-                                "action": signal.action,
-                                "confidence": float(signal.confidence),
-                                "price": float(signal.price),
-                                "quantity": signal.quantity,
-                                "timestamp": signal.created_at.isoformat(),
-                                "reason": signal.reason or "Database signal"
-                            })
+                            signals.append(
+                                {
+                                    "signal_id": str(signal.id),
+                                    "strategy_id": signal.strategy_id,
+                                    "symbol": signal.symbol,
+                                    "action": signal.action,
+                                    "confidence": float(signal.confidence),
+                                    "price": float(signal.price),
+                                    "quantity": signal.quantity,
+                                    "timestamp": signal.created_at.isoformat(),
+                                    "reason": signal.reason or "Database signal",
+                                }
+                            )
                 except Exception as e:
                     logger.warning("Failed to get database trade signals", error=str(e))
 
@@ -1313,17 +1460,19 @@ class WebSocketServer:
         strategies = ["predator_strategy", "vulture_approach", "time_arbitrage"]
 
         for _ in range(random.randint(1, 3)):
-            signals.append({
-                "signal_id": str(uuid.uuid4()),
-                "strategy_id": random.choice(strategies),
-                "symbol": f"SYMBOL{random.randint(1, 100):03d}",
-                "action": random.choice(["BUY", "SELL"]),
-                "confidence": round(random.uniform(0.5, 0.95), 2),
-                "price": round(random.uniform(100, 1000), 2),
-                "quantity": random.randint(1, 100),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "reason": "Mock trading signal"
-            })
+            signals.append(
+                {
+                    "signal_id": str(uuid.uuid4()),
+                    "strategy_id": random.choice(strategies),
+                    "symbol": f"SYMBOL{random.randint(1, 100):03d}",
+                    "action": random.choice(["BUY", "SELL"]),
+                    "confidence": round(random.uniform(0.5, 0.95), 2),
+                    "price": round(random.uniform(100, 1000), 2),
+                    "quantity": random.randint(1, 100),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "reason": "Mock trading signal",
+                }
+            )
 
         return signals
 
@@ -1337,7 +1486,7 @@ class WebSocketServer:
                 "positions": [],
                 "cash_balance": 0.0,
                 "margin_used": 0.0,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             # Try to get real portfolio data from portfolio service
@@ -1348,7 +1497,11 @@ class WebSocketServer:
                         portfolio_data.update(real_portfolio)
                         return portfolio_data
                 except Exception as e:
-                    logger.warning("Failed to get real portfolio data", user_id=user_id, error=str(e))
+                    logger.warning(
+                        "Failed to get real portfolio data",
+                        user_id=user_id,
+                        error=str(e),
+                    )
 
             # Get portfolio data from database if service unavailable
             try:
@@ -1356,37 +1509,45 @@ class WebSocketServer:
                     # Get user portfolio summary
                     portfolio_query = await session.execute(
                         "SELECT * FROM portfolios WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-                        (user_id,)
+                        (user_id,),
                     )
                     portfolio_row = portfolio_query.fetchone()
 
                     if portfolio_row:
-                        portfolio_data.update({
-                            "total_value": float(portfolio_row.total_value),
-                            "total_pnl": float(portfolio_row.total_pnl),
-                            "cash_balance": float(portfolio_row.cash_balance),
-                            "margin_used": float(portfolio_row.margin_used)
-                        })
+                        portfolio_data.update(
+                            {
+                                "total_value": float(portfolio_row.total_value),
+                                "total_pnl": float(portfolio_row.total_pnl),
+                                "cash_balance": float(portfolio_row.cash_balance),
+                                "margin_used": float(portfolio_row.margin_used),
+                            }
+                        )
 
                     # Get positions
                     positions_query = await session.execute(
                         "SELECT * FROM positions WHERE user_id = ? AND quantity > 0",
-                        (user_id,)
+                        (user_id,),
                     )
                     positions = positions_query.fetchall()
 
                     for pos in positions:
-                        portfolio_data["positions"].append({
-                            "symbol": pos.symbol,
-                            "quantity": pos.quantity,
-                            "avg_price": float(pos.avg_price),
-                            "current_price": float(pos.current_price),
-                            "pnl": float(pos.pnl),
-                            "pnl_percentage": float(pos.pnl_percentage)
-                        })
+                        portfolio_data["positions"].append(
+                            {
+                                "symbol": pos.symbol,
+                                "quantity": pos.quantity,
+                                "avg_price": float(pos.avg_price),
+                                "current_price": float(pos.current_price),
+                                "pnl": float(pos.pnl),
+                                "pnl_percentage": float(pos.pnl_percentage),
+                            }
+                        )
 
             except Exception as e:
-                logger.warning("Failed to get database portfolio data", user_id=user_id, error=str(e))
+                logger.warning(
+                    "Failed to get database portfolio data",
+                    user_id=user_id,
+                    error=str(e),
+                )
 
             # Generate mock portfolio if no real data
             if not portfolio_data["positions"]:
@@ -1395,7 +1556,9 @@ class WebSocketServer:
             return portfolio_data
 
         except Exception as e:
-            logger.error("Failed to fetch portfolio data", user_id=user_id, error=str(e))
+            logger.error(
+                "Failed to fetch portfolio data", user_id=user_id, error=str(e)
+            )
             return self._generate_mock_portfolio(user_id)
 
     def _generate_mock_portfolio(self, user_id: str) -> Dict[str, Any]:
@@ -1413,14 +1576,16 @@ class WebSocketServer:
             pnl = (current_price - avg_price) * quantity
             pnl_percentage = ((current_price - avg_price) / avg_price) * 100
 
-            positions.append({
-                "symbol": f"SYMBOL{random.randint(1, 100):03d}",
-                "quantity": quantity,
-                "avg_price": avg_price,
-                "current_price": current_price,
-                "pnl": round(pnl, 2),
-                "pnl_percentage": round(pnl_percentage, 2)
-            })
+            positions.append(
+                {
+                    "symbol": f"SYMBOL{random.randint(1, 100):03d}",
+                    "quantity": quantity,
+                    "avg_price": avg_price,
+                    "current_price": current_price,
+                    "pnl": round(pnl, 2),
+                    "pnl_percentage": round(pnl_percentage, 2),
+                }
+            )
 
             total_value += current_price * quantity
             total_pnl += pnl
@@ -1435,7 +1600,7 @@ class WebSocketServer:
             "positions": positions,
             "cash_balance": cash_balance,
             "margin_used": round(total_value * 0.1, 2),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def _fetch_ai_insights(self) -> List[Dict[str, Any]]:
@@ -1463,16 +1628,19 @@ class WebSocketServer:
                         db_insights = recent_insights.fetchall()
 
                         for insight in db_insights:
-                            insights.append({
-                                "insight_id": str(insight.id),
-                                "symbol": insight.symbol,
-                                "prediction": insight.prediction,
-                                "confidence": float(insight.confidence),
-                                "timeframe": insight.timeframe,
-                                "analysis": insight.analysis or "Database AI analysis",
-                                "indicators": insight.indicators or {},
-                                "timestamp": insight.created_at.isoformat()
-                            })
+                            insights.append(
+                                {
+                                    "insight_id": str(insight.id),
+                                    "symbol": insight.symbol,
+                                    "prediction": insight.prediction,
+                                    "confidence": float(insight.confidence),
+                                    "timeframe": insight.timeframe,
+                                    "analysis": insight.analysis
+                                    or "Database AI analysis",
+                                    "indicators": insight.indicators or {},
+                                    "timestamp": insight.created_at.isoformat(),
+                                }
+                            )
                 except Exception as e:
                     logger.warning("Failed to get database AI insights", error=str(e))
 
@@ -1495,55 +1663,65 @@ class WebSocketServer:
 
         for symbol in symbols:
             if random.random() > 0.7:  # 30% chance of insight
-                insights.append({
-                    "insight_id": str(uuid.uuid4()),
-                    "symbol": symbol,
-                    "prediction": random.choice(["UP", "DOWN", "SIDEWAYS"]),
-                    "confidence": round(random.uniform(0.6, 0.9), 2),
-                    "timeframe": random.choice(["1h", "1d", "1w"]),
-                    "analysis": f"Mock AI analysis for {symbol}",
-                    "indicators": {
-                        "trend_strength": round(random.uniform(0.3, 0.8), 2),
-                        "volatility": round(random.uniform(0.1, 0.5), 2)
-                    },
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                insights.append(
+                    {
+                        "insight_id": str(uuid.uuid4()),
+                        "symbol": symbol,
+                        "prediction": random.choice(["UP", "DOWN", "SIDEWAYS"]),
+                        "confidence": round(random.uniform(0.6, 0.9), 2),
+                        "timeframe": random.choice(["1h", "1d", "1w"]),
+                        "analysis": f"Mock AI analysis for {symbol}",
+                        "indicators": {
+                            "trend_strength": round(random.uniform(0.3, 0.8), 2),
+                            "volatility": round(random.uniform(0.1, 0.5), 2),
+                        },
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
 
         return insights
 
-    async def _send_market_data(self, connection: WebSocketConnection, data: Dict[str, Any]):
+    async def _send_market_data(
+        self, connection: WebSocketConnection, data: Dict[str, Any]
+    ):
         """Send market data message"""
         message = {
             "type": MessageType.MARKET_DATA,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": data
+            "data": data,
         }
         await self._send_message(connection, message)
 
-    async def _send_trade_signal(self, connection: WebSocketConnection, signal: Dict[str, Any]):
+    async def _send_trade_signal(
+        self, connection: WebSocketConnection, signal: Dict[str, Any]
+    ):
         """Send trade signal message"""
         message = {
             "type": MessageType.TRADE_SIGNAL,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": signal
+            "data": signal,
         }
         await self._send_message(connection, message)
 
-    async def _send_portfolio_update(self, connection: WebSocketConnection, data: Dict[str, Any]):
+    async def _send_portfolio_update(
+        self, connection: WebSocketConnection, data: Dict[str, Any]
+    ):
         """Send portfolio update message"""
         message = {
             "type": MessageType.PORTFOLIO_UPDATE,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": data
+            "data": data,
         }
         await self._send_message(connection, message)
 
-    async def _send_ai_insight(self, connection: WebSocketConnection, insight: Dict[str, Any]):
+    async def _send_ai_insight(
+        self, connection: WebSocketConnection, insight: Dict[str, Any]
+    ):
         """Send AI insight message"""
         message = {
             "type": MessageType.AI_INSIGHT,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": insight
+            "data": insight,
         }
         await self._send_message(connection, message)
 
@@ -1566,7 +1744,7 @@ async def init_websocket_server(
     data_manager: Optional[HistoricalDataManager] = None,
     info_processor: Optional[InformationProcessor] = None,
     portfolio_service: Optional[PortfolioService] = None,
-    confidence_tracker: Optional[AdvancedConfidenceTracker] = None
+    confidence_tracker: Optional[AdvancedConfidenceTracker] = None,
 ) -> WebSocketServer:
     """Initialize the WebSocket server"""
     global _websocket_server
@@ -1578,7 +1756,7 @@ async def init_websocket_server(
         data_manager=data_manager,
         info_processor=info_processor,
         portfolio_service=portfolio_service,
-        confidence_tracker=confidence_tracker
+        confidence_tracker=confidence_tracker,
     )
 
     await _websocket_server.start()
@@ -1617,14 +1795,14 @@ async def run_websocket_server():
 
     # Initialize services
     db_manager = DatabaseManager(
-        database_url=config.get('database_url', 'sqlite:///niraj.db')
+        database_url=config.get("database_url", "sqlite:///niraj.db")
     )
     await db_manager.initialize()
 
     cache_manager = None
     try:
         cache_manager = CacheManager(
-            redis_url=config.get('redis_url', 'redis://localhost:6379')
+            redis_url=config.get("redis_url", "redis://localhost:6379")
         )
     except Exception:
         pass
@@ -1637,13 +1815,14 @@ async def run_websocket_server():
     # Start WebSocket server
     ws_server = await websockets.serve(
         server.handle_connection,
-        WS_CONFIG['host'],
-        WS_CONFIG['port'],
-        max_size=WS_CONFIG['max_message_size']
+        WS_CONFIG["host"],
+        WS_CONFIG["port"],
+        max_size=WS_CONFIG["max_message_size"],
     )
 
-    logger.info("WebSocket server running",
-                host=WS_CONFIG['host'], port=WS_CONFIG['port'])
+    logger.info(
+        "WebSocket server running", host=WS_CONFIG["host"], port=WS_CONFIG["port"]
+    )
 
     try:
         await ws_server.wait_closed()

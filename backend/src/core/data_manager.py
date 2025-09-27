@@ -25,6 +25,7 @@ from ..utils.logger import get_logger, log_performance, LogContext
 
 class DataSource(str, Enum):
     """Available data sources"""
+
     ANGEL_ONE = "angel_one"
     DHAN = "dhan"
     COMBINED = "combined"
@@ -32,6 +33,7 @@ class DataSource(str, Enum):
 
 class DataTimeframe(str, Enum):
     """Supported timeframes"""
+
     ONE_MINUTE = "1min"
     THREE_MINUTE = "3min"
     FIVE_MINUTE = "5min"
@@ -47,6 +49,7 @@ class DataTimeframe(str, Enum):
 
 class DataQuality(str, Enum):
     """Data quality levels"""
+
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
@@ -55,6 +58,7 @@ class DataQuality(str, Enum):
 
 class CircuitBreakerState(str, Enum):
     """Circuit breaker states"""
+
     CLOSED = "closed"
     HALF_OPEN = "half_open"
     OPEN = "open"
@@ -63,6 +67,7 @@ class CircuitBreakerState(str, Enum):
 @dataclass
 class OHLCData:
     """OHLC data structure with validation and conversion methods"""
+
     timestamp: datetime
     open: Decimal
     high: Decimal
@@ -85,8 +90,9 @@ class OHLCData:
         self.close = Decimal(str(self.close))
 
         # Basic validation
-        if not (self.low <= self.open <= self.high and
-                self.low <= self.close <= self.high):
+        if not (
+            self.low <= self.open <= self.high and self.low <= self.close <= self.high
+        ):
             self.quality = DataQuality.CORRUPTED
 
         # Volume should be non-negative
@@ -104,7 +110,7 @@ class OHLCData:
             "close": float(self.close),
             "volume": self.volume,
             "source": self.source,
-            "quality": self.quality.value
+            "quality": self.quality.value,
         }
 
     @classmethod
@@ -118,7 +124,7 @@ class OHLCData:
             close=Decimal(str(data["close"])),
             volume=data.get("volume", 0),
             source=data.get("source", "unknown"),
-            quality=DataQuality(data.get("quality", "high"))
+            quality=DataQuality(data.get("quality", "high")),
         )
 
     def is_valid(self) -> bool:
@@ -129,12 +135,15 @@ class OHLCData:
 @dataclass
 class DataRequest:
     """Data fetch request with metadata"""
+
     symbol: str
     exchange: str
     timeframe: DataTimeframe
     start_date: datetime
     end_date: datetime
-    sources: List[DataSource] = field(default_factory=lambda: [DataSource.ANGEL_ONE, DataSource.DHAN])
+    sources: List[DataSource] = field(
+        default_factory=lambda: [DataSource.ANGEL_ONE, DataSource.DHAN]
+    )
     priority: int = 1  # 1=high, 2=medium, 3=low
     max_retries: int = 3
     timeout: float = 30.0
@@ -164,7 +173,7 @@ class DataRequest:
             self.exchange,
             self.timeframe.value,
             self.start_date.strftime("%Y%m%d"),
-            self.end_date.strftime("%Y%m%d")
+            self.end_date.strftime("%Y%m%d"),
         ]
         return hashlib.md5(":".join(key_components).encode()).hexdigest()
 
@@ -172,10 +181,12 @@ class DataRequest:
 class CircuitBreaker:
     """Circuit breaker pattern for API call protection"""
 
-    def __init__(self,
-                 failure_threshold: int = 5,
-                 recovery_timeout: int = 60,
-                 expected_exception: type = Exception):
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+        expected_exception: type = Exception,
+    ):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.expected_exception = expected_exception
@@ -218,7 +229,9 @@ class CircuitBreaker:
             "state": self.state.value,
             "failure_count": self.failure_count,
             "last_failure_time": self.last_failure_time,
-            "time_to_retry": max(0, self.recovery_timeout - (time.time() - (self.last_failure_time or 0)))
+            "time_to_retry": max(
+                0, self.recovery_timeout - (time.time() - (self.last_failure_time or 0))
+            ),
         }
 
 
@@ -249,7 +262,7 @@ class AngelOneAdapter(DataSourceAdapter):
         self.circuit_breaker = CircuitBreaker(
             failure_threshold=3,
             recovery_timeout=300,  # 5 minutes
-            expected_exception=AngelOneError
+            expected_exception=AngelOneError,
         )
         self.logger = get_logger("niraj.data_manager.angel_one")
 
@@ -275,7 +288,7 @@ class AngelOneAdapter(DataSourceAdapter):
             DataTimeframe.FIFTEEN_MINUTE: "FIFTEEN_MINUTE",
             DataTimeframe.THIRTY_MINUTE: "THIRTY_MINUTE",
             DataTimeframe.ONE_HOUR: "ONE_HOUR",
-            DataTimeframe.DAILY: "ONE_DAY"
+            DataTimeframe.DAILY: "ONE_DAY",
         }
         return mapping.get(timeframe, "ONE_MINUTE")
 
@@ -288,8 +301,10 @@ class AngelOneAdapter(DataSourceAdapter):
             data = instruments.get("data", [])
 
             for instrument in data:
-                if (instrument.get("tradingsymbol") == symbol and
-                    instrument.get("exchange") == exchange):
+                if (
+                    instrument.get("tradingsymbol") == symbol
+                    and instrument.get("exchange") == exchange
+                ):
                     return instrument.get("symboltoken")
 
             return None
@@ -299,10 +314,13 @@ class AngelOneAdapter(DataSourceAdapter):
 
     async def fetch_historical_data(self, request: DataRequest) -> List[OHLCData]:
         """Fetch historical data from Angel One"""
+
         async def _fetch():
             try:
                 # Get symbol token
-                symbol_token = await self._get_symbol_token(request.symbol, request.exchange)
+                symbol_token = await self._get_symbol_token(
+                    request.symbol, request.exchange
+                )
                 if not symbol_token:
                     raise ValueError(f"Symbol token not found for {request.symbol}")
 
@@ -316,7 +334,7 @@ class AngelOneAdapter(DataSourceAdapter):
                     symboltoken=symbol_token,
                     interval=self._map_timeframe(request.timeframe),
                     fromdate=from_date,
-                    todate=to_date
+                    todate=to_date,
                 )
 
                 # Parse response
@@ -325,7 +343,9 @@ class AngelOneAdapter(DataSourceAdapter):
 
                 for candle in data:
                     if len(candle) >= 6:  # [timestamp, open, high, low, close, volume]
-                        timestamp = datetime.fromtimestamp(candle[0] / 1000, tz=timezone.utc)
+                        timestamp = datetime.fromtimestamp(
+                            candle[0] / 1000, tz=timezone.utc
+                        )
                         ohlc = OHLCData(
                             timestamp=timestamp,
                             open=candle[1],
@@ -334,7 +354,7 @@ class AngelOneAdapter(DataSourceAdapter):
                             close=candle[4],
                             volume=int(candle[5]) if len(candle) > 5 else 0,
                             source=self.get_source_name().value,
-                            quality=DataQuality.HIGH
+                            quality=DataQuality.HIGH,
                         )
 
                         if ohlc.is_valid():
@@ -357,7 +377,7 @@ class DhanAdapter(DataSourceAdapter):
         self.circuit_breaker = CircuitBreaker(
             failure_threshold=3,
             recovery_timeout=300,  # 5 minutes
-            expected_exception=DhanError
+            expected_exception=DhanError,
         )
         self.logger = get_logger("niraj.data_manager.dhan")
 
@@ -375,7 +395,11 @@ class DhanAdapter(DataSourceAdapter):
 
     def _map_timeframe_to_method(self, timeframe: DataTimeframe) -> str:
         """Map timeframe to appropriate Dhan API method"""
-        if timeframe in [DataTimeframe.DAILY, DataTimeframe.WEEKLY, DataTimeframe.MONTHLY]:
+        if timeframe in [
+            DataTimeframe.DAILY,
+            DataTimeframe.WEEKLY,
+            DataTimeframe.MONTHLY,
+        ]:
             return "historical_daily"
         else:
             return "intraday_minute"
@@ -387,12 +411,13 @@ class DhanAdapter(DataSourceAdapter):
             "BSE": "BSE_EQ",
             "NFO": "NSE_FNO",
             "BFO": "BSE_FNO",
-            "MCX": "MCX_COMM"
+            "MCX": "MCX_COMM",
         }
         return mapping.get(exchange, exchange)
 
     async def fetch_historical_data(self, request: DataRequest) -> List[OHLCData]:
         """Fetch historical data from Dhan"""
+
         async def _fetch():
             try:
                 method = self._map_timeframe_to_method(request.timeframe)
@@ -404,7 +429,7 @@ class DhanAdapter(DataSourceAdapter):
                         exchange_segment=self._map_exchange(request.exchange),
                         instrument_type="EQUITY",  # This would need proper mapping
                         from_date=request.start_date.strftime("%Y-%m-%d"),
-                        to_date=request.end_date.strftime("%Y-%m-%d")
+                        to_date=request.end_date.strftime("%Y-%m-%d"),
                     )
                 else:
                     # Use intraday minute data API
@@ -413,7 +438,7 @@ class DhanAdapter(DataSourceAdapter):
                     response = await self.client.get_intraday_minute_data(
                         security_id=request.symbol,  # This would need proper security ID mapping
                         exchange_segment=self._map_exchange(request.exchange),
-                        instrument_type="EQUITY"
+                        instrument_type="EQUITY",
                     )
 
                 # Parse response based on Dhan API format
@@ -429,7 +454,9 @@ class DhanAdapter(DataSourceAdapter):
                     timestamps = response.get("start_Time", [])
 
                     for i in range(len(opens)):
-                        timestamp = datetime.fromtimestamp(timestamps[i], tz=timezone.utc)
+                        timestamp = datetime.fromtimestamp(
+                            timestamps[i], tz=timezone.utc
+                        )
                         ohlc = OHLCData(
                             timestamp=timestamp,
                             open=opens[i],
@@ -438,7 +465,7 @@ class DhanAdapter(DataSourceAdapter):
                             close=closes[i],
                             volume=int(volumes[i]) if i < len(volumes) else 0,
                             source=self.get_source_name().value,
-                            quality=DataQuality.HIGH
+                            quality=DataQuality.HIGH,
                         )
 
                         if ohlc.is_valid():
@@ -468,15 +495,19 @@ class DataValidator:
 
         for i, candle in enumerate(data):
             if not candle.is_valid():
-                self.logger.warning(f"Invalid OHLC data detected",
-                                  timestamp=candle.timestamp,
-                                  symbol=getattr(candle, 'symbol', 'unknown'))
+                self.logger.warning(
+                    f"Invalid OHLC data detected",
+                    timestamp=candle.timestamp,
+                    symbol=getattr(candle, "symbol", "unknown"),
+                )
                 continue
 
             # Check for price gaps that might indicate bad data
             if i > 0 and cleaned_data:
                 prev_candle = cleaned_data[-1]
-                price_gap = abs(float(candle.open - prev_candle.close)) / float(prev_candle.close)
+                price_gap = abs(float(candle.open - prev_candle.close)) / float(
+                    prev_candle.close
+                )
 
                 if price_gap > 0.2:  # 20% gap threshold
                     candle.quality = DataQuality.MEDIUM
@@ -490,7 +521,9 @@ class DataValidator:
 
         return cleaned_data
 
-    def fill_missing_data(self, data: List[OHLCData], timeframe: DataTimeframe) -> List[OHLCData]:
+    def fill_missing_data(
+        self, data: List[OHLCData], timeframe: DataTimeframe
+    ) -> List[OHLCData]:
         """Fill missing data points using interpolation"""
         if len(data) < 2:
             return data
@@ -520,7 +553,7 @@ class DataValidator:
                     close=data[i].close,
                     volume=0,
                     source="interpolated",
-                    quality=DataQuality.LOW
+                    quality=DataQuality.LOW,
                 )
                 filled_data.append(missing_candle)
                 expected_next_time += timeframe_delta
@@ -544,7 +577,7 @@ class DataValidator:
             DataTimeframe.FOUR_HOUR: timedelta(hours=4),
             DataTimeframe.DAILY: timedelta(days=1),
             DataTimeframe.WEEKLY: timedelta(days=7),
-            DataTimeframe.MONTHLY: timedelta(days=30)
+            DataTimeframe.MONTHLY: timedelta(days=30),
         }
         return mapping.get(timeframe, timedelta(minutes=1))
 
@@ -555,10 +588,12 @@ class DataSynchronizer:
     def __init__(self):
         self.logger = get_logger("niraj.data_manager.synchronizer")
 
-    def merge_data_sources(self,
-                          primary_data: List[OHLCData],
-                          secondary_data: List[OHLCData],
-                          conflict_resolution: str = "primary_preferred") -> List[OHLCData]:
+    def merge_data_sources(
+        self,
+        primary_data: List[OHLCData],
+        secondary_data: List[OHLCData],
+        conflict_resolution: str = "primary_preferred",
+    ) -> List[OHLCData]:
         """Merge data from multiple sources with conflict resolution"""
         if not secondary_data:
             return primary_data
@@ -579,9 +614,7 @@ class DataSynchronizer:
             if primary_candle and secondary_candle:
                 # Both sources have data - resolve conflict
                 resolved_candle = self._resolve_conflict(
-                    primary_candle,
-                    secondary_candle,
-                    conflict_resolution
+                    primary_candle, secondary_candle, conflict_resolution
                 )
                 merged_data.append(resolved_candle)
             elif primary_candle:
@@ -591,10 +624,9 @@ class DataSynchronizer:
 
         return merged_data
 
-    def _resolve_conflict(self,
-                         primary: OHLCData,
-                         secondary: OHLCData,
-                         strategy: str) -> OHLCData:
+    def _resolve_conflict(
+        self, primary: OHLCData, secondary: OHLCData, strategy: str
+    ) -> OHLCData:
         """Resolve conflicts between data sources"""
         if strategy == "primary_preferred":
             if primary.quality.value >= secondary.quality.value:
@@ -607,7 +639,7 @@ class DataSynchronizer:
                 DataQuality.HIGH: 3,
                 DataQuality.MEDIUM: 2,
                 DataQuality.LOW: 1,
-                DataQuality.CORRUPTED: 0
+                DataQuality.CORRUPTED: 0,
             }
 
             if quality_order[primary.quality] >= quality_order[secondary.quality]:
@@ -625,7 +657,7 @@ class DataSynchronizer:
                 close=(primary.close + secondary.close) / 2,
                 volume=(primary.volume + secondary.volume) // 2,
                 source="merged",
-                quality=min(primary.quality, secondary.quality, key=lambda x: x.value)
+                quality=min(primary.quality, secondary.quality, key=lambda x: x.value),
             )
 
         else:  # Default to primary
@@ -637,19 +669,16 @@ class HistoricalDataManager:
     Comprehensive historical data manager for NIRAJ trading system
 
     Features:
-    - Multi-source data fetching with fallback mechanisms
-    - Intelligent caching with Redis integration
-    - Data quality validation and cleaning
-    - Circuit breaker pattern for API protection
-    - Comprehensive error handling and retry logic
-    - Data synchronization across sources
-    - Performance monitoring and health checks
+    - Multi-source data fetching with fallback mechanisms - Intelligent caching with Redis integration - Data quality validation and cleaning - Circuit breaker pattern for API protection - Comprehensive error handling and retry logic - Data synchronization across sources -
+    Performance monitoring and health checks
     """
 
-    def __init__(self,
-                 angel_one_client: Optional[AngelOneClient] = None,
-                 dhan_client: Optional[DhanClient] = None,
-                 cache: Optional[RedisCache] = None):
+    def __init__(
+        self,
+        angel_one_client: Optional[AngelOneClient] = None,
+        dhan_client: Optional[DhanClient] = None,
+        cache: Optional[RedisCache] = None,
+    ):
         """
         Initialize data manager
 
@@ -686,7 +715,7 @@ class HistoricalDataManager:
             "requests_failed": 0,
             "data_points_fetched": 0,
             "average_response_time": 0.0,
-            "source_usage": {source.value: 0 for source in DataSource}
+            "source_usage": {source.value: 0 for source in DataSource},
         }
 
         # Thread pool for concurrent operations
@@ -694,7 +723,9 @@ class HistoricalDataManager:
             max_workers=self.max_concurrent_requests
         )
 
-        self.logger.info(f"Historical Data Manager initialized with sources: {list(self.adapters.keys())}, cache_enabled: {self.cache is not None}")
+        self.logger.info(
+            f"Historical Data Manager initialized with sources: {list(self.adapters.keys())}, cache_enabled: {self.cache is not None}"
+        )
 
     @asynccontextmanager
     async def _request_context(self, request: DataRequest):
@@ -707,7 +738,7 @@ class HistoricalDataManager:
             timeframe=request.timeframe.value,
             start_date=request.start_date.isoformat(),
             end_date=request.end_date.isoformat(),
-            request_id=request.cache_key()[:8]
+            request_id=request.cache_key()[:8],
         ):
             try:
                 self.stats["requests_total"] += 1
@@ -726,9 +757,9 @@ class HistoricalDataManager:
                 self.stats["requests_failed"] += 1
                 duration = time.time() - start_time
 
-                self.logger.error("Data request failed",
-                                error=str(e),
-                                duration=duration)
+                self.logger.error(
+                    "Data request failed", error=str(e), duration=duration
+                )
                 raise
 
     def _update_response_time(self, duration: float):
@@ -738,8 +769,8 @@ class HistoricalDataManager:
 
         # Calculate running average
         self.stats["average_response_time"] = (
-            (current_avg * (total_requests - 1) + duration) / total_requests
-        )
+            current_avg * (total_requests - 1) + duration
+        ) / total_requests
 
     async def _get_from_cache(self, request: DataRequest) -> Optional[List[OHLCData]]:
         """Get data from cache if available and valid"""
@@ -756,8 +787,7 @@ class HistoricalDataManager:
                 # Convert back to OHLCData objects
                 ohlc_data = [OHLCData.from_dict(item) for item in cached_data]
 
-                self.logger.debug("Data retrieved from cache",
-                                records=len(ohlc_data))
+                self.logger.debug("Data retrieved from cache", records=len(ohlc_data))
                 return ohlc_data
 
         except Exception as e:
@@ -779,16 +809,9 @@ class HistoricalDataManager:
             # Determine TTL based on timeframe
             ttl = self._get_cache_ttl(request.timeframe)
 
-            await self.cache.set(
-                cache_key,
-                cache_data,
-                prefix="market_data",
-                ttl=ttl
-            )
+            await self.cache.set(cache_key, cache_data, prefix="market_data", ttl=ttl)
 
-            self.logger.debug("Data saved to cache",
-                            records=len(data),
-                            ttl=ttl)
+            self.logger.debug("Data saved to cache", records=len(data), ttl=ttl)
 
         except Exception as e:
             self.logger.warning(f"Cache save failed: {e}")
@@ -796,23 +819,23 @@ class HistoricalDataManager:
     def _get_cache_ttl(self, timeframe: DataTimeframe) -> int:
         """Get appropriate cache TTL based on timeframe"""
         ttl_mapping = {
-            DataTimeframe.ONE_MINUTE: 300,      # 5 minutes
-            DataTimeframe.THREE_MINUTE: 600,    # 10 minutes
-            DataTimeframe.FIVE_MINUTE: 900,     # 15 minutes
-            DataTimeframe.TEN_MINUTE: 1800,     # 30 minutes
-            DataTimeframe.FIFTEEN_MINUTE: 2700, # 45 minutes
+            DataTimeframe.ONE_MINUTE: 300,  # 5 minutes
+            DataTimeframe.THREE_MINUTE: 600,  # 10 minutes
+            DataTimeframe.FIVE_MINUTE: 900,  # 15 minutes
+            DataTimeframe.TEN_MINUTE: 1800,  # 30 minutes
+            DataTimeframe.FIFTEEN_MINUTE: 2700,  # 45 minutes
             DataTimeframe.THIRTY_MINUTE: 3600,  # 1 hour
-            DataTimeframe.ONE_HOUR: 7200,       # 2 hours
-            DataTimeframe.FOUR_HOUR: 14400,     # 4 hours
-            DataTimeframe.DAILY: 86400,         # 1 day
-            DataTimeframe.WEEKLY: 604800,       # 1 week
-            DataTimeframe.MONTHLY: 2592000      # 30 days
+            DataTimeframe.ONE_HOUR: 7200,  # 2 hours
+            DataTimeframe.FOUR_HOUR: 14400,  # 4 hours
+            DataTimeframe.DAILY: 86400,  # 1 day
+            DataTimeframe.WEEKLY: 604800,  # 1 week
+            DataTimeframe.MONTHLY: 2592000,  # 30 days
         }
         return ttl_mapping.get(timeframe, self.default_cache_ttl)
 
-    async def _fetch_from_source(self,
-                                source: DataSource,
-                                request: DataRequest) -> Optional[List[OHLCData]]:
+    async def _fetch_from_source(
+        self, source: DataSource, request: DataRequest
+    ) -> Optional[List[OHLCData]]:
         """Fetch data from a specific source"""
         adapter = self.adapters.get(source)
         if not adapter:
@@ -827,8 +850,7 @@ class HistoricalDataManager:
 
             # Fetch data with timeout
             data = await asyncio.wait_for(
-                adapter.fetch_historical_data(request),
-                timeout=request.timeout
+                adapter.fetch_historical_data(request), timeout=request.timeout
             )
 
             # Update statistics
@@ -845,7 +867,9 @@ class HistoricalDataManager:
             self.logger.error(f"Error fetching from {source}: {e}")
             return None
 
-    async def _fetch_from_multiple_sources(self, request: DataRequest) -> List[OHLCData]:
+    async def _fetch_from_multiple_sources(
+        self, request: DataRequest
+    ) -> List[OHLCData]:
         """Fetch data from multiple sources with fallback"""
         primary_data = None
         secondary_data = None
@@ -866,9 +890,7 @@ class HistoricalDataManager:
         # Merge data sources
         if primary_data and secondary_data:
             merged_data = self.synchronizer.merge_data_sources(
-                primary_data,
-                secondary_data,
-                "higher_quality"
+                primary_data, secondary_data, "higher_quality"
             )
             self.logger.info(f"Merged data from {len(request.sources)} sources")
             return merged_data
@@ -895,7 +917,6 @@ class HistoricalDataManager:
             Exception: Data fetch failures
         """
         async with self._request_context(request):
-
             # Try cache first
             cached_data = await self._get_from_cache(request)
             if cached_data:
@@ -910,14 +931,20 @@ class HistoricalDataManager:
             # Validate and clean data
             if self.enable_data_validation:
                 validated_data = self.validator.validate_ohlc_sequence(raw_data)
-                self.logger.debug(f"Validated {len(validated_data)}/{len(raw_data)} data points")
+                self.logger.debug(
+                    f"Validated {len(validated_data)}/{len(raw_data)} data points"
+                )
                 raw_data = validated_data
 
             # Fill missing data if enabled
             if self.enable_gap_filling:
-                filled_data = self.validator.fill_missing_data(raw_data, request.timeframe)
+                filled_data = self.validator.fill_missing_data(
+                    raw_data, request.timeframe
+                )
                 if len(filled_data) > len(raw_data):
-                    self.logger.debug(f"Filled {len(filled_data) - len(raw_data)} missing data points")
+                    self.logger.debug(
+                        f"Filled {len(filled_data) - len(raw_data)} missing data points"
+                    )
                 raw_data = filled_data
 
             # Cache the results
@@ -925,7 +952,9 @@ class HistoricalDataManager:
 
             return raw_data
 
-    async def get_latest_price(self, symbol: str, exchange: str) -> Optional[Dict[str, Any]]:
+    async def get_latest_price(
+        self, symbol: str, exchange: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Get latest price for a symbol
 
@@ -954,7 +983,7 @@ class HistoricalDataManager:
                 timeframe=DataTimeframe.ONE_MINUTE,
                 start_date=start_date,
                 end_date=end_date,
-                use_cache=False
+                use_cache=False,
             )
 
             data = await self.fetch_historical_data(request)
@@ -966,15 +995,12 @@ class HistoricalDataManager:
                     "exchange": exchange,
                     "price": float(latest.close),
                     "timestamp": latest.timestamp.isoformat(),
-                    "source": latest.source
+                    "source": latest.source,
                 }
 
                 # Cache for 30 seconds
                 await self.cache.set(
-                    cache_key,
-                    price_data,
-                    prefix="market_data",
-                    ttl=30
+                    cache_key, price_data, prefix="market_data", ttl=30
                 )
 
                 return price_data
@@ -984,11 +1010,9 @@ class HistoricalDataManager:
 
         return None
 
-    async def get_data_quality_report(self,
-                                    symbol: str,
-                                    exchange: str,
-                                    timeframe: DataTimeframe,
-                                    days_back: int = 7) -> Dict[str, Any]:
+    async def get_data_quality_report(
+        self, symbol: str, exchange: str, timeframe: DataTimeframe, days_back: int = 7
+    ) -> Dict[str, Any]:
         """
         Get data quality report for a symbol
 
@@ -1009,7 +1033,7 @@ class HistoricalDataManager:
             exchange=exchange,
             timeframe=timeframe,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
 
         try:
@@ -1033,13 +1057,15 @@ class HistoricalDataManager:
             expected_delta = self.validator._get_timeframe_delta(timeframe)
 
             for i in range(1, len(data)):
-                actual_delta = data[i].timestamp - data[i-1].timestamp
+                actual_delta = data[i].timestamp - data[i - 1].timestamp
                 if actual_delta > expected_delta * 1.5:  # Allow some tolerance
-                    gaps.append({
-                        "start": data[i-1].timestamp.isoformat(),
-                        "end": data[i].timestamp.isoformat(),
-                        "duration_minutes": actual_delta.total_seconds() / 60
-                    })
+                    gaps.append(
+                        {
+                            "start": data[i - 1].timestamp.isoformat(),
+                            "end": data[i].timestamp.isoformat(),
+                            "duration_minutes": actual_delta.total_seconds() / 60,
+                        }
+                    )
 
             return {
                 "symbol": symbol,
@@ -1048,38 +1074,48 @@ class HistoricalDataManager:
                 "analysis_period": {
                     "start": start_date.isoformat(),
                     "end": end_date.isoformat(),
-                    "days": days_back
+                    "days": days_back,
                 },
                 "data_points": {
                     "total": total_points,
                     "high_quality": high_quality,
                     "medium_quality": medium_quality,
                     "low_quality": low_quality,
-                    "corrupted": corrupted
+                    "corrupted": corrupted,
                 },
                 "quality_percentage": {
-                    "high": (high_quality / total_points * 100) if total_points > 0 else 0,
-                    "medium": (medium_quality / total_points * 100) if total_points > 0 else 0,
-                    "low": (low_quality / total_points * 100) if total_points > 0 else 0,
-                    "corrupted": (corrupted / total_points * 100) if total_points > 0 else 0
+                    "high": (
+                        (high_quality / total_points * 100) if total_points > 0 else 0
+                    ),
+                    "medium": (
+                        (medium_quality / total_points * 100) if total_points > 0 else 0
+                    ),
+                    "low": (
+                        (low_quality / total_points * 100) if total_points > 0 else 0
+                    ),
+                    "corrupted": (
+                        (corrupted / total_points * 100) if total_points > 0 else 0
+                    ),
                 },
                 "price_statistics": {
                     "min": min(prices) if prices else 0,
                     "max": max(prices) if prices else 0,
                     "mean": statistics.mean(prices) if prices else 0,
                     "median": statistics.median(prices) if prices else 0,
-                    "std_dev": statistics.stdev(prices) if len(prices) > 1 else 0
+                    "std_dev": statistics.stdev(prices) if len(prices) > 1 else 0,
                 },
                 "gaps_detected": len(gaps),
                 "gaps": gaps[:10],  # Return first 10 gaps
                 "data_sources_used": list(set(d.source for d in data)),
-                "completeness_score": ((total_points - corrupted) / total_points * 100) if total_points > 0 else 0
+                "completeness_score": (
+                    ((total_points - corrupted) / total_points * 100)
+                    if total_points > 0
+                    else 0
+                ),
             }
 
         except Exception as e:
-            return {
-                "error": f"Failed to generate quality report: {str(e)}"
-            }
+            return {"error": f"Failed to generate quality report: {str(e)}"}
 
     async def health_check(self) -> Dict[str, Any]:
         """
@@ -1091,7 +1127,7 @@ class HistoricalDataManager:
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "components": {}
+            "components": {},
         }
 
         # Check cache
@@ -1099,12 +1135,12 @@ class HistoricalDataManager:
             cache_healthy = await self.cache.health_check()
             health_status["components"]["cache"] = {
                 "status": "healthy" if cache_healthy else "unhealthy",
-                "details": await self.cache.get_stats() if cache_healthy else {}
+                "details": await self.cache.get_stats() if cache_healthy else {},
             }
         except Exception as e:
             health_status["components"]["cache"] = {
                 "status": "unhealthy",
-                "error": str(e)
+                "error": str(e),
             }
 
         # Check adapters
@@ -1115,16 +1151,18 @@ class HistoricalDataManager:
 
                 health_status["components"][source.value] = {
                     "status": "healthy" if adapter_healthy else "unhealthy",
-                    "circuit_breaker": circuit_breaker_state
+                    "circuit_breaker": circuit_breaker_state,
                 }
             except Exception as e:
                 health_status["components"][source.value] = {
                     "status": "unhealthy",
-                    "error": str(e)
+                    "error": str(e),
                 }
 
         # Overall status
-        component_statuses = [comp["status"] for comp in health_status["components"].values()]
+        component_statuses = [
+            comp["status"] for comp in health_status["components"].values()
+        ]
         if "unhealthy" in component_statuses:
             health_status["status"] = "degraded"
         if all(status == "unhealthy" for status in component_statuses):
@@ -1144,15 +1182,15 @@ class HistoricalDataManager:
                 "default_cache_ttl": self.default_cache_ttl,
                 "enable_data_validation": self.enable_data_validation,
                 "enable_gap_filling": self.enable_gap_filling,
-                "fallback_sources": self.fallback_sources
+                "fallback_sources": self.fallback_sources,
             },
             "sources_available": list(self.adapters.keys()),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    async def clear_cache(self,
-                         symbol: Optional[str] = None,
-                         exchange: Optional[str] = None) -> int:
+    async def clear_cache(
+        self, symbol: Optional[str] = None, exchange: Optional[str] = None
+    ) -> int:
         """
         Clear cached data
 
@@ -1166,7 +1204,6 @@ class HistoricalDataManager:
         try:
             if symbol and exchange:
                 # Clear specific symbol cache
-                pattern = f"historical:*{symbol}*{exchange}*"
                 # This is a simplified approach - in production you'd want more precise key management
                 await self.cache.clear_prefix("market_data")
                 return 1
@@ -1204,7 +1241,7 @@ class HistoricalDataManager:
 async def create_data_manager(
     angel_one_config: Optional[Dict[str, str]] = None,
     dhan_config: Optional[Dict[str, str]] = None,
-    cache_config: Optional[Dict[str, Any]] = None
+    cache_config: Optional[Dict[str, Any]] = None,
 ) -> HistoricalDataManager:
     """
     Create and configure a data manager instance
@@ -1223,10 +1260,12 @@ async def create_data_manager(
 
     if angel_one_config:
         from ..api.angel_one_client import AngelOneClient
+
         angel_one_client = AngelOneClient(**angel_one_config)
 
     if dhan_config:
         from ..api.dhan_client import DhanClient
+
         dhan_client = DhanClient(**dhan_config)
 
     # Create cache
@@ -1237,9 +1276,7 @@ async def create_data_manager(
 
     # Create data manager
     data_manager = HistoricalDataManager(
-        angel_one_client=angel_one_client,
-        dhan_client=dhan_client,
-        cache=cache
+        angel_one_client=angel_one_client, dhan_client=dhan_client, cache=cache
     )
 
     return data_manager
@@ -1256,7 +1293,9 @@ class DataManager:
         self.config = config
         self.logger = get_logger("niraj.core.data_manager")
 
-    async def get_market_data(self, symbol: str, timeframe: str = "1min") -> Optional[Dict[str, Any]]:
+    async def get_market_data(
+        self, symbol: str, timeframe: str = "1min"
+    ) -> Optional[Dict[str, Any]]:
         """
         Get market data for a symbol (placeholder implementation)
 
@@ -1272,7 +1311,7 @@ class DataManager:
             return {
                 "symbol": symbol,
                 "price": 100.0,  # Placeholder price
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             self.logger.error(f"Failed to get market data: {e}")

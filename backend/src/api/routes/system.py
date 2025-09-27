@@ -20,8 +20,10 @@ from pydantic import BaseModel
 import structlog
 
 from ...core.database import DatabaseManager
+
 try:
     from ...core.cache import CacheManager
+
     CACHE_AVAILABLE = True
 except ImportError:
     CacheManager = None
@@ -29,6 +31,7 @@ except ImportError:
 
 try:
     from ...ai.gemma3_integration import Gemma3Client
+
     AI_AVAILABLE = True
 except ImportError:
     Gemma3Client = None
@@ -45,8 +48,8 @@ router = APIRouter(
         401: {"description": "Unauthorized - Authentication required"},
         403: {"description": "Forbidden - Insufficient permissions"},
         422: {"description": "Unprocessable Entity - Validation error"},
-        500: {"description": "Internal Server Error - System error"}
-    }
+        500: {"description": "Internal Server Error - System error"},
+    },
 )
 
 # Initialize structured logger
@@ -59,6 +62,7 @@ _system_service: Optional[SystemService] = None
 # Pydantic models for API requests and responses
 class SystemStatusResponse(BaseModel):
     """Response model for system status"""
+
     status: str
     trading_mode: str
     market_hours: bool
@@ -70,6 +74,7 @@ class SystemStatusResponse(BaseModel):
 
 class AIPredictionsResponse(BaseModel):
     """Response model for AI predictions"""
+
     predictions: List[Dict[str, Any]]
     total: int
     limit: int
@@ -78,6 +83,7 @@ class AIPredictionsResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Enhanced error response model"""
+
     error: str
     error_code: str
     message: str
@@ -94,7 +100,7 @@ async def get_system_service() -> SystemService:
     if _system_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="System service not initialized"
+            detail="System service not initialized",
         )
     return _system_service
 
@@ -106,7 +112,7 @@ def create_error_response(
     message: str,
     status_code: int,
     details: Optional[Dict[str, Any]] = None,
-    path: Optional[str] = None
+    path: Optional[str] = None,
 ) -> JSONResponse:
     """Create standardized error response"""
     return JSONResponse(
@@ -117,8 +123,8 @@ def create_error_response(
             message=message,
             details=details,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path
-        ).dict()
+            path=path,
+        ).dict(),
     )
 
 
@@ -127,13 +133,13 @@ def handle_system_error(e: Exception, request_path: str) -> JSONResponse:
     logger.warning(
         "System operation error",
         error_type=type(e).__name__,
-        error_code=getattr(e, 'error_code', 'UNKNOWN'),
-        path=request_path
+        error_code=getattr(e, "error_code", "UNKNOWN"),
+        path=request_path,
     )
 
     if isinstance(e, SystemServiceError):
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        error_code = getattr(e, 'error_code', 'SYSTEM_ERROR')
+        error_code = getattr(e, "error_code", None) or "SYSTEM_ERROR"
     else:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
@@ -143,10 +149,8 @@ def handle_system_error(e: Exception, request_path: str) -> JSONResponse:
         error_code=error_code,
         message=str(e),
         status_code=status_code,
-        details={
-            'service': getattr(e, 'service', None)
-        },
-        path=request_path
+        details={"service": getattr(e, "service", None)},
+        path=request_path,
     )
 
 
@@ -194,11 +198,11 @@ def handle_system_error(e: Exception, request_path: str) -> JSONResponse:
     responses={
         200: {"description": "System status retrieved successfully"},
         503: {"description": "System service unavailable"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_system_status(
-    system_service: SystemService = Depends(get_system_service)
+    system_service: SystemService = Depends(get_system_service),
 ) -> SystemStatusResponse:
     """
     Get comprehensive system status
@@ -220,7 +224,7 @@ async def get_system_status(
             overall_status=status_data.get("status"),
             trading_mode=status_data.get("trading_mode"),
             market_hours=status_data.get("market_hours"),
-            duration=f"{duration:.3f}s"
+            duration=f"{duration:.3f}s",
         )
 
         return SystemStatusResponse(**status_data)
@@ -282,16 +286,18 @@ async def get_system_status(
         400: {"description": "Invalid filter parameters"},
         422: {"description": "Invalid UUID format or parameter values"},
         503: {"description": "System service unavailable"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_ai_predictions(
     symbol: Optional[str] = Query(None, description="Filter by trading symbol"),
     strategy_id: Optional[str] = Query(None, description="Filter by strategy UUID"),
-    min_confidence: float = Query(0.7, ge=0.0, le=1.0, description="Minimum confidence threshold"),
+    min_confidence: float = Query(
+        0.7, ge=0.0, le=1.0, description="Minimum confidence threshold"
+    ),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    system_service: SystemService = Depends(get_system_service)
+    system_service: SystemService = Depends(get_system_service),
 ) -> AIPredictionsResponse:
     """
     Get AI predictions with filtering and pagination
@@ -307,7 +313,7 @@ async def get_ai_predictions(
             strategy_id=strategy_id,
             min_confidence=min_confidence,
             limit=limit,
-            offset=offset
+            offset=offset,
         ):
             logger.info("Retrieving AI predictions")
 
@@ -318,7 +324,7 @@ async def get_ai_predictions(
                 except ValueError:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail="Invalid strategy_id format. Must be a valid UUID."
+                        detail="Invalid strategy_id format. Must be a valid UUID.",
                     )
 
             # Get predictions from service
@@ -327,7 +333,7 @@ async def get_ai_predictions(
                 strategy_id=strategy_id,
                 min_confidence=min_confidence,
                 limit=limit,
-                offset=offset
+                offset=offset,
             )
 
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -337,7 +343,7 @@ async def get_ai_predictions(
                 total=predictions_data.get("total", 0),
                 symbol=symbol,
                 strategy_id=strategy_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return AIPredictionsResponse(**predictions_data)
@@ -355,7 +361,7 @@ def init_system_routes(
     cache_manager: Optional[Any] = None,
     ai_client: Optional[Any] = None,
     angel_one_client: Optional[Any] = None,
-    dhan_client: Optional[Any] = None
+    dhan_client: Optional[Any] = None,
 ) -> APIRouter:
     """
     Initialize system routes with required services
@@ -379,7 +385,7 @@ def init_system_routes(
             cache_manager=cache_manager,
             ai_client=ai_client,
             angel_one_client=angel_one_client,
-            dhan_client=dhan_client
+            dhan_client=dhan_client,
         )
 
         logger.info("System routes initialized successfully")
@@ -396,5 +402,5 @@ __all__ = [
     "init_system_routes",
     "SystemStatusResponse",
     "AIPredictionsResponse",
-    "ErrorResponse"
+    "ErrorResponse",
 ]

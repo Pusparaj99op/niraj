@@ -32,8 +32,11 @@ from ...core.database import DatabaseManager
 from ...core.cache import CacheManager
 from ...services.portfolio_service import PortfolioService, PortfolioServiceError
 from ...models.portfolio import (
-    PortfolioCreateRequest, PortfolioUpdateRequest, PortfolioResponse,
-    PortfolioAggregateResponse, PortfolioNotFoundError
+    PortfolioCreateRequest,
+    PortfolioUpdateRequest,
+    PortfolioResponse,
+    PortfolioAggregateResponse,
+    PortfolioNotFoundError,
 )
 
 # Initialize router with comprehensive configuration
@@ -47,8 +50,8 @@ router = APIRouter(
         404: {"description": "Not Found - Portfolio position not found"},
         409: {"description": "Conflict - Portfolio operation conflict"},
         422: {"description": "Unprocessable Entity - Validation error"},
-        500: {"description": "Internal Server Error - System error"}
-    }
+        500: {"description": "Internal Server Error - System error"},
+    },
 )
 
 # Initialize structured logger
@@ -61,6 +64,7 @@ _portfolio_service: Optional[PortfolioService] = None
 # Pydantic models for API requests and responses
 class PortfolioListResponse(BaseModel):
     """Response model for portfolio list with summary"""
+
     positions: List[PortfolioResponse]
     summary: PortfolioAggregateResponse
     total_positions: int
@@ -69,17 +73,20 @@ class PortfolioListResponse(BaseModel):
 
 class PriceUpdateRequest(BaseModel):
     """Request model for updating position prices"""
+
     price_updates: Dict[str, float]  # symbol -> price mapping
 
 
 class ClosePositionRequest(BaseModel):
     """Request model for closing a position"""
+
     close_price: float
     reason: Optional[str] = None
 
 
 class RiskValidationResponse(BaseModel):
     """Response model for risk validation"""
+
     is_valid: bool
     violations: List[str]
     total_positions: int
@@ -88,6 +95,7 @@ class RiskValidationResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Enhanced error response model"""
+
     error: str
     error_code: str
     message: str
@@ -104,7 +112,7 @@ async def get_portfolio_service() -> PortfolioService:
     if _portfolio_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Portfolio service not initialized"
+            detail="Portfolio service not initialized",
         )
     return _portfolio_service
 
@@ -127,7 +135,7 @@ def create_error_response(
     message: str,
     status_code: int,
     details: Optional[Dict[str, Any]] = None,
-    path: Optional[str] = None
+    path: Optional[str] = None,
 ) -> JSONResponse:
     """Create standardized error response"""
     return JSONResponse(
@@ -138,8 +146,8 @@ def create_error_response(
             message=message,
             details=details,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path
-        ).dict()
+            path=path,
+        ).dict(),
     )
 
 
@@ -148,9 +156,9 @@ def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
     logger.warning(
         "Portfolio operation error",
         error_type=type(e).__name__,
-        error_code=getattr(e, 'error_code', 'UNKNOWN'),
+        error_code=getattr(e, "error_code", "UNKNOWN"),
         path=request_path,
-        portfolio_id=getattr(e, 'portfolio_id', None)
+        portfolio_id=getattr(e, "portfolio_id", None),
     )
 
     # Map error types to HTTP status codes
@@ -166,7 +174,7 @@ def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
             error_code = "PERMISSION_DENIED"
         else:
             status_code = status.HTTP_400_BAD_REQUEST
-            error_code = getattr(e, 'error_code', 'PORTFOLIO_ERROR')
+            error_code = getattr(e, "error_code", "PORTFOLIO_ERROR")
     else:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
@@ -176,10 +184,8 @@ def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
         error_code=error_code,
         message=str(e),
         status_code=status_code,
-        details={
-            'portfolio_id': getattr(e, 'portfolio_id', None)
-        },
-        path=request_path
+        details={"portfolio_id": getattr(e, "portfolio_id", None)},
+        path=request_path,
     )
 
 
@@ -206,13 +212,15 @@ def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
     responses={
         200: {"description": "Portfolio retrieved successfully"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_portfolio(
-    include_inactive: bool = Query(False, description="Include inactive/closed positions"),
+    include_inactive: bool = Query(
+        False, description="Include inactive/closed positions"
+    ),
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> PortfolioListResponse:
     """
     Get complete user portfolio with positions and summary
@@ -224,29 +232,27 @@ async def get_portfolio(
 
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=user_id,
-            include_inactive=include_inactive
+            user_id=user_id, include_inactive=include_inactive
         ):
             logger.info("Portfolio retrieval request")
 
             # Get portfolio positions and summary
             positions, summary = await portfolio_service.get_user_portfolio(
-                user_id=user_id,
-                include_inactive=include_inactive
+                user_id=user_id, include_inactive=include_inactive
             )
 
             response = PortfolioListResponse(
                 positions=positions,
                 summary=summary,
                 total_positions=len(positions),
-                last_updated=datetime.now(timezone.utc)
+                last_updated=datetime.now(timezone.utc),
             )
 
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 "Portfolio retrieved successfully",
                 positions_count=len(positions),
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return response
@@ -276,13 +282,13 @@ async def get_portfolio(
         200: {"description": "Position retrieved successfully"},
         401: {"description": "Authentication required"},
         404: {"description": "Portfolio position not found"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_portfolio_position(
     portfolio_id: str,
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> PortfolioResponse:
     """
     Get specific portfolio position by ID
@@ -292,8 +298,7 @@ async def get_portfolio_position(
     """
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=user_id,
-            portfolio_id=portfolio_id
+            user_id=user_id, portfolio_id=portfolio_id
         ):
             logger.info("Portfolio position retrieval request")
 
@@ -333,13 +338,13 @@ async def get_portfolio_position(
         400: {"description": "Invalid position data"},
         401: {"description": "Authentication required"},
         422: {"description": "Validation error"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def create_portfolio_position(
     position_data: PortfolioCreateRequest,
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> PortfolioResponse:
     """
     Create a new portfolio position
@@ -351,7 +356,7 @@ async def create_portfolio_position(
         with structlog.contextvars.bound_contextvars(
             user_id=user_id,
             symbol=position_data.symbol,
-            quantity=position_data.quantity
+            quantity=position_data.quantity,
         ):
             logger.info("Portfolio position creation request")
 
@@ -359,11 +364,13 @@ async def create_portfolio_position(
             position_data.user_id = user_id
 
             # Create position
-            created_position = await portfolio_service.create_portfolio_position(position_data)
+            created_position = await portfolio_service.create_portfolio_position(
+                position_data
+            )
 
             logger.info(
                 "Portfolio position created successfully",
-                portfolio_id=created_position.portfolio_id
+                portfolio_id=created_position.portfolio_id,
             )
 
             return created_position
@@ -396,14 +403,14 @@ async def create_portfolio_position(
         401: {"description": "Authentication required"},
         404: {"description": "Portfolio position not found"},
         422: {"description": "Validation error"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def update_portfolio_position(
     portfolio_id: str,
     update_data: PortfolioUpdateRequest,
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> PortfolioResponse:
     """
     Update an existing portfolio position
@@ -412,16 +419,14 @@ async def update_portfolio_position(
     """
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=user_id,
-            portfolio_id=portfolio_id
+            user_id=user_id, portfolio_id=portfolio_id
         ):
             logger.info("Portfolio position update request")
 
             # TODO: Add ownership validation
             # Update position
             updated_position = await portfolio_service.update_portfolio_position(
-                portfolio_id=portfolio_id,
-                update_request=update_data
+                portfolio_id=portfolio_id, update_request=update_data
             )
 
             logger.info("Portfolio position updated successfully")
@@ -453,14 +458,14 @@ async def update_portfolio_position(
         400: {"description": "Invalid close request"},
         401: {"description": "Authentication required"},
         404: {"description": "Portfolio position not found"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def close_portfolio_position(
     portfolio_id: str,
     close_request: ClosePositionRequest,
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> Dict[str, Any]:
     """
     Close a portfolio position
@@ -471,7 +476,7 @@ async def close_portfolio_position(
         with structlog.contextvars.bound_contextvars(
             user_id=user_id,
             portfolio_id=portfolio_id,
-            close_price=close_request.close_price
+            close_price=close_request.close_price,
         ):
             logger.info("Portfolio position close request")
 
@@ -480,12 +485,12 @@ async def close_portfolio_position(
             close_result = await portfolio_service.close_portfolio_position(
                 portfolio_id=portfolio_id,
                 close_price=close_request.close_price,
-                reason=close_request.reason
+                reason=close_request.reason,
             )
 
             logger.info(
                 "Portfolio position closed successfully",
-                realized_pnl=close_result.get('realized_pnl')
+                realized_pnl=close_result.get("realized_pnl"),
             )
 
             return close_result
@@ -515,13 +520,15 @@ async def close_portfolio_position(
     responses={
         200: {"description": "Summary retrieved successfully"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_portfolio_summary(
-    include_inactive: bool = Query(False, description="Include inactive positions in summary"),
+    include_inactive: bool = Query(
+        False, description="Include inactive positions in summary"
+    ),
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> PortfolioAggregateResponse:
     """
     Get portfolio summary statistics
@@ -530,15 +537,13 @@ async def get_portfolio_summary(
     """
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=user_id,
-            include_inactive=include_inactive
+            user_id=user_id, include_inactive=include_inactive
         ):
             logger.info("Portfolio summary request")
 
             # Get summary
             summary = await portfolio_service.get_portfolio_summary(
-                user_id=user_id,
-                include_inactive=include_inactive
+                user_id=user_id, include_inactive=include_inactive
             )
 
             logger.info("Portfolio summary retrieved successfully")
@@ -570,12 +575,12 @@ async def get_portfolio_summary(
     responses={
         200: {"description": "Risk validation completed"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def validate_portfolio_risks(
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> RiskValidationResponse:
     """
     Validate portfolio against risk management rules
@@ -583,25 +588,25 @@ async def validate_portfolio_risks(
     Performs comprehensive risk assessment and returns validation results.
     """
     try:
-        with structlog.contextvars.bound_contextvars(
-            user_id=user_id
-        ):
+        with structlog.contextvars.bound_contextvars(user_id=user_id):
             logger.info("Portfolio risk validation request")
 
             # Validate risks
-            validation_result = await portfolio_service.validate_portfolio_risks(user_id)
+            validation_result = await portfolio_service.validate_portfolio_risks(
+                user_id
+            )
 
             response = RiskValidationResponse(
-                is_valid=validation_result['is_valid'],
-                violations=validation_result['violations'],
-                total_positions=validation_result['total_positions'],
-                validated_at=datetime.fromisoformat(validation_result['validated_at'])
+                is_valid=validation_result["is_valid"],
+                violations=validation_result["violations"],
+                total_positions=validation_result["total_positions"],
+                validated_at=datetime.fromisoformat(validation_result["validated_at"]),
             )
 
             logger.info(
                 "Portfolio risk validation completed",
                 is_valid=response.is_valid,
-                violations_count=len(response.violations)
+                violations_count=len(response.violations),
             )
 
             return response
@@ -634,13 +639,13 @@ async def validate_portfolio_risks(
         200: {"description": "Prices updated successfully"},
         400: {"description": "Invalid price data"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def update_position_prices(
     price_request: PriceUpdateRequest,
     user_id: str = Depends(get_current_user_id),
-    portfolio_service: PortfolioService = Depends(get_portfolio_service)
+    portfolio_service: PortfolioService = Depends(get_portfolio_service),
 ) -> Dict[str, Any]:
     """
     Update prices for multiple symbols
@@ -649,8 +654,7 @@ async def update_position_prices(
     """
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=user_id,
-            symbols=list(price_request.price_updates.keys())
+            user_id=user_id, symbols=list(price_request.price_updates.keys())
         ):
             logger.info("Position price update request")
 
@@ -661,12 +665,14 @@ async def update_position_prices(
             }
 
             # Update prices
-            update_result = await portfolio_service.update_position_prices(price_updates)
+            update_result = await portfolio_service.update_position_prices(
+                price_updates
+            )
 
             logger.info(
                 "Position prices updated successfully",
-                updated_positions=update_result['updated_positions_count'],
-                total_pnl_change=update_result['total_pnl_change']
+                updated_positions=update_result["updated_positions_count"],
+                total_pnl_change=update_result["total_pnl_change"],
             )
 
             return update_result
@@ -677,8 +683,7 @@ async def update_position_prices(
 
 # Initialization functions
 def init_portfolio_routes(
-    db_manager: DatabaseManager,
-    cache_manager: CacheManager
+    db_manager: DatabaseManager, cache_manager: CacheManager
 ) -> APIRouter:
     """
     Initialize portfolio routes with required services
@@ -695,8 +700,7 @@ def init_portfolio_routes(
     try:
         # Initialize portfolio service
         _portfolio_service = PortfolioService(
-            db_manager=db_manager,
-            cache_manager=cache_manager
+            db_manager=db_manager, cache_manager=cache_manager
         )
 
         logger.info("Portfolio routes initialized successfully")
@@ -715,5 +719,5 @@ __all__ = [
     "PriceUpdateRequest",
     "ClosePositionRequest",
     "RiskValidationResponse",
-    "ErrorResponse"
+    "ErrorResponse",
 ]

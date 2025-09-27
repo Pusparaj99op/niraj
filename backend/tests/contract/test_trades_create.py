@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -23,6 +24,7 @@ class TestTradesCreateContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -39,17 +41,13 @@ class TestTradesCreateContract:
             "quantity": 25,
             "price": 45000.50,
             "stop_loss": 44000.00,
-            "take_profit": 46000.00
+            "take_profit": 46000.00,
         }
 
     @pytest.fixture
     def minimal_trade_request(self) -> dict:
         """Minimal trade request with only required fields."""
-        return {
-            "symbol": "BANKNIFTY",
-            "trade_type": "BUY",
-            "quantity": 25
-        }
+        return {"symbol": "BANKNIFTY", "trade_type": "BUY", "quantity": 25}
 
     def test_create_trade_success_contract(
         self, client: TestClient, valid_trade_request: dict
@@ -63,17 +61,14 @@ class TestTradesCreateContract:
         - Response 201: Trade schema with generated fields
         """
         # Act
-        response: Response = client.post(
-            "/api/v1/trades",
-            json=valid_trade_request
-        )
+        response: Response = client.post("/api/v1/trades", json=valid_trade_request)
 
         # Assert - Status Code
         expected_status = 201
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -95,9 +90,7 @@ class TestTradesCreateContract:
             pytest.fail("trade_id must be a valid UUID")
 
         # Assert - Status should be OPEN for new trade
-        assert response_json["status"] == "OPEN", (
-            "New trade status should be OPEN"
-        )
+        assert response_json["status"] == "OPEN", "New trade status should be OPEN"
 
         # Assert - Timestamps are present and valid
         assert "entry_timestamp" in response_json
@@ -107,13 +100,13 @@ class TestTradesCreateContract:
 
         # Assert - Optional fields handling
         if "exit_price" in response_json:
-            assert response_json["exit_price"] is None, (
-                "New trade should not have exit_price"
-            )
+            assert (
+                response_json["exit_price"] is None
+            ), "New trade should not have exit_price"
         if "exit_timestamp" in response_json:
-            assert response_json["exit_timestamp"] is None, (
-                "New trade should not have exit_timestamp"
-            )
+            assert (
+                response_json["exit_timestamp"] is None
+            ), "New trade should not have exit_timestamp"
 
     def test_create_trade_minimal_data_contract(
         self, client: TestClient, minimal_trade_request: dict
@@ -126,17 +119,14 @@ class TestTradesCreateContract:
         - Market order when price not specified
         """
         # Act
-        response: Response = client.post(
-            "/api/v1/trades",
-            json=minimal_trade_request
-        )
+        response: Response = client.post("/api/v1/trades", json=minimal_trade_request)
 
         # Assert - Status Code
         expected_status = 201
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -166,17 +156,14 @@ class TestTradesCreateContract:
         trade_with_strategy = {**valid_trade_request, "strategy_id": valid_strategy_id}
 
         # Act
-        response: Response = client.post(
-            "/api/v1/trades",
-            json=trade_with_strategy
-        )
+        response: Response = client.post("/api/v1/trades", json=trade_with_strategy)
 
         # Assert - Status Code
         expected_status = 201
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -203,26 +190,23 @@ class TestTradesCreateContract:
         sell_request = {**valid_trade_request, "trade_type": "SELL"}
 
         # Act
-        response: Response = client.post(
-            "/api/v1/trades",
-            json=sell_request
-        )
+        response: Response = client.post("/api/v1/trades", json=sell_request)
 
         # Assert - Status Code
         expected_status = 201
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
         self._validate_trade_response_structure(response_json)
 
         # Assert - Trade type is preserved
-        assert response_json["trade_type"] == "SELL", (
-            "SELL trade_type should be preserved"
-        )
+        assert (
+            response_json["trade_type"] == "SELL"
+        ), "SELL trade_type should be preserved"
 
     def test_create_trade_missing_required_fields_contract(
         self, client: TestClient
@@ -235,42 +219,31 @@ class TestTradesCreateContract:
         - Should return 400 Bad Request or 422 Unprocessable Entity
         """
         # Test missing symbol
-        missing_symbol = {
-            "trade_type": "BUY",
-            "quantity": 25
-        }
+        missing_symbol = {"trade_type": "BUY", "quantity": 25}
 
         response = client.post("/api/v1/trades", json=missing_symbol)
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Missing symbol should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Missing symbol should return {expected_codes}, got {response.status_code}"
 
         # Test missing trade_type
-        missing_trade_type = {
-            "symbol": "BANKNIFTY",
-            "quantity": 25
-        }
+        missing_trade_type = {"symbol": "BANKNIFTY", "quantity": 25}
 
         response = client.post("/api/v1/trades", json=missing_trade_type)
-        assert response.status_code in expected_codes, (
-            f"Missing trade_type should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Missing trade_type should return {expected_codes}, got {response.status_code}"
 
         # Test missing quantity
-        missing_quantity = {
-            "symbol": "BANKNIFTY",
-            "trade_type": "BUY"
-        }
+        missing_quantity = {"symbol": "BANKNIFTY", "trade_type": "BUY"}
 
         response = client.post("/api/v1/trades", json=missing_quantity)
-        assert response.status_code in expected_codes, (
-            f"Missing quantity should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Missing quantity should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_invalid_trade_type_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_invalid_trade_type_contract(self, client: TestClient) -> None:
         """
         Test trade creation with invalid trade_type.
 
@@ -282,24 +255,19 @@ class TestTradesCreateContract:
         invalid_trade_type = {
             "symbol": "BANKNIFTY",
             "trade_type": "INVALID_TYPE",
-            "quantity": 25
+            "quantity": 25,
         }
 
         # Act
-        response: Response = client.post(
-            "/api/v1/trades",
-            json=invalid_trade_type
-        )
+        response: Response = client.post("/api/v1/trades", json=invalid_trade_type)
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid trade_type should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid trade_type should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_invalid_quantity_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_invalid_quantity_contract(self, client: TestClient) -> None:
         """
         Test trade creation with invalid quantity values.
 
@@ -308,45 +276,35 @@ class TestTradesCreateContract:
         - Should return 400 Bad Request or 422 Unprocessable Entity
         """
         # Test zero quantity
-        zero_quantity = {
-            "symbol": "BANKNIFTY",
-            "trade_type": "BUY",
-            "quantity": 0
-        }
+        zero_quantity = {"symbol": "BANKNIFTY", "trade_type": "BUY", "quantity": 0}
 
         response = client.post("/api/v1/trades", json=zero_quantity)
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Zero quantity should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Zero quantity should return {expected_codes}, got {response.status_code}"
 
         # Test negative quantity
         negative_quantity = {
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
-            "quantity": -10
+            "quantity": -10,
         }
 
         response = client.post("/api/v1/trades", json=negative_quantity)
-        assert response.status_code in expected_codes, (
-            f"Negative quantity should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Negative quantity should return {expected_codes}, got {response.status_code}"
 
         # Test non-integer quantity
-        float_quantity = {
-            "symbol": "BANKNIFTY",
-            "trade_type": "BUY",
-            "quantity": 25.5
-        }
+        float_quantity = {"symbol": "BANKNIFTY", "trade_type": "BUY", "quantity": 25.5}
 
         response = client.post("/api/v1/trades", json=float_quantity)
-        assert response.status_code in expected_codes, (
-            f"Float quantity should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Float quantity should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_invalid_price_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_invalid_price_contract(self, client: TestClient) -> None:
         """
         Test trade creation with invalid price values.
 
@@ -359,31 +317,29 @@ class TestTradesCreateContract:
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
             "quantity": 25,
-            "price": -1000.00
+            "price": -1000.00,
         }
 
         response = client.post("/api/v1/trades", json=negative_price)
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Negative price should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Negative price should return {expected_codes}, got {response.status_code}"
 
         # Test zero price
         zero_price = {
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
             "quantity": 25,
-            "price": 0.00
+            "price": 0.00,
         }
 
         response = client.post("/api/v1/trades", json=zero_price)
-        assert response.status_code in expected_codes, (
-            f"Zero price should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Zero price should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_invalid_stop_loss_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_invalid_stop_loss_contract(self, client: TestClient) -> None:
         """
         Test trade creation with invalid stop_loss values.
 
@@ -396,14 +352,14 @@ class TestTradesCreateContract:
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
             "quantity": 25,
-            "stop_loss": -100.00
+            "stop_loss": -100.00,
         }
 
         response = client.post("/api/v1/trades", json=negative_stop_loss)
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Negative stop_loss should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Negative stop_loss should return {expected_codes}, got {response.status_code}"
 
     def test_create_trade_invalid_take_profit_contract(
         self, client: TestClient
@@ -420,14 +376,14 @@ class TestTradesCreateContract:
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
             "quantity": 25,
-            "take_profit": -100.00
+            "take_profit": -100.00,
         }
 
         response = client.post("/api/v1/trades", json=negative_take_profit)
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Negative take_profit should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Negative take_profit should return {expected_codes}, got {response.status_code}"
 
     def test_create_trade_invalid_strategy_id_format_contract(
         self, client: TestClient, valid_trade_request: dict
@@ -440,23 +396,18 @@ class TestTradesCreateContract:
         - Should return 400 Bad Request or 422 Unprocessable Entity
         """
         # Arrange
-        invalid_strategy_id = {
-            **valid_trade_request,
-            "strategy_id": "not-a-uuid"
-        }
+        invalid_strategy_id = {**valid_trade_request, "strategy_id": "not-a-uuid"}
 
         # Act
         response = client.post("/api/v1/trades", json=invalid_strategy_id)
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid strategy_id format should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid strategy_id format should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_empty_symbol_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_empty_symbol_contract(self, client: TestClient) -> None:
         """
         Test trade creation with empty symbol.
 
@@ -465,24 +416,18 @@ class TestTradesCreateContract:
         - Should return 400 Bad Request or 422 Unprocessable Entity
         """
         # Arrange
-        empty_symbol = {
-            "symbol": "",
-            "trade_type": "BUY",
-            "quantity": 25
-        }
+        empty_symbol = {"symbol": "", "trade_type": "BUY", "quantity": 25}
 
         # Act
         response = client.post("/api/v1/trades", json=empty_symbol)
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Empty symbol should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Empty symbol should return {expected_codes}, got {response.status_code}"
 
-    def test_create_trade_invalid_json_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_invalid_json_contract(self, client: TestClient) -> None:
         """
         Test trade creation with malformed JSON.
 
@@ -493,14 +438,14 @@ class TestTradesCreateContract:
         response = client.post(
             "/api/v1/trades",
             data="{ invalid json",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Malformed JSON should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Malformed JSON should return {expected_codes}, got {response.status_code}"
 
     def test_create_trade_wrong_content_type_contract(
         self, client: TestClient, valid_trade_request: dict
@@ -516,14 +461,14 @@ class TestTradesCreateContract:
         response = client.post(
             "/api/v1/trades",
             data=json.dumps(valid_trade_request),
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
 
         # Assert
         expected_codes = [400, 415, 422]
-        assert response.status_code in expected_codes, (
-            f"Wrong content type should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Wrong content type should return {expected_codes}, got {response.status_code}"
 
     def test_create_trade_risk_limits_exceeded_contract(
         self, client: TestClient
@@ -538,7 +483,7 @@ class TestTradesCreateContract:
         large_quantity_trade = {
             "symbol": "BANKNIFTY",
             "trade_type": "BUY",
-            "quantity": 10000  # Extremely large quantity
+            "quantity": 10000,  # Extremely large quantity
         }
 
         # Act
@@ -546,18 +491,16 @@ class TestTradesCreateContract:
 
         # Assert - Either succeed or return 403 for risk limits
         acceptable_codes = [201, 400, 403, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Large quantity trade should return {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Large quantity trade should return {acceptable_codes}, got {response.status_code}"
 
         # If 403, verify it's related to risk limits
         if response.status_code == 403:
             # Response might contain error message about risk limits
             assert True  # Risk limit rejection is acceptable
 
-    def test_create_trade_case_sensitivity_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_case_sensitivity_contract(self, client: TestClient) -> None:
         """
         Test trade creation with different case values.
 
@@ -568,31 +511,29 @@ class TestTradesCreateContract:
         lowercase_type = {
             "symbol": "BANKNIFTY",
             "trade_type": "buy",  # lowercase
-            "quantity": 25
+            "quantity": 25,
         }
 
         response = client.post("/api/v1/trades", json=lowercase_type)
         # Should either accept (converting to uppercase) or reject with validation error
         acceptable_codes = [201, 400, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Lowercase trade_type returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Lowercase trade_type returned {response.status_code}"
 
         # Test lowercase symbol
         lowercase_symbol = {
             "symbol": "banknifty",  # lowercase
             "trade_type": "BUY",
-            "quantity": 25
+            "quantity": 25,
         }
 
         response = client.post("/api/v1/trades", json=lowercase_symbol)
-        assert response.status_code in acceptable_codes, (
-            f"Lowercase symbol returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Lowercase symbol returned {response.status_code}"
 
-    def test_create_trade_precision_handling_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_create_trade_precision_handling_contract(self, client: TestClient) -> None:
         """
         Test trade creation with high precision decimal values.
 
@@ -607,7 +548,7 @@ class TestTradesCreateContract:
             "quantity": 25,
             "price": 45000.123456789,
             "stop_loss": 44000.987654321,
-            "take_profit": 46000.555555555
+            "take_profit": 46000.555555555,
         }
 
         # Act
@@ -615,9 +556,9 @@ class TestTradesCreateContract:
 
         # Assert - Should either succeed or return validation error
         acceptable_codes = [201, 400, 422]
-        assert response.status_code in acceptable_codes, (
-            f"High precision values returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"High precision values returned {response.status_code}"
 
         # If successful, verify precision is handled appropriately
         if response.status_code == 201:
@@ -634,8 +575,14 @@ class TestTradesCreateContract:
         """
         # Required fields for Trade schema
         required_fields = [
-            "trade_id", "symbol", "trade_type", "quantity", 
-            "entry_price", "entry_timestamp", "status", "created_at"
+            "trade_id",
+            "symbol",
+            "trade_type",
+            "quantity",
+            "entry_price",
+            "entry_timestamp",
+            "status",
+            "created_at",
         ]
 
         for field in required_fields:
@@ -656,9 +603,10 @@ class TestTradesCreateContract:
 
         # Validate trade_type
         trade_type = trade["trade_type"]
-        assert trade_type in ["BUY", "SELL"], (
-            f"trade_type must be BUY or SELL, got {trade_type}"
-        )
+        assert trade_type in [
+            "BUY",
+            "SELL",
+        ], f"trade_type must be BUY or SELL, got {trade_type}"
 
         # Validate quantity
         quantity = trade["quantity"]
@@ -676,9 +624,11 @@ class TestTradesCreateContract:
 
         # Validate status
         status = trade["status"]
-        assert status in ["OPEN", "CLOSED", "CANCELLED"], (
-            f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
-        )
+        assert status in [
+            "OPEN",
+            "CLOSED",
+            "CANCELLED",
+        ], f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
 
         # Validate created_at
         created_at = trade["created_at"]
@@ -695,7 +645,9 @@ class TestTradesCreateContract:
 
         if "transaction_cost" in trade:
             transaction_cost = trade["transaction_cost"]
-            assert isinstance(transaction_cost, (int, float)), "transaction_cost must be number"
+            assert isinstance(
+                transaction_cost, (int, float)
+            ), "transaction_cost must be number"
             assert transaction_cost >= 0, "transaction_cost cannot be negative"
 
         if "is_paper_trade" in trade:
@@ -714,9 +666,12 @@ class TestTradesCreateContract:
 
         if "exit_reason" in trade and trade["exit_reason"] is not None:
             exit_reason = trade["exit_reason"]
-            assert exit_reason in ["STOP_LOSS", "TAKE_PROFIT", "MANUAL", "STRATEGY"], (
-                f"exit_reason must be valid enum value, got {exit_reason}"
-            )
+            assert exit_reason in [
+                "STOP_LOSS",
+                "TAKE_PROFIT",
+                "MANUAL",
+                "STRATEGY",
+            ], f"exit_reason must be valid enum value, got {exit_reason}"
 
         if "gross_pnl" in trade and trade["gross_pnl"] is not None:
             gross_pnl = trade["gross_pnl"]

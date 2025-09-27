@@ -2,6 +2,7 @@
 NIRAJ Database Configuration and Schema
 SQLite database setup with SQLAlchemy ORM
 """
+
 from typing import AsyncGenerator, Optional
 import os
 from pathlib import Path
@@ -17,7 +18,9 @@ logger = structlog.get_logger()
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/niraj.db")
-ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", "sqlite+aiosqlite:///./data/niraj.db")
+ASYNC_DATABASE_URL = os.getenv(
+    "ASYNC_DATABASE_URL", "sqlite+aiosqlite:///./data/niraj.db"
+)
 
 # Create data directory if it doesn't exist
 data_dir = Path("./data")
@@ -33,7 +36,7 @@ sync_engine = create_engine(
     echo=False,  # Set to True for SQL query logging
     pool_pre_ping=True,
     pool_recycle=3600,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
 
 # Asynchronous engine for application runtime
@@ -42,15 +45,13 @@ async_engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     pool_recycle=3600,
-    connect_args={"check_same_thread": False} if "sqlite" in ASYNC_DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in ASYNC_DATABASE_URL else {},
 )
 
 # Session makers
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
 AsyncSessionLocal = async_sessionmaker(
-    async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
+    async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 
@@ -91,10 +92,20 @@ async def init_database():
     """Initialize database with all tables"""
     try:
         # Import all models to ensure they are registered
-        from src.models import (
-            user, security, market_data, technical_indicator,
-            strategy, strategy_signal, trade, portfolio,
-            ai_model, ai_prediction, risk_metric, audit_log, configuration
+        from ..models import (  # noqa: F401
+            user,
+            security,
+            market_data,
+            technical_indicator,
+            strategy,
+            strategy_signal,
+            trade,
+            portfolio,
+            ai_model,
+            ai_prediction,
+            risk_metric,
+            audit_log,
+            configuration,
         )
 
         # Create all tables
@@ -142,6 +153,7 @@ class DatabaseManager:
         try:
             async with self.async_session_factory() as session:
                 from sqlalchemy import text
+
                 await session.execute(text("SELECT 1"))
                 return True
         except Exception as e:
@@ -168,6 +180,7 @@ class DatabaseManager:
 
         if backup_path is None:
             from datetime import datetime
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = f"./data/backups/niraj_backup_{timestamp}.db"
 
@@ -177,6 +190,7 @@ class DatabaseManager:
 
         try:
             import shutil
+
             db_path = DATABASE_URL.replace("sqlite:///", "")
             shutil.copy2(db_path, backup_path)
             logger.info("Database backup created", backup_path=backup_path)
@@ -188,8 +202,21 @@ class DatabaseManager:
     @asynccontextmanager
     async def get_connection(self):
         """Get async database connection context manager"""
-        async with self.async_session_factory() as session:
+        async with self.async_session_factory() as session:  # noqa: F841
             yield session
+
+    @asynccontextmanager
+    async def get_async_session(self):
+        """Get async database session context manager"""
+        async with self.async_session_factory() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+
+    def get_session(self):
+        """Get sync session factory for context manager usage"""
+        return self.sync_session_factory
 
 
 # Global database manager instance
@@ -216,6 +243,6 @@ DATABASE_CONFIGS = {
     },
     "testing": {
         "echo": False,
-        "database_url": "sqlite+aiosqlite:///./data/test_niraj.db"
-    }
+        "database_url": "sqlite+aiosqlite:///./data/test_niraj.db",
+    },
 }

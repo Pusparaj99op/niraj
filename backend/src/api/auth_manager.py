@@ -3,13 +3,8 @@ Authentication Manager for NIRAJ API Clients
 A comprehensive and secure credential management system for all external APIs
 
 Features:
-- Secure encrypted credential storage
-- Multi-provider authentication (Angel One, Dhan, News APIs, Weather API)
-- Automatic token refresh and rotation
-- Circuit breaker pattern for failed attempts
-- Comprehensive error handling and recovery
-- Real-time health monitoring
-- Thread-safe operations
+- Secure encrypted credential storage - Multi-provider authentication (Angel One, Dhan, News APIs, Weather API) - Automatic token refresh and rotation - Circuit breaker pattern for failed attempts - Comprehensive error handling and recovery - Real-time health monitoring -
+Thread-safe operations
 """
 
 import json
@@ -41,7 +36,7 @@ def get_logger(name: str) -> logging.Logger:
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -51,18 +46,21 @@ def get_logger(name: str) -> logging.Logger:
 
 def log_performance(name: str = None):
     """Performance logging decorator fallback"""
+
     def decorator(func):
         return func
+
     return decorator
 
 
 def get_config(path: str, default: Any = None) -> Any:
     """Configuration getter fallback"""
-    return os.getenv(path.upper().replace('.', '_'), default)
+    return os.getenv(path.upper().replace(".", "_"), default)
 
 
 class LogContext:
     """Log context manager fallback"""
+
     def __init__(self, **kwargs):
         pass
 
@@ -77,6 +75,7 @@ def _get_angel_one_client():
     """Lazy import AngelOneClient"""
     try:
         from .angel_one_client import AngelOneClient
+
         return AngelOneClient
     except ImportError:
         return None
@@ -86,6 +85,7 @@ def _get_dhan_client():
     """Lazy import DhanClient"""
     try:
         from .dhan_client import DhanClient
+
         return DhanClient
     except ImportError:
         return None
@@ -93,6 +93,7 @@ def _get_dhan_client():
 
 class AuthProvider(str, Enum):
     """Supported authentication providers"""
+
     ANGEL_ONE = "angel_one"
     DHAN = "dhan"
     NEWS_API = "news_api"
@@ -103,14 +104,16 @@ class AuthProvider(str, Enum):
 
 class AuthType(str, Enum):
     """Types of authentication mechanisms"""
+
     JWT_WITH_TOTP = "jwt_with_totp"  # Angel One style
-    BEARER_TOKEN = "bearer_token"    # Dhan style
-    API_KEY = "api_key"              # News/Weather APIs
-    OAUTH2 = "oauth2"                # Future OAuth2 support
+    BEARER_TOKEN = "bearer_token"  # Dhan style
+    API_KEY = "api_key"  # News/Weather APIs
+    OAUTH2 = "oauth2"  # Future OAuth2 support
 
 
 class CredentialStatus(str, Enum):
     """Status of credentials"""
+
     VALID = "valid"
     EXPIRED = "expired"
     INVALID = "invalid"
@@ -122,11 +125,12 @@ class CredentialStatus(str, Enum):
 @dataclass
 class Credentials:
     """Secure credential container"""
+
     provider: AuthProvider
     auth_type: AuthType
-    primary_key: str                      # API key, client code, etc.
-    secondary_key: Optional[str] = None   # Password, token, etc.
-    tertiary_key: Optional[str] = None    # TOTP secret, etc.
+    primary_key: str  # API key, client code, etc.
+    secondary_key: Optional[str] = None  # Password, token, etc.
+    tertiary_key: Optional[str] = None  # TOTP secret, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -148,8 +152,7 @@ class Credentials:
 
     def is_valid(self) -> bool:
         """Check if credentials are valid for use"""
-        return (self.status == CredentialStatus.VALID
-                and not self.is_expired())
+        return self.status == CredentialStatus.VALID and not self.is_expired()
 
     def mark_used(self):
         """Mark credentials as used"""
@@ -161,8 +164,9 @@ class Credentials:
 @dataclass
 class AuthToken:
     """Authentication token container"""
+
     provider: AuthProvider
-    token_type: str                       # Bearer, JWT, etc.
+    token_type: str  # Bearer, JWT, etc.
     access_token: str
     refresh_token: Optional[str] = None
     expires_at: Optional[datetime] = None
@@ -184,8 +188,13 @@ class AuthToken:
 # Exception Classes
 class AuthenticationManagerError(Exception):
     """Base exception for authentication manager"""
-    def __init__(self, message: str, provider: Optional[AuthProvider] = None,
-                 error_code: Optional[str] = None):
+
+    def __init__(
+        self,
+        message: str,
+        provider: Optional[AuthProvider] = None,
+        error_code: Optional[str] = None,
+    ):
         super().__init__(message)
         self.provider = provider
         self.error_code = error_code
@@ -193,31 +202,37 @@ class AuthenticationManagerError(Exception):
 
 class CredentialNotFoundError(AuthenticationManagerError):
     """Credential not found error"""
+
     pass
 
 
 class AuthenticationFailedError(AuthenticationManagerError):
     """Authentication failed error"""
+
     pass
 
 
 class TokenRefreshError(AuthenticationManagerError):
     """Token refresh error"""
+
     pass
 
 
 class EncryptionError(AuthenticationManagerError):
     """Encryption/decryption error"""
+
     pass
 
 
 class RateLimitError(AuthenticationManagerError):
     """Rate limit exceeded error"""
+
     pass
 
 
 class CircuitBreakerError(AuthenticationManagerError):
     """Circuit breaker triggered error"""
+
     pass
 
 
@@ -226,14 +241,15 @@ class CredentialStore:
     Secure credential storage with encryption
 
     Features:
-    - AES-256 encryption using Fernet
-    - PBKDF2 key derivation
-    - Atomic file operations
-    - Secure file permissions
+    - AES-256 encryption using Fernet - PBKDF2 key derivation - Atomic file operations -
+    Secure file permissions
     """
 
-    def __init__(self, master_password: Optional[str] = None,
-                 storage_path: str = "data/credentials.enc"):
+    def __init__(
+        self,
+        master_password: Optional[str] = None,
+        storage_path: str = "data/credentials.enc",
+    ):
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -244,11 +260,11 @@ class CredentialStore:
             # Use system-generated key for development
             key_file = self.storage_path.parent / "encryption.key"
             if key_file.exists():
-                with open(key_file, 'rb') as f:
+                with open(key_file, "rb") as f:
                     self.encryption_key = f.read()
             else:
                 self.encryption_key = Fernet.generate_key()
-                with open(key_file, 'wb') as f:
+                with open(key_file, "wb") as f:
                     f.write(self.encryption_key)
                 os.chmod(key_file, 0o600)  # Restrict permissions
 
@@ -275,20 +291,22 @@ class CredentialStore:
             serializable = {}
             for provider, cred in credentials.items():
                 serializable[provider] = {
-                    'provider': cred.provider.value,
-                    'auth_type': cred.auth_type.value,
-                    'primary_key': cred.primary_key,
-                    'secondary_key': cred.secondary_key,
-                    'tertiary_key': cred.tertiary_key,
-                    'metadata': cred.metadata,
-                    'created_at': cred.created_at.isoformat(),
-                    'updated_at': cred.updated_at.isoformat(),
-                    'expires_at': (cred.expires_at.isoformat()
-                                   if cred.expires_at else None),
-                    'status': cred.status.value,
-                    'usage_count': cred.usage_count,
-                    'last_used': (cred.last_used.isoformat()
-                                  if cred.last_used else None),
+                    "provider": cred.provider.value,
+                    "auth_type": cred.auth_type.value,
+                    "primary_key": cred.primary_key,
+                    "secondary_key": cred.secondary_key,
+                    "tertiary_key": cred.tertiary_key,
+                    "metadata": cred.metadata,
+                    "created_at": cred.created_at.isoformat(),
+                    "updated_at": cred.updated_at.isoformat(),
+                    "expires_at": (
+                        cred.expires_at.isoformat() if cred.expires_at else None
+                    ),
+                    "status": cred.status.value,
+                    "usage_count": cred.usage_count,
+                    "last_used": (
+                        cred.last_used.isoformat() if cred.last_used else None
+                    ),
                 }
 
             json_data = json.dumps(serializable, indent=2)
@@ -307,23 +325,25 @@ class CredentialStore:
             credentials = {}
             for provider, data in json_data.items():
                 credentials[provider] = Credentials(
-                    provider=AuthProvider(data['provider']),
-                    auth_type=AuthType(data['auth_type']),
-                    primary_key=data['primary_key'],
-                    secondary_key=data['secondary_key'],
-                    tertiary_key=data['tertiary_key'],
-                    metadata=data['metadata'],
-                    created_at=datetime.fromisoformat(data['created_at']),
-                    updated_at=datetime.fromisoformat(data['updated_at']),
+                    provider=AuthProvider(data["provider"]),
+                    auth_type=AuthType(data["auth_type"]),
+                    primary_key=data["primary_key"],
+                    secondary_key=data["secondary_key"],
+                    tertiary_key=data["tertiary_key"],
+                    metadata=data["metadata"],
+                    created_at=datetime.fromisoformat(data["created_at"]),
+                    updated_at=datetime.fromisoformat(data["updated_at"]),
                     expires_at=(
-                        datetime.fromisoformat(data['expires_at'])
-                        if data['expires_at'] else None
+                        datetime.fromisoformat(data["expires_at"])
+                        if data["expires_at"]
+                        else None
                     ),
-                    status=CredentialStatus(data['status']),
-                    usage_count=data['usage_count'],
+                    status=CredentialStatus(data["status"]),
+                    usage_count=data["usage_count"],
                     last_used=(
-                        datetime.fromisoformat(data['last_used'])
-                        if data['last_used'] else None
+                        datetime.fromisoformat(data["last_used"])
+                        if data["last_used"]
+                        else None
                     ),
                 )
 
@@ -338,8 +358,8 @@ class CredentialStore:
             encrypted_data = self._serialize_credentials(credentials)
 
             # Write to temporary file first, then move (atomic operation)
-            temp_path = self.storage_path.with_suffix('.tmp')
-            with open(temp_path, 'wb') as f:
+            temp_path = self.storage_path.with_suffix(".tmp")
+            with open(temp_path, "wb") as f:
                 f.write(encrypted_data)
 
             os.chmod(temp_path, 0o600)  # Restrict permissions
@@ -357,7 +377,7 @@ class CredentialStore:
             if not self.storage_path.exists():
                 return {}
 
-            with open(self.storage_path, 'rb') as f:
+            with open(self.storage_path, "rb") as f:
                 encrypted_data = f.read()
 
             credentials = self._deserialize_credentials(encrypted_data)
@@ -386,9 +406,12 @@ class CircuitBreaker:
     States: CLOSED -> OPEN -> HALF_OPEN -> CLOSED
     """
 
-    def __init__(self, failure_threshold: int = 3,
-                 recovery_timeout: int = 60,
-                 success_threshold: int = 2):
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        recovery_timeout: int = 60,
+        success_threshold: int = 2,
+    ):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.success_threshold = success_threshold
@@ -440,9 +463,11 @@ class CircuitBreaker:
             return True
 
         if self.state == "OPEN":
-            if (self.last_failure_time and
-                datetime.now() - self.last_failure_time >
-                timedelta(seconds=self.recovery_timeout)):
+            if (
+                self.last_failure_time
+                and datetime.now() - self.last_failure_time
+                > timedelta(seconds=self.recovery_timeout)
+            ):
                 self.state = "HALF_OPEN"
                 self.success_count = 0
                 self.logger.info("Circuit breaker entering HALF_OPEN state")
@@ -460,18 +485,15 @@ class AuthenticationManager:
     Comprehensive authentication manager for all external APIs
 
     Features:
-    - Secure credential storage with encryption
-    - Automatic token refresh and rotation
-    - Multiple authentication patterns support
-    - Circuit breaker for failed authentication attempts
-    - Detailed logging and monitoring
-    - Thread-safe operations
-    - Credential validation and health checks
-    - Rate limiting and retry logic
+    - Secure credential storage with encryption - Automatic token refresh and rotation - Multiple authentication patterns support - Circuit breaker for failed authentication attempts - Detailed logging and monitoring - Thread-safe operations - Credential validation and health checks -
+    Rate limiting and retry logic
     """
 
-    def __init__(self, master_password: Optional[str] = None,
-                 storage_path: str = "data/credentials.enc"):
+    def __init__(
+        self,
+        master_password: Optional[str] = None,
+        storage_path: str = "data/credentials.enc",
+    ):
         self.logger = get_logger("niraj.auth_manager")
         self.session_id = secrets.token_hex(16)
 
@@ -533,11 +555,16 @@ class AuthenticationManager:
             self.circuit_breakers[provider_key] = CircuitBreaker()
         return self.circuit_breakers[provider_key]
 
-    def add_credentials(self, provider: AuthProvider, auth_type: AuthType,
-                       primary_key: str, secondary_key: Optional[str] = None,
-                       tertiary_key: Optional[str] = None,
-                       metadata: Optional[Dict] = None,
-                       expires_at: Optional[datetime] = None) -> None:
+    def add_credentials(
+        self,
+        provider: AuthProvider,
+        auth_type: AuthType,
+        primary_key: str,
+        secondary_key: Optional[str] = None,
+        tertiary_key: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
         """
         Add new credentials for a provider
 
@@ -558,7 +585,7 @@ class AuthenticationManager:
                 secondary_key=secondary_key,
                 tertiary_key=tertiary_key,
                 metadata=metadata or {},
-                expires_at=expires_at
+                expires_at=expires_at,
             )
 
             self.credentials[provider.value] = credentials
@@ -574,8 +601,9 @@ class AuthenticationManager:
 
         except Exception as e:
             self.logger.error(f"Failed to add credentials for {provider.value}: {e}")
-            raise AuthenticationManagerError(f"Failed to add credentials: {e}",
-                                           provider)
+            raise AuthenticationManagerError(
+                f"Failed to add credentials: {e}", provider
+            )
 
     def get_credentials(self, provider: AuthProvider) -> Optional[Credentials]:
         """Get credentials for a provider"""
@@ -596,14 +624,19 @@ class AuthenticationManager:
                 if provider.value in self.circuit_breakers:
                     del self.circuit_breakers[provider.value]
 
-                self.logger.info(f"Credentials removed successfully (provider: {provider.value})")
+                self.logger.info(
+                    f"Credentials removed successfully (provider: {provider.value})"
+                )
             else:
-                self.logger.warning(f"Credentials not found for removal (provider: {provider.value})")
+                self.logger.warning(
+                    f"Credentials not found for removal (provider: {provider.value})"
+                )
 
         except Exception as e:
             self.logger.error(f"Failed to remove credentials for {provider.value}: {e}")
-            raise AuthenticationManagerError(f"Failed to remove credentials: {e}",
-                                           provider)
+            raise AuthenticationManagerError(
+                f"Failed to remove credentials: {e}", provider
+            )
 
     def _generate_totp_code(self, secret: str) -> str:
         """Generate TOTP code from secret"""
@@ -614,10 +647,9 @@ class AuthenticationManager:
             self.logger.error(f"Failed to generate TOTP code: {e}")
             raise AuthenticationManagerError(f"Failed to generate TOTP: {e}")
 
-    async def _retry_with_exponential_backoff(self,
-                                            operation,
-                                            provider: AuthProvider,
-                                            max_attempts: Optional[int] = None) -> Any:
+    async def _retry_with_exponential_backoff(
+        self, operation, provider: AuthProvider, max_attempts: Optional[int] = None
+    ) -> Any:
         """Execute operation with exponential backoff retry"""
         if max_attempts is None:
             max_attempts = self.max_retry_attempts
@@ -631,25 +663,26 @@ class AuthenticationManager:
                 last_exception = e
 
                 if attempt < max_attempts - 1:
-                    delay = self.retry_delay_base * (2 ** attempt)
+                    delay = self.retry_delay_base * (2**attempt)
                     self.logger.warning(
                         f"Attempt {attempt + 1} failed, retrying in {delay}s",
                         provider=provider.value,
-                        error=str(e)
+                        error=str(e),
                     )
                     await asyncio.sleep(delay)
                 else:
                     self.logger.error(
                         f"All {max_attempts} attempts failed",
                         provider=provider.value,
-                        error=str(e)
+                        error=str(e),
                     )
 
         raise last_exception
 
     @log_performance("auth_manager_authenticate")
-    async def authenticate(self, provider: AuthProvider,
-                          force_refresh: bool = False) -> AuthToken:
+    async def authenticate(
+        self, provider: AuthProvider, force_refresh: bool = False
+    ) -> AuthToken:
         """
         Authenticate with a provider and get valid token
 
@@ -668,7 +701,7 @@ class AuthenticationManager:
         with LogContext(
             session_id=self.session_id,
             provider=provider.value,
-            operation="authenticate"
+            operation="authenticate",
         ):
             # Check circuit breaker
             circuit_breaker = self._get_circuit_breaker(provider)
@@ -681,7 +714,9 @@ class AuthenticationManager:
             if not force_refresh and provider.value in self.tokens:
                 token = self.tokens[provider.value]
                 if token.is_valid():
-                    self.logger.debug(f"Using cached valid token (provider: {provider.value})")
+                    self.logger.debug(
+                        f"Using cached valid token (provider: {provider.value})"
+                    )
                     return token
 
             # Get credentials
@@ -693,8 +728,7 @@ class AuthenticationManager:
 
             if not credentials.is_valid():
                 raise AuthenticationFailedError(
-                    f"Credentials for {provider.value} are invalid or expired",
-                    provider
+                    f"Credentials for {provider.value} are invalid or expired", provider
                 )
 
             try:
@@ -720,7 +754,7 @@ class AuthenticationManager:
                 self.logger.info(
                     "Authentication successful",
                     provider=provider.value,
-                    token_expires_at=expires_info
+                    token_expires_at=expires_info,
                 )
 
                 return token
@@ -728,8 +762,7 @@ class AuthenticationManager:
             except Exception as e:
                 circuit_breaker.call_failed()
                 self.logger.error(f"Authentication failed for {provider.value}: {e}")
-                raise AuthenticationFailedError(f"Authentication failed: {e}",
-                                              provider)
+                raise AuthenticationFailedError(f"Authentication failed: {e}", provider)
 
     async def _perform_authentication(self, credentials: Credentials) -> AuthToken:
         """Perform actual authentication based on credential type"""
@@ -742,7 +775,7 @@ class AuthenticationManager:
             AuthProvider.NEWS_API,
             AuthProvider.FINANCIAL_MODELING_PREP,
             AuthProvider.ALPHA_VANTAGE,
-            AuthProvider.WEATHER_API
+            AuthProvider.WEATHER_API,
         ]:
             return self._authenticate_api_key(credentials)
         else:
@@ -763,10 +796,11 @@ class AuthenticationManager:
             if credentials.provider.value not in self.clients:
                 self.clients[credentials.provider.value] = AngelOneClient(
                     api_key=credentials.primary_key,
-                    client_code=credentials.metadata.get('client_code',
-                                                         credentials.primary_key),
+                    client_code=credentials.metadata.get(
+                        "client_code", credentials.primary_key
+                    ),
                     client_pin=credentials.secondary_key,
-                    totp_secret=credentials.tertiary_key
+                    totp_secret=credentials.tertiary_key,
                 )
 
             client = self.clients[credentials.provider.value]
@@ -780,9 +814,9 @@ class AuthenticationManager:
             response = await client.login(totp_code)
 
             # Extract token information
-            data = response.get('data', {})
-            access_token = data.get('jwtToken')
-            refresh_token = data.get('refreshToken')
+            data = response.get("data", {})
+            access_token = data.get("jwtToken")
+            refresh_token = data.get("refreshToken")
 
             if not access_token:
                 raise AuthenticationFailedError(
@@ -798,7 +832,7 @@ class AuthenticationManager:
                 access_token=access_token,
                 refresh_token=refresh_token,
                 expires_at=expires_at,
-                metadata={'feed_token': data.get('feedToken')}
+                metadata={"feed_token": data.get("feedToken")},
             )
 
         except Exception as e:
@@ -817,7 +851,7 @@ class AuthenticationManager:
             if credentials.provider.value not in self.clients:
                 self.clients[credentials.provider.value] = DhanClient(
                     client_id=credentials.primary_key,
-                    access_token=credentials.secondary_key
+                    access_token=credentials.secondary_key,
                 )
 
             client = self.clients[credentials.provider.value]
@@ -833,7 +867,7 @@ class AuthenticationManager:
                 token_type="Bearer",
                 access_token=credentials.secondary_key,
                 expires_at=expires_at,
-                metadata={'client_id': credentials.primary_key}
+                metadata={"client_id": credentials.primary_key},
             )
 
         except Exception as e:
@@ -849,7 +883,7 @@ class AuthenticationManager:
             token_type="ApiKey",
             access_token=credentials.primary_key,
             expires_at=expires_at,
-            metadata=credentials.metadata.copy()
+            metadata=credentials.metadata.copy(),
         )
 
     async def get_client(self, provider: AuthProvider, **kwargs) -> Any:
@@ -871,7 +905,7 @@ class AuthenticationManager:
             client = self.clients[provider.value]
 
             # Update client with fresh token if needed
-            if hasattr(client, 'update_token'):
+            if hasattr(client, "update_token"):
                 client.update_token(token.access_token)
 
             return client
@@ -887,8 +921,13 @@ class AuthenticationManager:
         self.clients[provider.value] = client
         return client
 
-    def _create_client(self, provider: AuthProvider, credentials: Credentials,
-                      token: AuthToken, **kwargs) -> Any:
+    def _create_client(
+        self,
+        provider: AuthProvider,
+        credentials: Credentials,
+        token: AuthToken,
+        **kwargs,
+    ) -> Any:
         """Create client instance for provider"""
 
         if provider == AuthProvider.ANGEL_ONE:
@@ -899,11 +938,12 @@ class AuthenticationManager:
                 )
             return AngelOneClient(
                 api_key=credentials.primary_key,
-                client_code=credentials.metadata.get('client_code',
-                                                     credentials.primary_key),
+                client_code=credentials.metadata.get(
+                    "client_code", credentials.primary_key
+                ),
                 client_pin=credentials.secondary_key,
                 totp_secret=credentials.tertiary_key,
-                **kwargs
+                **kwargs,
             )
 
         elif provider == AuthProvider.DHAN:
@@ -915,7 +955,7 @@ class AuthenticationManager:
             return DhanClient(
                 client_id=credentials.primary_key,
                 access_token=token.access_token,
-                **kwargs
+                **kwargs,
             )
 
         else:
@@ -923,8 +963,9 @@ class AuthenticationManager:
                 f"Client creation not implemented for {provider.value}"
             )
 
-    async def health_check(self,
-                          provider: Optional[AuthProvider] = None) -> Dict[str, Any]:
+    async def health_check(
+        self, provider: Optional[AuthProvider] = None
+    ) -> Dict[str, Any]:
         """
         Perform comprehensive health check on authentication system
 
@@ -935,40 +976,42 @@ class AuthenticationManager:
             Health check results with detailed status information
         """
         results = {
-            'timestamp': datetime.now().isoformat(),
-            'session_id': self.session_id,
-            'overall_status': 'healthy',
-            'providers': {},
-            'summary': {
-                'total_providers': 0,
-                'healthy_providers': 0,
-                'degraded_providers': 0,
-                'unhealthy_providers': 0,
-            }
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self.session_id,
+            "overall_status": "healthy",
+            "providers": {},
+            "summary": {
+                "total_providers": 0,
+                "healthy_providers": 0,
+                "degraded_providers": 0,
+                "unhealthy_providers": 0,
+            },
         }
 
-        providers_to_check = [provider] if provider else [
-            AuthProvider(p) for p in self.credentials.keys()
-        ]
+        providers_to_check = (
+            [provider]
+            if provider
+            else [AuthProvider(p) for p in self.credentials.keys()]
+        )
 
         for prov in providers_to_check:
             provider_status = await self._check_provider_health(prov)
-            results['providers'][prov.value] = provider_status
+            results["providers"][prov.value] = provider_status
 
             # Update summary
-            results['summary']['total_providers'] += 1
-            if provider_status['status'] == 'healthy':
-                results['summary']['healthy_providers'] += 1
-            elif provider_status['status'] == 'degraded':
-                results['summary']['degraded_providers'] += 1
+            results["summary"]["total_providers"] += 1
+            if provider_status["status"] == "healthy":
+                results["summary"]["healthy_providers"] += 1
+            elif provider_status["status"] == "degraded":
+                results["summary"]["degraded_providers"] += 1
             else:
-                results['summary']['unhealthy_providers'] += 1
+                results["summary"]["unhealthy_providers"] += 1
 
         # Determine overall status
-        if results['summary']['unhealthy_providers'] > 0:
-            results['overall_status'] = 'unhealthy'
-        elif results['summary']['degraded_providers'] > 0:
-            results['overall_status'] = 'degraded'
+        if results["summary"]["unhealthy_providers"] > 0:
+            results["overall_status"] = "unhealthy"
+        elif results["summary"]["degraded_providers"] > 0:
+            results["overall_status"] = "degraded"
 
         return results
 
@@ -979,8 +1022,8 @@ class AuthenticationManager:
             cred = self.get_credentials(provider)
             if not cred:
                 return {
-                    'status': 'no_credentials',
-                    'message': 'No credentials configured'
+                    "status": "no_credentials",
+                    "message": "No credentials configured",
                 }
 
             # Check circuit breaker
@@ -989,90 +1032,94 @@ class AuthenticationManager:
 
             if circuit_status == "OPEN":
                 return {
-                    'status': 'circuit_open',
-                    'message': 'Circuit breaker is open due to failures',
-                    'circuit_state': circuit_status,
-                    'failure_count': circuit_breaker.failure_count,
-                    'last_failure': (circuit_breaker.last_failure_time.isoformat()
-                                   if circuit_breaker.last_failure_time else None)
+                    "status": "circuit_open",
+                    "message": "Circuit breaker is open due to failures",
+                    "circuit_state": circuit_status,
+                    "failure_count": circuit_breaker.failure_count,
+                    "last_failure": (
+                        circuit_breaker.last_failure_time.isoformat()
+                        if circuit_breaker.last_failure_time
+                        else None
+                    ),
                 }
 
             # Check token validity
             token = self.tokens.get(provider.value)
             if token and token.is_valid():
-                token_status = 'valid'
+                token_status = "valid"
             elif token and token.is_expired():
-                token_status = 'expired'
+                token_status = "expired"
             else:
-                token_status = 'none'
+                token_status = "none"
 
             # Test authentication (only for critical providers)
-            auth_test = 'not_tested'
+            auth_test = "not_tested"
             if provider in [AuthProvider.ANGEL_ONE, AuthProvider.DHAN]:
                 try:
                     await self.authenticate(provider)
-                    auth_test = 'success'
+                    auth_test = "success"
                 except Exception as e:
-                    auth_test = f'failed: {str(e)[:100]}'
+                    auth_test = f"failed: {str(e)[:100]}"
 
             # Determine status
-            if auth_test == 'success' or (auth_test == 'not_tested' and
-                                        cred.is_valid() and
-                                        token_status == 'valid'):
-                status = 'healthy'
-            elif auth_test.startswith('failed') or token_status == 'expired':
-                status = 'degraded'
+            if auth_test == "success" or (
+                auth_test == "not_tested"
+                and cred.is_valid()
+                and token_status == "valid"
+            ):
+                status = "healthy"
+            elif auth_test.startswith("failed") or token_status == "expired":
+                status = "degraded"
             else:
-                status = 'unhealthy'
+                status = "unhealthy"
 
             return {
-                'status': status,
-                'credentials_valid': cred.is_valid(),
-                'credentials_expires': (
+                "status": status,
+                "credentials_valid": cred.is_valid(),
+                "credentials_expires": (
                     cred.expires_at.isoformat() if cred.expires_at else None
                 ),
-                'token_status': token_status,
-                'token_expires': (
-                    token.expires_at.isoformat()
-                    if token and token.expires_at else None
+                "token_status": token_status,
+                "token_expires": (
+                    token.expires_at.isoformat() if token and token.expires_at else None
                 ),
-                'auth_test': auth_test,
-                'usage_count': cred.usage_count,
-                'last_used': cred.last_used.isoformat() if cred.last_used else None,
-                'circuit_state': circuit_status,
-                'failure_count': circuit_breaker.failure_count
+                "auth_test": auth_test,
+                "usage_count": cred.usage_count,
+                "last_used": cred.last_used.isoformat() if cred.last_used else None,
+                "circuit_state": circuit_status,
+                "failure_count": circuit_breaker.failure_count,
             }
 
         except Exception as e:
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
     def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive authentication manager statistics"""
         circuit_stats = {}
         for provider_key, circuit in self.circuit_breakers.items():
             circuit_stats[provider_key] = {
-                'state': circuit.state,
-                'failure_count': circuit.failure_count,
-                'success_count': circuit.success_count,
-                'last_failure': (circuit.last_failure_time.isoformat()
-                               if circuit.last_failure_time else None)
+                "state": circuit.state,
+                "failure_count": circuit.failure_count,
+                "success_count": circuit.success_count,
+                "last_failure": (
+                    circuit.last_failure_time.isoformat()
+                    if circuit.last_failure_time
+                    else None
+                ),
             }
 
         return {
-            'session_id': self.session_id,
-            'credential_count': len(self.credentials),
-            'cached_tokens': len(self.tokens),
-            'active_clients': len(self.clients),
-            'circuit_breakers': circuit_stats,
-            'configuration': {
-                'max_retry_attempts': self.max_retry_attempts,
-                'retry_delay_base': self.retry_delay_base,
-                'token_refresh_buffer_minutes': self.token_refresh_buffer_minutes,
-                'health_check_interval': self.health_check_interval
-            }
+            "session_id": self.session_id,
+            "credential_count": len(self.credentials),
+            "cached_tokens": len(self.tokens),
+            "active_clients": len(self.clients),
+            "circuit_breakers": circuit_stats,
+            "configuration": {
+                "max_retry_attempts": self.max_retry_attempts,
+                "retry_delay_base": self.retry_delay_base,
+                "token_refresh_buffer_minutes": self.token_refresh_buffer_minutes,
+                "health_check_interval": self.health_check_interval,
+            },
         }
 
     async def start_background_tasks(self):
@@ -1086,9 +1133,7 @@ class AuthenticationManager:
 
             # Start health check task
             if not self._health_check_task or self._health_check_task.done():
-                self._health_check_task = asyncio.create_task(
-                    self._health_check_loop()
-                )
+                self._health_check_task = asyncio.create_task(self._health_check_loop())
 
             self.logger.info("Background tasks started")
 
@@ -1110,7 +1155,9 @@ class AuthenticationManager:
                             provider = AuthProvider(provider_key)
                             try:
                                 await self.authenticate(provider, force_refresh=True)
-                                self.logger.info(f"Auto-refreshed token for {provider_key}")
+                                self.logger.info(
+                                    f"Auto-refreshed token for {provider_key}"
+                                )
                             except Exception as e:
                                 self.logger.warning(
                                     f"Failed to auto-refresh token for {provider_key}: {e}"
@@ -1130,11 +1177,11 @@ class AuthenticationManager:
                 health_results = await self.health_check()
 
                 # Log health status
-                overall_status = health_results['overall_status']
-                if overall_status != 'healthy':
+                overall_status = health_results["overall_status"]
+                if overall_status != "healthy":
                     self.logger.warning(
                         f"Authentication system health: {overall_status}",
-                        summary=health_results['summary']
+                        summary=health_results["summary"],
                     )
 
                 await asyncio.sleep(self.health_check_interval)
@@ -1164,7 +1211,7 @@ class AuthenticationManager:
             # Close all clients
             for client in self.clients.values():
                 try:
-                    if hasattr(client, 'close'):
+                    if hasattr(client, "close"):
                         await client.close()
                 except Exception as e:
                     self.logger.warning(f"Error closing client: {e}")
@@ -1193,18 +1240,16 @@ def create_auth_manager(master_password: Optional[str] = None) -> Authentication
     return AuthenticationManager(master_password)
 
 
-async def setup_development_credentials(
-    auth_manager: AuthenticationManager
-) -> None:
+def setup_development_credentials(auth_manager: AuthenticationManager) -> None:
     """Setup development credentials from configuration"""
     try:
         logger = get_logger("niraj.auth_manager.setup")
 
         # Angel One
-        angel_api_key = get_config('brokers.angel_one.api_key')
-        angel_client_code = get_config('brokers.angel_one.client_code')
-        angel_password = get_config('brokers.angel_one.password')
-        angel_totp_secret = get_config('brokers.angel_one.totp_secret')
+        angel_api_key = get_config("brokers.angel_one.api_key")
+        angel_client_code = get_config("brokers.angel_one.client_code")
+        angel_password = get_config("brokers.angel_one.password")
+        angel_totp_secret = get_config("brokers.angel_one.totp_secret")
 
         if angel_api_key and angel_client_code and angel_password:
             auth_manager.add_credentials(
@@ -1213,40 +1258,40 @@ async def setup_development_credentials(
                 primary_key=angel_api_key,
                 secondary_key=angel_password,
                 tertiary_key=angel_totp_secret,
-                metadata={'client_code': angel_client_code}
+                metadata={"client_code": angel_client_code},
             )
             logger.info("Added Angel One credentials")
 
         # Dhan
-        dhan_client_id = get_config('brokers.dhan.client_id')
-        dhan_token = get_config('brokers.dhan.access_token')
+        dhan_client_id = get_config("brokers.dhan.client_id")
+        dhan_token = get_config("brokers.dhan.access_token")
 
         if dhan_client_id and dhan_token:
             auth_manager.add_credentials(
                 provider=AuthProvider.DHAN,
                 auth_type=AuthType.BEARER_TOKEN,
                 primary_key=dhan_client_id,
-                secondary_key=dhan_token
+                secondary_key=dhan_token,
             )
             logger.info("Added Dhan credentials")
 
         # News API
-        news_api_key = get_config('news_api_key')
+        news_api_key = get_config("news_api_key")
         if news_api_key:
             auth_manager.add_credentials(
                 provider=AuthProvider.NEWS_API,
                 auth_type=AuthType.API_KEY,
-                primary_key=news_api_key
+                primary_key=news_api_key,
             )
             logger.info("Added News API credentials")
 
         # Weather API
-        weather_api_key = get_config('weather_api_key')
+        weather_api_key = get_config("weather_api_key")
         if weather_api_key:
             auth_manager.add_credentials(
                 provider=AuthProvider.WEATHER_API,
                 auth_type=AuthType.API_KEY,
-                primary_key=weather_api_key
+                primary_key=weather_api_key,
             )
             logger.info("Added Weather API credentials")
 

@@ -36,7 +36,7 @@ from ..models.configuration import (
     ConfigurationUpdateRequest,
     ConfigurationResponse,
     ConfigurationQueryRequest,
-    ConfigurationBulkResponse
+    ConfigurationBulkResponse,
 )
 from ..core.database_manager import DatabaseManager
 from ..core.cache import CacheManager
@@ -47,6 +47,7 @@ logger = get_logger(__name__)
 
 class ConfigChangeType(Enum):
     """Configuration change types for audit trail"""
+
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
@@ -59,6 +60,7 @@ class ConfigChangeType(Enum):
 @dataclass
 class ConfigChange:
     """Configuration change record"""
+
     config_id: str
     change_type: ConfigChangeType
     old_value: Optional[Any] = None
@@ -72,6 +74,7 @@ class ConfigChange:
 @dataclass
 class ConfigValidationRule:
     """Configuration validation rule"""
+
     key_pattern: str
     validator: Callable[[Any], bool]
     error_message: str
@@ -81,6 +84,7 @@ class ConfigValidationRule:
 @dataclass
 class ConfigCacheEntry:
     """Configuration cache entry"""
+
     config: Configuration
     cached_at: datetime
     ttl_seconds: int
@@ -89,7 +93,9 @@ class ConfigCacheEntry:
 
     @property
     def is_expired(self) -> bool:
-        return datetime.utcnow() > (self.cached_at + timedelta(seconds=self.ttl_seconds))
+        return datetime.utcnow() > (
+            self.cached_at + timedelta(seconds=self.ttl_seconds)
+        )
 
     def touch(self):
         """Update access statistics"""
@@ -124,7 +130,7 @@ class ConfigurationService:
         default_cache_ttl: int = 300,  # 5 minutes
         enable_notifications: bool = True,
         max_cache_entries: int = 10000,
-        config_file_path: Optional[str] = None
+        config_file_path: Optional[str] = None,
     ):
         self.db_manager = db_manager
         self.cache_manager = cache_manager
@@ -153,7 +159,7 @@ class ConfigurationService:
             cache_ttl=default_cache_ttl,
             max_cache_entries=max_cache_entries,
             encryption_enabled=bool(encryption_key),
-            notifications_enabled=enable_notifications
+            notifications_enabled=enable_notifications,
         )
 
     def _initialize_service(self):
@@ -186,40 +192,40 @@ class ConfigurationService:
                 key_pattern=r".*\.url$",
                 validator=lambda v: self._validate_url(v),
                 error_message="Invalid URL format",
-                apply_to_types={ConfigType.STRING, ConfigType.URL}
+                apply_to_types={ConfigType.STRING, ConfigType.URL},
             ),
-
             # Email validation
             ConfigValidationRule(
                 key_pattern=r".*\.email$",
                 validator=lambda v: self._validate_email(v),
                 error_message="Invalid email format",
-                apply_to_types={ConfigType.STRING, ConfigType.EMAIL}
+                apply_to_types={ConfigType.STRING, ConfigType.EMAIL},
             ),
-
             # Port validation
             ConfigValidationRule(
                 key_pattern=r".*\.port$",
                 validator=lambda v: isinstance(v, int) and 1 <= v <= 65535,
                 error_message="Port must be between 1 and 65535",
-                apply_to_types={ConfigType.INTEGER}
+                apply_to_types={ConfigType.INTEGER},
             ),
-
             # Percentage validation
             ConfigValidationRule(
                 key_pattern=r".*\.percent.*",
                 validator=lambda v: isinstance(v, (int, float)) and 0 <= v <= 100,
                 error_message="Percentage must be between 0 and 100",
-                apply_to_types={ConfigType.PERCENTAGE, ConfigType.FLOAT}
+                apply_to_types={ConfigType.PERCENTAGE, ConfigType.FLOAT},
             ),
-
             # API key validation (length check)
             ConfigValidationRule(
                 key_pattern=r".*\.(api_key|token|secret)$",
                 validator=lambda v: len(str(v)) >= 8,
                 error_message="API key must be at least 8 characters long",
-                apply_to_types={ConfigType.API_KEY, ConfigType.PASSWORD, ConfigType.STRING}
-            )
+                apply_to_types={
+                    ConfigType.API_KEY,
+                    ConfigType.PASSWORD,
+                    ConfigType.STRING,
+                },
+            ),
         ]
 
         for rule in rules:
@@ -227,16 +233,17 @@ class ConfigurationService:
 
     def _validate_url(self, url: str) -> bool:
         """Validate URL format"""
-        url_pattern = r'^https?://(?:[-\w.])+(?::[0-9]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:[\w.])*)?)?$'
+        url_pattern = r"^https?://(?:[-\w.])+(?::[0-9]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:[\w.])*)?)?$"
         return bool(re.match(url_pattern, str(url)))
 
     def _validate_email(self, email: str) -> bool:
         """Validate email format"""
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         return bool(re.match(email_pattern, str(email)))
 
     def _start_cache_cleanup_task(self):
         """Start background cache cleanup task"""
+
         def cleanup_task():
             while True:
                 try:
@@ -246,6 +253,7 @@ class ConfigurationService:
                     logger.error("Cache cleanup task error", error=str(e))
 
         import threading
+
         cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
         cleanup_thread.start()
 
@@ -256,8 +264,7 @@ class ConfigurationService:
 
         with self._cache_lock:
             expired_keys = [
-                key for key, entry in self._cache.items()
-                if entry.is_expired
+                key for key, entry in self._cache.items() if entry.is_expired
             ]
 
             for key in expired_keys:
@@ -267,8 +274,7 @@ class ConfigurationService:
             # Also cleanup least recently used if cache is too large
             if len(self._cache) > self.max_cache_entries:
                 sorted_entries = sorted(
-                    self._cache.items(),
-                    key=lambda x: x[1].last_accessed
+                    self._cache.items(), key=lambda x: x[1].last_accessed
                 )
 
                 excess_count = len(self._cache) - self.max_cache_entries
@@ -284,8 +290,10 @@ class ConfigurationService:
     async def _load_config_file(self):
         """Load configuration from file"""
         try:
-            with open(self.config_file_path, 'r') as f:
-                if self.config_file_path.endswith('.yaml') or self.config_file_path.endswith('.yml'):
+            with open(self.config_file_path, "r") as f:
+                if self.config_file_path.endswith(
+                    ".yaml"
+                ) or self.config_file_path.endswith(".yml"):
                     config_data = yaml.safe_load(f)
                 else:
                     config_data = json.load(f)
@@ -299,9 +307,7 @@ class ConfigurationService:
     # Core CRUD Operations
 
     async def create_configuration(
-        self,
-        request: ConfigurationCreateRequest,
-        user_id: Optional[str] = None
+        self, request: ConfigurationCreateRequest, user_id: Optional[str] = None
     ) -> ConfigurationResponse:
         """Create a new configuration"""
         try:
@@ -310,16 +316,13 @@ class ConfigurationService:
 
             # Check if configuration already exists
             existing = await self.get_configuration(
-                request.key,
-                request.environment,
-                request.scope,
-                request.scope_id
+                request.key, request.environment, request.scope, request.scope_id
             )
 
             if existing:
                 raise ConfigValidationError(
                     f"Configuration with key '{request.key}' already exists",
-                    key=request.key
+                    key=request.key,
                 )
 
             # Create configuration object
@@ -342,7 +345,7 @@ class ConfigurationService:
                 effective_until=request.effective_until,
                 metadata=request.metadata or {},
                 tags=request.tags or [],
-                created_by=user_id
+                created_by=user_id,
             )
 
             # Apply custom validation rules
@@ -364,7 +367,7 @@ class ConfigurationService:
                 change_type=ConfigChangeType.CREATED,
                 new_value=config.get_display_value(),
                 user_id=user_id,
-                reason="Configuration created"
+                reason="Configuration created",
             )
             await self._record_change(change)
 
@@ -374,10 +377,7 @@ class ConfigurationService:
             self._metrics["configurations_created"] += 1
 
             logger.info(
-                "Configuration created",
-                key=config.key,
-                id=config.id,
-                user_id=user_id
+                "Configuration created", key=config.key, id=config.id, user_id=user_id
             )
 
             return ConfigurationResponse.model_validate(config.to_dict())
@@ -395,7 +395,7 @@ class ConfigurationService:
         scope: str = "system",
         scope_id: Optional[str] = None,
         include_sensitive: bool = False,
-        use_cache: bool = True
+        use_cache: bool = True,
     ) -> Optional[ConfigurationResponse]:
         """Get configuration by key with scope hierarchy"""
         try:
@@ -418,20 +418,27 @@ class ConfigurationService:
                 (key, environment, "system", None),
                 (key, "global", scope, scope_id),
                 (key, "global", scope, None),
-                (key, "global", "system", None)
+                (key, "global", "system", None),
             ]
 
             async with self._get_db_session() as session:
-                for search_key, search_env, search_scope, search_scope_id in search_configs:
+                for (
+                    search_key,
+                    search_env,
+                    search_scope,
+                    search_scope_id,
+                ) in search_configs:
                     query = session.query(ConfigurationORM).filter(
                         ConfigurationORM.key == search_key,
                         ConfigurationORM.environment == search_env,
                         ConfigurationORM.scope == search_scope,
-                        ConfigurationORM.is_active
+                        ConfigurationORM.is_active,
                     )
 
                     if search_scope_id:
-                        query = query.filter(ConfigurationORM.scope_id == search_scope_id)
+                        query = query.filter(
+                            ConfigurationORM.scope_id == search_scope_id
+                        )
                     else:
                         query = query.filter(ConfigurationORM.scope_id.is_(None))
 
@@ -467,18 +474,25 @@ class ConfigurationService:
         environment: str = "global",
         scope: str = "system",
         scope_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> ConfigurationResponse:
         """Update existing configuration"""
         try:
             # Get existing configuration
-            existing = await self.get_configuration(key, environment, scope, scope_id, include_sensitive=True, use_cache=False)
+            existing = await self.get_configuration(
+                key,
+                environment,
+                scope,
+                scope_id,
+                include_sensitive=True,
+                use_cache=False,
+            )
             if not existing:
                 raise ConfigNotFoundError(
                     f"Configuration '{key}' not found",
                     key=key,
                     environment=environment,
-                    scope=scope
+                    scope=scope,
                 )
 
             async with self._get_db_session() as session:
@@ -486,7 +500,7 @@ class ConfigurationService:
                     ConfigurationORM.key == key,
                     ConfigurationORM.environment == environment,
                     ConfigurationORM.scope == scope,
-                    ConfigurationORM.is_active
+                    ConfigurationORM.is_active,
                 )
 
                 if scope_id:
@@ -497,7 +511,9 @@ class ConfigurationService:
                 orm_config = query.first()
 
                 if not orm_config:
-                    raise ConfigNotFoundError(f"Configuration '{key}' not found in database")
+                    raise ConfigNotFoundError(
+                        f"Configuration '{key}' not found in database"
+                    )
 
                 # Check if readonly
                 if orm_config.is_readonly:
@@ -514,7 +530,7 @@ class ConfigurationService:
                         key=orm_config.key,
                         config_type=ConfigType(orm_config.config_type),
                         value=request.value,
-                        validation_rules=orm_config.validation_rules
+                        validation_rules=orm_config.validation_rules,
                     )
                     temp_config.validate_value()
 
@@ -570,7 +586,7 @@ class ConfigurationService:
                     old_value=old_value,
                     new_value=updated_config.get_display_value(include_sensitive=True),
                     user_id=user_id,
-                    reason=request.change_reason or "Configuration updated"
+                    reason=request.change_reason or "Configuration updated",
                 )
                 await self._record_change(change)
 
@@ -583,7 +599,7 @@ class ConfigurationService:
                     "Configuration updated",
                     key=key,
                     id=updated_config.id,
-                    user_id=user_id
+                    user_id=user_id,
                 )
 
                 return ConfigurationResponse.model_validate(updated_config.to_dict())
@@ -601,7 +617,7 @@ class ConfigurationService:
         scope: str = "system",
         scope_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        soft_delete: bool = True
+        soft_delete: bool = True,
     ) -> bool:
         """Delete configuration (soft or hard delete)"""
         try:
@@ -610,7 +626,7 @@ class ConfigurationService:
                     ConfigurationORM.key == key,
                     ConfigurationORM.environment == environment,
                     ConfigurationORM.scope == scope,
-                    ConfigurationORM.is_active
+                    ConfigurationORM.is_active,
                 )
 
                 if scope_id:
@@ -650,7 +666,7 @@ class ConfigurationService:
                     change_type=ConfigChangeType.DELETED,
                     old_value=old_value,
                     user_id=user_id,
-                    reason=f"Configuration deleted ({'soft' if soft_delete else 'hard'})"
+                    reason=f"Configuration deleted ({'soft' if soft_delete else 'hard'})",
                 )
                 await self._record_change(change)
 
@@ -663,7 +679,7 @@ class ConfigurationService:
                     "Configuration deleted",
                     key=key,
                     soft_delete=soft_delete,
-                    user_id=user_id
+                    user_id=user_id,
                 )
 
                 return True
@@ -677,8 +693,7 @@ class ConfigurationService:
     # Advanced Query Operations
 
     async def query_configurations(
-        self,
-        request: ConfigurationQueryRequest
+        self, request: ConfigurationQueryRequest
     ) -> List[ConfigurationResponse]:
         """Query configurations with advanced filtering"""
         try:
@@ -690,10 +705,14 @@ class ConfigurationService:
                     query = query.filter(ConfigurationORM.key == request.key)
 
                 if request.category:
-                    query = query.filter(ConfigurationORM.category == request.category.value)
+                    query = query.filter(
+                        ConfigurationORM.category == request.category.value
+                    )
 
                 if request.environment:
-                    query = query.filter(ConfigurationORM.environment == request.environment.value)
+                    query = query.filter(
+                        ConfigurationORM.environment == request.environment.value
+                    )
 
                 if request.scope:
                     query = query.filter(ConfigurationORM.scope == request.scope.value)
@@ -702,20 +721,28 @@ class ConfigurationService:
                     query = query.filter(ConfigurationORM.scope_id == request.scope_id)
 
                 if request.config_type:
-                    query = query.filter(ConfigurationORM.config_type == request.config_type.value)
+                    query = query.filter(
+                        ConfigurationORM.config_type == request.config_type.value
+                    )
 
                 if request.is_required is not None:
-                    query = query.filter(ConfigurationORM.is_required == request.is_required)
+                    query = query.filter(
+                        ConfigurationORM.is_required == request.is_required
+                    )
 
                 if request.is_sensitive is not None:
-                    query = query.filter(ConfigurationORM.is_sensitive == request.is_sensitive)
+                    query = query.filter(
+                        ConfigurationORM.is_sensitive == request.is_sensitive
+                    )
 
                 if not request.include_inactive:
                     query = query.filter(ConfigurationORM.is_active)
 
                 # Pattern matching for keys
                 if request.key_pattern:
-                    query = query.filter(ConfigurationORM.key.like(f"%{request.key_pattern}%"))
+                    query = query.filter(
+                        ConfigurationORM.key.like(f"%{request.key_pattern}%")
+                    )
 
                 # Tag filtering
                 if request.tags:
@@ -738,8 +765,12 @@ class ConfigurationService:
                 for orm_config in orm_configs:
                     config = self._orm_to_config(orm_config)
                     if config.is_effective():
-                        config_dict = config.to_dict(include_sensitive=request.include_sensitive_values)
-                        configs.append(ConfigurationResponse.model_validate(config_dict))
+                        config_dict = config.to_dict(
+                            include_sensitive=request.include_sensitive_values
+                        )
+                        configs.append(
+                            ConfigurationResponse.model_validate(config_dict)
+                        )
 
                 self._metrics["configurations_queried"] += 1
 
@@ -757,7 +788,7 @@ class ConfigurationService:
         environment: str = "global",
         scope: str = "system",
         scope_id: Optional[str] = None,
-        include_sensitive: bool = False
+        include_sensitive: bool = False,
     ) -> ConfigurationBulkResponse:
         """Get multiple configurations in bulk"""
         try:
@@ -776,7 +807,7 @@ class ConfigurationService:
                 configs=configs,
                 total_count=total_count,
                 environment=environment,
-                scope=scope
+                scope=scope,
             )
 
         except Exception as e:
@@ -792,7 +823,7 @@ class ConfigurationService:
         environment: str = "global",
         scope: str = "system",
         scope_id: Optional[str] = None,
-        expected_type: Optional[type] = None
+        expected_type: Optional[type] = None,
     ) -> Any:
         """Get configuration value with type conversion and fallback"""
         try:
@@ -806,17 +837,24 @@ class ConfigurationService:
             if expected_type and value is not None:
                 try:
                     if expected_type == bool and isinstance(value, str):
-                        value = value.lower() in ('true', '1', 'yes', 'on')
+                        value = value.lower() in ("true", "1", "yes", "on")
                     else:
                         value = expected_type(value)
                 except (ValueError, TypeError):
-                    logger.warning(f"Failed to convert config value to {expected_type.__name__}", key=key)
+                    logger.warning(
+                        f"Failed to convert config value to {expected_type.__name__}",
+                        key=key,
+                    )
                     return default
 
             return value if value is not None else default
 
         except Exception as e:
-            logger.debug(f"Failed to get configuration value, using default", key=key, error=str(e))
+            logger.debug(
+                f"Failed to get configuration value, using default",
+                key=key,
+                error=str(e),
+            )
             return default
 
     async def set_configuration_value(
@@ -827,7 +865,7 @@ class ConfigurationService:
         scope: str = "system",
         scope_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
     ) -> bool:
         """Set configuration value (create or update)"""
         try:
@@ -836,23 +874,23 @@ class ConfigurationService:
             if existing:
                 # Update existing
                 request = ConfigurationUpdateRequest(
-                    value=value,
-                    change_reason=reason,
-                    updated_by=user_id
+                    value=value, change_reason=reason, updated_by=user_id
                 )
-                await self.update_configuration(key, request, environment, scope, scope_id, user_id)
+                await self.update_configuration(
+                    key, request, environment, scope, scope_id, user_id
+                )
             else:
                 # Create new with basic settings
                 request = ConfigurationCreateRequest(
                     key=key,
-                    name=key.replace('.', ' ').replace('_', ' ').title(),
+                    name=key.replace(".", " ").replace("_", " ").title(),
                     value=value,
                     config_type=self._infer_config_type(value),
                     category=self._infer_category(key),
                     environment=ConfigEnvironment(environment),
                     scope=ConfigScope(scope),
                     scope_id=scope_id,
-                    created_by=user_id
+                    created_by=user_id,
                 )
                 await self.create_configuration(request, user_id)
 
@@ -881,23 +919,23 @@ class ConfigurationService:
         """Infer category from key"""
         key_lower = key.lower()
 
-        if any(word in key_lower for word in ['db', 'database']):
+        if any(word in key_lower for word in ["db", "database"]):
             return ConfigCategory.DATABASE
-        elif any(word in key_lower for word in ['cache', 'redis']):
+        elif any(word in key_lower for word in ["cache", "redis"]):
             return ConfigCategory.CACHE
-        elif any(word in key_lower for word in ['auth', 'jwt', 'token']):
+        elif any(word in key_lower for word in ["auth", "jwt", "token"]):
             return ConfigCategory.SECURITY
-        elif any(word in key_lower for word in ['trade', 'trading']):
+        elif any(word in key_lower for word in ["trade", "trading"]):
             return ConfigCategory.TRADING
-        elif any(word in key_lower for word in ['risk']):
+        elif any(word in key_lower for word in ["risk"]):
             return ConfigCategory.RISK_MANAGEMENT
-        elif any(word in key_lower for word in ['ai', 'ml', 'model']):
+        elif any(word in key_lower for word in ["ai", "ml", "model"]):
             return ConfigCategory.AI_ENGINE
-        elif any(word in key_lower for word in ['broker', 'api']):
+        elif any(word in key_lower for word in ["broker", "api"]):
             return ConfigCategory.BROKER_API
-        elif any(word in key_lower for word in ['log']):
+        elif any(word in key_lower for word in ["log"]):
             return ConfigCategory.LOGGING
-        elif any(word in key_lower for word in ['ui', 'frontend']):
+        elif any(word in key_lower for word in ["ui", "frontend"]):
             return ConfigCategory.UI_SETTINGS
         else:
             return ConfigCategory.SYSTEM
@@ -909,7 +947,9 @@ class ConfigurationService:
         self._validation_rules.append(rule)
         logger.info(f"Added validation rule for pattern: {rule.key_pattern}")
 
-    async def _validate_configuration_request(self, request: ConfigurationCreateRequest):
+    async def _validate_configuration_request(
+        self, request: ConfigurationCreateRequest
+    ):
         """Validate configuration request"""
         if not request.key or not request.key.strip():
             raise ConfigValidationError("Configuration key is required")
@@ -929,7 +969,7 @@ class ConfigurationService:
             return False
 
         key = key.strip().lower()
-        return bool(re.match(r'^[a-z0-9._-]+$', key))
+        return bool(re.match(r"^[a-z0-9._-]+$", key))
 
     async def _apply_validation_rules(self, config: Configuration):
         """Apply custom validation rules"""
@@ -939,17 +979,13 @@ class ConfigurationService:
                     if not rule.validator(config.value):
                         raise ConfigValidationError(
                             f"{rule.error_message} for key '{config.key}'",
-                            key=config.key
+                            key=config.key,
                         )
 
     # Cache Management
 
     def _generate_cache_key(
-        self,
-        key: str,
-        environment: str,
-        scope: str,
-        scope_id: Optional[str]
+        self, key: str, environment: str, scope: str, scope_id: Optional[str]
     ) -> str:
         """Generate cache key"""
         return f"config:{key}:{environment}:{scope}:{scope_id or 'null'}"
@@ -971,24 +1007,23 @@ class ConfigurationService:
         """Update cache with configuration"""
         if not cache_key:
             cache_key = self._generate_cache_key(
-                config.key, config.environment.value, config.scope.value, config.scope_id
+                config.key,
+                config.environment.value,
+                config.scope.value,
+                config.scope_id,
             )
 
         with self._cache_lock:
             entry = ConfigCacheEntry(
                 config=config,
                 cached_at=datetime.utcnow(),
-                ttl_seconds=self.default_cache_ttl
+                ttl_seconds=self.default_cache_ttl,
             )
             self._cache[cache_key] = entry
             self._metrics["cache_updates"] += 1
 
     def _invalidate_cache(
-        self,
-        key: str,
-        environment: str = None,
-        scope: str = None,
-        scope_id: str = None
+        self, key: str, environment: str = None, scope: str = None, scope_id: str = None
     ):
         """Invalidate cache entries"""
         with self._cache_lock:
@@ -1001,8 +1036,7 @@ class ConfigurationService:
             else:
                 # Invalidate all entries for key
                 keys_to_remove = [
-                    ck for ck in self._cache.keys()
-                    if ck.startswith(f"config:{key}:")
+                    ck for ck in self._cache.keys() if ck.startswith(f"config:{key}:")
                 ]
                 for ck in keys_to_remove:
                     del self._cache[ck]
@@ -1028,7 +1062,11 @@ class ConfigurationService:
         try:
             # Could store in database for audit trail
             self._metrics["changes_recorded"] += 1
-            logger.debug("Configuration change recorded", change_id=change.config_id, type=change.change_type.value)
+            logger.debug(
+                "Configuration change recorded",
+                change_id=change.config_id,
+                type=change.change_type.value,
+            )
         except Exception as e:
             logger.error("Failed to record change", error=str(e))
 
@@ -1059,7 +1097,7 @@ class ConfigurationService:
         environment: str = "global",
         scope: str = "system",
         overwrite: bool = False,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Tuple[int, int]:
         """Import configurations from dictionary"""
         try:
@@ -1075,23 +1113,23 @@ class ConfigurationService:
                     elif existing and overwrite:
                         # Update existing
                         request = ConfigurationUpdateRequest(
-                            value=value,
-                            change_reason="Bulk import",
-                            updated_by=user_id
+                            value=value, change_reason="Bulk import", updated_by=user_id
                         )
-                        await self.update_configuration(key, request, environment, scope, user_id=user_id)
+                        await self.update_configuration(
+                            key, request, environment, scope, user_id=user_id
+                        )
                         updated_count += 1
                     else:
                         # Create new
                         request = ConfigurationCreateRequest(
                             key=key,
-                            name=key.replace('.', ' ').replace('_', ' ').title(),
+                            name=key.replace(".", " ").replace("_", " ").title(),
                             value=value,
                             config_type=self._infer_config_type(value),
                             category=self._infer_category(key),
                             environment=ConfigEnvironment(environment),
                             scope=ConfigScope(scope),
-                            created_by=user_id
+                            created_by=user_id,
                         )
                         await self.create_configuration(request, user_id)
                         created_count += 1
@@ -1100,7 +1138,9 @@ class ConfigurationService:
                     logger.warning(f"Failed to import configuration {key}: {str(e)}")
                     continue
 
-            logger.info(f"Import completed: {created_count} created, {updated_count} updated")
+            logger.info(
+                f"Import completed: {created_count} created, {updated_count} updated"
+            )
             return created_count, updated_count
 
         except Exception as e:
@@ -1112,7 +1152,7 @@ class ConfigurationService:
         environment: str = "global",
         scope: str = "system",
         include_sensitive: bool = False,
-        format: str = "dict"
+        format: str = "dict",
     ) -> Union[Dict[str, Any], str]:
         """Export configurations"""
         try:
@@ -1121,7 +1161,7 @@ class ConfigurationService:
                 scope=ConfigScope(scope),
                 include_inactive=False,
                 include_sensitive_values=include_sensitive,
-                limit=10000
+                limit=10000,
             )
 
             configs = await self.query_configurations(request)
@@ -1186,7 +1226,7 @@ class ConfigurationService:
             metadata=config.metadata,
             tags=config.tags,
             created_at=config.created_at,
-            updated_at=config.updated_at
+            updated_at=config.updated_at,
         )
 
     def _orm_to_config(self, orm_config: ConfigurationORM) -> Configuration:
@@ -1220,7 +1260,7 @@ class ConfigurationService:
             metadata=orm_config.metadata or {},
             tags=orm_config.tags or [],
             created_at=orm_config.created_at,
-            updated_at=orm_config.updated_at
+            updated_at=orm_config.updated_at,
         )
 
     # Metrics and Monitoring
@@ -1233,7 +1273,7 @@ class ConfigurationService:
                 entry.config.key: {
                     "access_count": entry.access_count,
                     "last_accessed": entry.last_accessed.isoformat(),
-                    "is_expired": entry.is_expired
+                    "is_expired": entry.is_expired,
                 }
                 for entry in list(self._cache.values())[:10]  # Top 10 for brevity
             }
@@ -1243,7 +1283,7 @@ class ConfigurationService:
             "cache_usage_sample": cache_usage,
             "validation_rules_count": len(self._validation_rules),
             "change_listeners_count": len(self._change_listeners),
-            "metrics": dict(self._metrics)
+            "metrics": dict(self._metrics),
         }
 
     def get_health_status(self) -> Dict[str, Any]:
@@ -1254,5 +1294,7 @@ class ConfigurationService:
             "cache_size": len(self._cache),
             "encryption_enabled": bool(self.encryption_key),
             "notifications_enabled": self.enable_notifications,
-            "uptime_seconds": (datetime.utcnow() - self._last_cache_cleanup).total_seconds()
+            "uptime_seconds": (
+                datetime.utcnow() - self._last_cache_cleanup
+            ).total_seconds(),
         }

@@ -11,11 +11,19 @@ from unittest.mock import AsyncMock, patch, MagicMock
 # Add the backend src to path for imports
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from api.news_client import (
-    NewsClient, NewsConfig, NewsAPIConfig, RSSFeedConfig,
-    Article, NewsFilter, AuthenticationError, RateLimitError, NetworkError
+    NewsClient,
+    NewsConfig,
+    NewsAPIConfig,
+    RSSFeedConfig,
+    Article,
+    NewsFilter,
+    AuthenticationError,
+    RateLimitError,
+    NetworkError,
 )
 
 
@@ -42,19 +50,23 @@ class TestNewsClientIntegration:
         mock_response = {
             "status": "ok",
             "totalResults": 1,
-            "articles": [{
-                "source": {"name": "Test Source"},
-                "title": "Stock Market Analysis",
-                "description": "Market analysis and trading insights",
-                "content": "Full content about stocks and trading",
-                "url": "https://example.com/article",
-                "urlToImage": "https://example.com/image.jpg",
-                "author": "Test Author",
-                "publishedAt": "2023-01-01T00:00:00Z"
-            }]
+            "articles": [
+                {
+                    "source": {"name": "Test Source"},
+                    "title": "Stock Market Analysis",
+                    "description": "Market analysis and trading insights",
+                    "content": "Full content about stocks and trading",
+                    "url": "https://example.com/article",
+                    "urlToImage": "https://example.com/image.jpg",
+                    "author": "Test Author",
+                    "publishedAt": "2023-01-01T00:00:00Z",
+                }
+            ],
         }
 
-        with patch.object(news_client, '_make_request', return_value=mock_response) as mock_request:
+        with patch.object(
+            news_client, "_make_request", return_value=mock_response
+        ) as mock_request:
             filter_obj = NewsFilter(keywords=["stock"], page_size=10)
             articles = await news_client.get_headlines(filter_obj, ["newsapi"])
 
@@ -86,8 +98,10 @@ class TestNewsClientIntegration:
         </rss>
         """
 
-        with patch.object(news_client, '_make_request', return_value={"content": rss_content}):
-            with patch('feedparser.parse') as mock_parse:
+        with patch.object(
+            news_client, "_make_request", return_value={"content": rss_content}
+        ):
+            with patch("feedparser.parse") as mock_parse:
                 # Mock feedparser response
                 mock_entry = MagicMock()
                 mock_entry.title = "Market Update: Sensex Gains"
@@ -111,23 +125,27 @@ class TestNewsClientIntegration:
         # Mock NewsAPI response
         newsapi_response = {
             "status": "ok",
-            "articles": [{
-                "source": {"name": "NewsAPI Source"},
-                "title": "NewsAPI Stock News",
-                "description": "From NewsAPI",
-                "url": "https://newsapi.example.com/1",
-                "publishedAt": "2023-01-01T00:00:00Z"
-            }]
+            "articles": [
+                {
+                    "source": {"name": "NewsAPI Source"},
+                    "title": "NewsAPI Stock News",
+                    "description": "From NewsAPI",
+                    "url": "https://newsapi.example.com/1",
+                    "publishedAt": "2023-01-01T00:00:00Z",
+                }
+            ],
         }
 
         # Mock RSS response
-        rss_content = {"content": """<?xml version="1.0"?>
+        rss_content = {
+            "content": """<?xml version="1.0"?>
         <rss><channel><item>
             <title>RSS Market News</title>
             <description>From RSS Feed</description>
             <link>https://rss.example.com/1</link>
             <pubDate>Sun, 01 Jan 2023 01:00:00 GMT</pubDate>
-        </item></channel></rss>"""}
+        </item></channel></rss>"""
+        }
 
         def mock_request_side_effect(provider, method, url, *args, **kwargs):
             if provider == "newsapi":
@@ -136,8 +154,10 @@ class TestNewsClientIntegration:
                 return rss_content
             return {}
 
-        with patch.object(news_client, '_make_request', side_effect=mock_request_side_effect):
-            with patch('feedparser.parse') as mock_parse:
+        with patch.object(
+            news_client, "_make_request", side_effect=mock_request_side_effect
+        ):
+            with patch("feedparser.parse") as mock_parse:
                 # Mock RSS parsing
                 mock_entry = MagicMock()
                 mock_entry.title = "RSS Market News"
@@ -160,7 +180,11 @@ class TestNewsClientIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_authentication(self, news_client):
         """Test authentication error handling"""
-        with patch.object(news_client, '_make_request', side_effect=AuthenticationError("Invalid API key", "newsapi")):
+        with patch.object(
+            news_client,
+            "_make_request",
+            side_effect=AuthenticationError("Invalid API key", "newsapi"),
+        ):
             articles = await news_client.get_headlines(providers=["newsapi"])
 
             # Should return empty list when provider fails
@@ -171,7 +195,11 @@ class TestNewsClientIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_rate_limit(self, news_client):
         """Test rate limit error handling"""
-        with patch.object(news_client, '_make_request', side_effect=RateLimitError("Rate limit exceeded", "newsapi")):
+        with patch.object(
+            news_client,
+            "_make_request",
+            side_effect=RateLimitError("Rate limit exceeded", "newsapi"),
+        ):
             articles = await news_client.get_headlines(providers=["newsapi"])
 
             assert articles == []
@@ -182,15 +210,19 @@ class TestNewsClientIntegration:
         """Test caching across requests"""
         mock_response = {
             "status": "ok",
-            "articles": [{
-                "source": {"name": "Test"},
-                "title": "Cached News",
-                "url": "https://example.com/cached",
-                "publishedAt": "2023-01-01T00:00:00Z"
-            }]
+            "articles": [
+                {
+                    "source": {"name": "Test"},
+                    "title": "Cached News",
+                    "url": "https://example.com/cached",
+                    "publishedAt": "2023-01-01T00:00:00Z",
+                }
+            ],
         }
 
-        with patch.object(news_client, '_make_request', return_value=mock_response) as mock_request:
+        with patch.object(
+            news_client, "_make_request", return_value=mock_response
+        ) as mock_request:
             # First request
             articles1 = await news_client.get_headlines(providers=["newsapi"])
 
@@ -209,22 +241,28 @@ class TestNewsClientIntegration:
         """Test news search functionality"""
         mock_response = {
             "status": "ok",
-            "articles": [{
-                "source": {"name": "Search Result"},
-                "title": "Search Query Results for RELIANCE",
-                "description": "RELIANCE stock analysis",
-                "url": "https://example.com/search",
-                "publishedAt": "2023-01-01T00:00:00Z"
-            }]
+            "articles": [
+                {
+                    "source": {"name": "Search Result"},
+                    "title": "Search Query Results for RELIANCE",
+                    "description": "RELIANCE stock analysis",
+                    "url": "https://example.com/search",
+                    "publishedAt": "2023-01-01T00:00:00Z",
+                }
+            ],
         }
 
-        with patch.object(news_client, '_make_request', return_value=mock_response):
-            articles = await news_client.search_news("RELIANCE stock", providers=["newsapi"])
+        with patch.object(news_client, "_make_request", return_value=mock_response):
+            articles = await news_client.search_news(
+                "RELIANCE stock", providers=["newsapi"]
+            )
 
             assert len(articles) > 0
             assert "RELIANCE" in articles[0].title
             # Should extract stock symbols as tags
-            symbols = news_client._extract_stock_symbols(articles[0].title + " " + articles[0].description)
+            symbols = news_client._extract_stock_symbols(
+                articles[0].title + " " + articles[0].description
+            )
             assert "RELIANCE" in symbols
 
     @pytest.mark.asyncio
@@ -238,45 +276,58 @@ class TestNewsClientIntegration:
                     "title": "RELIANCE stock surges in market trading",
                     "description": "Stock market analysis for RELIANCE shares",
                     "url": "https://example.com/market1",
-                    "publishedAt": "2023-01-01T00:00:00Z"
+                    "publishedAt": "2023-01-01T00:00:00Z",
                 },
                 {
                     "source": {"name": "General Source"},
                     "title": "General business news update",
                     "description": "Non-specific business update",
                     "url": "https://example.com/general",
-                    "publishedAt": "2023-01-01T01:00:00Z"
-                }
-            ]
+                    "publishedAt": "2023-01-01T01:00:00Z",
+                },
+            ],
         }
 
-        with patch.object(news_client, '_make_request', return_value=mock_response):
-            articles = await news_client.get_market_news(
-                symbols=["RELIANCE"],
-                limit=10
-            )
+        with patch.object(news_client, "_make_request", return_value=mock_response):
+            articles = await news_client.get_market_news(symbols=["RELIANCE"], limit=10)
 
             # Should filter for market-relevant content
             assert len(articles) > 0
             # First article should mention RELIANCE
-            reliance_mentioned = any("RELIANCE" in article.title or
-                                   "RELIANCE" in (article.description or "")
-                                   for article in articles)
+            reliance_mentioned = any(
+                "RELIANCE" in article.title or "RELIANCE" in (article.description or "")
+                for article in articles
+            )
             assert reliance_mentioned
 
     @pytest.mark.asyncio
     async def test_trending_topics_extraction(self, news_client):
         """Test trending topics extraction"""
         mock_articles = [
-            Article(source="Test", provider="test", title="Stock market gains today",
-                   url="https://example.com/1", published_at=datetime.now()),
-            Article(source="Test", provider="test", title="Market analysis and stock performance",
-                   url="https://example.com/2", published_at=datetime.now()),
-            Article(source="Test", provider="test", title="Trading volume increases in stock market",
-                   url="https://example.com/3", published_at=datetime.now()),
+            Article(
+                source="Test",
+                provider="test",
+                title="Stock market gains today",
+                url="https://example.com/1",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Test",
+                provider="test",
+                title="Market analysis and stock performance",
+                url="https://example.com/2",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Test",
+                provider="test",
+                title="Trading volume increases in stock market",
+                url="https://example.com/3",
+                published_at=datetime.now(),
+            ),
         ]
 
-        with patch.object(news_client, 'get_headlines', return_value=mock_articles):
+        with patch.object(news_client, "get_headlines", return_value=mock_articles):
             trending = await news_client.get_trending_topics(limit=5)
 
             # Should identify common words
@@ -291,13 +342,15 @@ class TestNewsClientIntegration:
         # Mock successful responses for health checks
         mock_responses = {
             ("newsapi", "GET"): {"status": "ok", "articles": []},
-            ("rss", "GET"): {"content": "<?xml version='1.0'?><rss></rss>"}
+            ("rss", "GET"): {"content": "<?xml version='1.0'?><rss></rss>"},
         }
 
         def mock_request_side_effect(provider, method, url, *args, **kwargs):
             return mock_responses.get((provider, method), {})
 
-        with patch.object(news_client, '_make_request', side_effect=mock_request_side_effect):
+        with patch.object(
+            news_client, "_make_request", side_effect=mock_request_side_effect
+        ):
             health = await news_client.health_check()
 
             assert health["overall_status"] in ["healthy", "degraded"]
@@ -342,21 +395,21 @@ class TestNewsClientIntegration:
         # High relevance article
         high_relevance = {
             "title": "Stock market NSE trading RELIANCE shares investment",
-            "description": "Portfolio management and dividend analysis for equity trading"
+            "description": "Portfolio management and dividend analysis for equity trading",
         }
         score_high = news_client._calculate_relevance_score(high_relevance)
 
         # Medium relevance article
         medium_relevance = {
             "title": "Business growth and financial development",
-            "description": "Company performance and industry analysis"
+            "description": "Company performance and industry analysis",
         }
         score_medium = news_client._calculate_relevance_score(medium_relevance)
 
         # Low relevance article
         low_relevance = {
             "title": "Sports entertainment and celebrity news",
-            "description": "Entertainment industry updates and gossip"
+            "description": "Entertainment industry updates and gossip",
         }
         score_low = news_client._calculate_relevance_score(low_relevance)
 
@@ -372,7 +425,7 @@ class TestNewsClientIntegration:
             ("INFY and WIPRO show strong performance", ["INFY", "WIPRO"]),
             ("The stock market is volatile today", []),  # No specific symbols
             ("HDFC.NS and ICICIBANK.BO listed", ["HDFC.NS", "ICICIBANK.BO"]),
-            ("$TSLA and $AAPL in US markets", ["$TSLA", "$AAPL"])
+            ("$TSLA and $AAPL in US markets", ["$TSLA", "$AAPL"]),
         ]
 
         for text, expected_symbols in test_cases:
@@ -386,14 +439,34 @@ class TestNewsClientIntegration:
         """Test article deduplication effectiveness"""
         # Create articles with different types of duplicates
         articles = [
-            Article(source="Source1", provider="test", title="Market Update Today",
-                   url="https://example.com/article1", published_at=datetime.now()),
-            Article(source="Source2", provider="test", title="Market Update Today",  # Same title
-                   url="https://example.com/article2", published_at=datetime.now()),
-            Article(source="Source3", provider="test", title="Different Market News",
-                   url="https://example.com/article1", published_at=datetime.now()),  # Same URL
-            Article(source="Source4", provider="test", title="Unique Financial News",
-                   url="https://example.com/article3", published_at=datetime.now()),
+            Article(
+                source="Source1",
+                provider="test",
+                title="Market Update Today",
+                url="https://example.com/article1",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Source2",
+                provider="test",
+                title="Market Update Today",  # Same title
+                url="https://example.com/article2",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Source3",
+                provider="test",
+                title="Different Market News",
+                url="https://example.com/article1",
+                published_at=datetime.now(),
+            ),  # Same URL
+            Article(
+                source="Source4",
+                provider="test",
+                title="Unique Financial News",
+                url="https://example.com/article3",
+                published_at=datetime.now(),
+            ),
         ]
 
         unique_articles = news_client._deduplicate_articles(articles)
@@ -409,21 +482,32 @@ class TestNewsClientIntegration:
     @pytest.mark.asyncio
     async def test_concurrent_provider_requests(self, news_client):
         """Test handling concurrent requests to different providers"""
+
         def mock_request_delay(provider, *args, **kwargs):
             # Simulate different response times for providers
             if provider == "newsapi":
-                return {"status": "ok", "articles": [{"source": {"name": "NewsAPI"},
-                       "title": "NewsAPI Article", "url": "https://newsapi.com/1",
-                       "publishedAt": "2023-01-01T00:00:00Z"}]}
+                return {
+                    "status": "ok",
+                    "articles": [
+                        {
+                            "source": {"name": "NewsAPI"},
+                            "title": "NewsAPI Article",
+                            "url": "https://newsapi.com/1",
+                            "publishedAt": "2023-01-01T00:00:00Z",
+                        }
+                    ],
+                }
             elif provider == "rss":
-                return {"content": "<?xml version='1.0'?><rss><channel><item>"
-                       "<title>RSS Article</title><link>https://rss.com/1</link>"
-                       "<pubDate>Sun, 01 Jan 2023 00:00:00 GMT</pubDate>"
-                       "</item></channel></rss>"}
+                return {
+                    "content": "<?xml version='1.0'?><rss><channel><item>"
+                    "<title>RSS Article</title><link>https://rss.com/1</link>"
+                    "<pubDate>Sun, 01 Jan 2023 00:00:00 GMT</pubDate>"
+                    "</item></channel></rss>"
+                }
             return {}
 
-        with patch.object(news_client, '_make_request', side_effect=mock_request_delay):
-            with patch('feedparser.parse') as mock_parse:
+        with patch.object(news_client, "_make_request", side_effect=mock_request_delay):
+            with patch("feedparser.parse") as mock_parse:
                 mock_entry = MagicMock()
                 mock_entry.title = "RSS Article"
                 mock_entry.link = "https://rss.com/1"

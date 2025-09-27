@@ -25,7 +25,9 @@ except ImportError:
         logger = logging.getLogger(name)
         if not logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.setLevel(logging.DEBUG)
@@ -33,12 +35,15 @@ except ImportError:
 
     def log_performance(name: str = None):
         """Simple performance logging decorator fallback"""
+
         def decorator(func):
             return func
+
         return decorator
 
     class LogContext:
         """Simple context manager fallback"""
+
         def __init__(self, **kwargs):
             pass
 
@@ -212,13 +217,8 @@ class DhanClient:
     Comprehensive Dhan HQ API Client
 
     Features:
-    - Async HTTP operations with proper connection management
-    - Multi-level rate limiting (per second/minute/hour/day)
-    - Comprehensive error handling with custom exceptions
-    - Request/response logging and monitoring
-    - Retry logic with exponential backoff
-    - Method implementations for all major API endpoints
-    - Session management and token handling
+    - Async HTTP operations with proper connection management - Multi-level rate limiting (per second/minute/hour/day) - Comprehensive error handling with custom exceptions - Request/response logging and monitoring - Retry logic with exponential backoff - Method implementations for all major API endpoints -
+    Session management and token handling
     """
 
     def __init__(
@@ -245,7 +245,8 @@ class DhanClient:
         self.tokens = AuthTokens(
             client_id=client_id,
             access_token=access_token,
-            expires_at=datetime.now() + timedelta(days=365),  # Dhan tokens are long-lived
+            expires_at=datetime.now()
+            + timedelta(days=365),  # Dhan tokens are long-lived
         )
         self.is_authenticated = True  # Dhan uses pre-generated tokens
         self.session_id = secrets.token_hex(16)
@@ -383,7 +384,9 @@ class DhanClient:
                         )
                         error_code = response_data.get("errorCode", "BAD_REQUEST")
 
-                        self.logger.error(f"Validation error: {error_code} - {error_message}")
+                        self.logger.error(
+                            f"Validation error: {error_code} - {error_message}"
+                        )
                         raise ValidationError(
                             error_message,
                             error_code,
@@ -431,7 +434,8 @@ class DhanClient:
                             continue
 
                         error_message = response_data.get(
-                            "internalErrorMessage", f"Server error: {response.status_code}"
+                            "internalErrorMessage",
+                            f"Server error: {response.status_code}",
                         )
                         raise ServerError(
                             error_message,
@@ -536,9 +540,9 @@ class DhanClient:
             "session_id": self.session_id,
             "client_id": self.client_id,
             "is_authenticated": self.is_authenticated,
-            "token_expires_at": self.tokens.expires_at.isoformat()
-            if self.tokens.expires_at
-            else None,
+            "token_expires_at": (
+                self.tokens.expires_at.isoformat() if self.tokens.expires_at else None
+            ),
             "calls_per_second": len(self.rate_limiter.calls_per_second),
             "calls_per_minute": len(self.rate_limiter.calls_per_minute),
             "calls_per_hour": len(self.rate_limiter.calls_per_hour),
@@ -561,7 +565,11 @@ class DhanClient:
         Returns:
             True if token is valid, False otherwise
         """
-        return (self.tokens.access_token is not None and self.tokens.expires_at is not None and datetime.now() < self.tokens.expires_at)
+        return (
+            self.tokens.access_token is not None
+            and self.tokens.expires_at is not None
+            and datetime.now() < self.tokens.expires_at
+        )
 
     def update_token(self, access_token: str) -> None:
         """
@@ -571,7 +579,9 @@ class DhanClient:
             access_token: New access token
         """
         self.tokens.access_token = access_token
-        self.tokens.expires_at = datetime.now() + timedelta(days=365)  # Long-lived tokens
+        self.tokens.expires_at = datetime.now() + timedelta(
+            days=365
+        )  # Long-lived tokens
         self.is_authenticated = True
 
         self.logger.info("Updated Dhan access token")
@@ -629,8 +639,7 @@ class DhanClient:
             "is_authenticated": self.is_authenticated,
             "has_token": self.tokens.access_token is not None,
             "token_expires_at": (
-                self.tokens.expires_at.isoformat()
-                if self.tokens.expires_at else None
+                self.tokens.expires_at.isoformat() if self.tokens.expires_at else None
             ),
             "client_id": self.client_id,
             "session_id": self.session_id,
@@ -741,7 +750,12 @@ class DhanClient:
         except Exception as e:
             self.logger.error(f"Order placement failed: {e}")
             if isinstance(e, DhanError):
-                raise OrderError(f"Order placement failed: {e.message}", e.error_code, e.status_code, e.response_data)
+                raise OrderError(
+                    f"Order placement failed: {e.message}",
+                    e.error_code,
+                    e.status_code,
+                    e.response_data,
+                )
             else:
                 raise OrderError(f"Order placement failed: {str(e)}")
 
@@ -794,7 +808,9 @@ class DhanClient:
             modify_data["legName"] = leg_name
 
         try:
-            response = await self._make_request("PUT", f"/orders/{order_id}", data=modify_data)
+            response = await self._make_request(
+                "PUT", f"/orders/{order_id}", data=modify_data
+            )
 
             self.logger.info(f"Modified order {order_id}")
             return response
@@ -802,7 +818,12 @@ class DhanClient:
         except Exception as e:
             self.logger.error(f"Order modification failed: {e}")
             if isinstance(e, DhanError):
-                raise OrderError(f"Order modification failed: {e.message}", e.error_code, e.status_code, e.response_data)
+                raise OrderError(
+                    f"Order modification failed: {e.message}",
+                    e.error_code,
+                    e.status_code,
+                    e.response_data,
+                )
             else:
                 raise OrderError(f"Order modification failed: {str(e)}")
 
@@ -829,7 +850,12 @@ class DhanClient:
         except Exception as e:
             self.logger.error(f"Order cancellation failed: {e}")
             if isinstance(e, DhanError):
-                raise OrderError(f"Order cancellation failed: {e.message}", e.error_code, e.status_code, e.response_data)
+                raise OrderError(
+                    f"Order cancellation failed: {e.message}",
+                    e.error_code,
+                    e.status_code,
+                    e.response_data,
+                )
             else:
                 raise OrderError(f"Order cancellation failed: {str(e)}")
 
@@ -906,7 +932,9 @@ class DhanClient:
             order_data["drvStrikePrice"] = drv_strike_price
 
         try:
-            response = await self._make_request("POST", "/orders/slicing", data=order_data)
+            response = await self._make_request(
+                "POST", "/orders/slicing", data=order_data
+            )
 
             self.logger.info("Placed slice order successfully")
             return response
@@ -914,7 +942,12 @@ class DhanClient:
         except Exception as e:
             self.logger.error(f"Slice order placement failed: {e}")
             if isinstance(e, DhanError):
-                raise OrderError(f"Slice order placement failed: {e.message}", e.error_code, e.status_code, e.response_data)
+                raise OrderError(
+                    f"Slice order placement failed: {e.message}",
+                    e.error_code,
+                    e.status_code,
+                    e.response_data,
+                )
             else:
                 raise OrderError(f"Slice order placement failed: {str(e)}")
 
@@ -978,17 +1011,25 @@ class DhanClient:
             DhanError: If request fails
         """
         try:
-            response = await self._make_request("GET", f"/orders/external/{correlation_id}")
+            response = await self._make_request(
+                "GET", f"/orders/external/{correlation_id}"
+            )
 
-            self.logger.debug(f"Retrieved order details for correlation ID {correlation_id}")
+            self.logger.debug(
+                f"Retrieved order details for correlation ID {correlation_id}"
+            )
             return response
 
         except Exception as e:
-            self.logger.error(f"Failed to get order by correlation ID {correlation_id}: {e}")
+            self.logger.error(
+                f"Failed to get order by correlation ID {correlation_id}: {e}"
+            )
             raise
 
     @log_performance("dhan_get_trade_book")
-    async def get_trade_book(self, order_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_trade_book(
+        self, order_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get trade book (executed trades)
 
@@ -1097,7 +1138,9 @@ class DhanClient:
         }
 
         try:
-            response = await self._make_request("POST", "/positions/convert", data=convert_data)
+            response = await self._make_request(
+                "POST", "/positions/convert", data=convert_data
+            )
 
             self.logger.info(f"Converted position for {trading_symbol}")
             return response
@@ -1213,14 +1256,18 @@ class DhanClient:
             DhanError: If request fails
         """
         data = {
-            "instruments": [{"exchangeSegment": "NSE", "securityId": sid} for sid in security_ids],
+            "instruments": [
+                {"exchangeSegment": "NSE", "securityId": sid} for sid in security_ids
+            ],
             "quoteType": quote_type,
         }
 
         try:
             response = await self._make_request("POST", "/marketQuote", data=data)
 
-            self.logger.debug(f"Retrieved market quotes for {len(security_ids)} instruments")
+            self.logger.debug(
+                f"Retrieved market quotes for {len(security_ids)} instruments"
+            )
             return response if isinstance(response, list) else [response]
 
         except Exception as e:
@@ -1274,7 +1321,7 @@ class DhanClient:
         Returns:
             Formatted datetime string
         """
-        return datetime.fromtimestamp(epoch_time).strftime('%Y-%m-%d %H:%M:%S')
+        return datetime.fromtimestamp(epoch_time).strftime("%Y-%m-%d %H:%M:%S")
 
     # Funds and Statement Methods
 
@@ -1353,7 +1400,9 @@ class DhanClient:
 
     # Utility Methods
 
-    async def fetch_security_list(self, list_type: str = "compact") -> List[Dict[str, Any]]:
+    async def fetch_security_list(
+        self, list_type: str = "compact"
+    ) -> List[Dict[str, Any]]:
         """
         Fetch instrument/security list
 

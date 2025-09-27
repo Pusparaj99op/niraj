@@ -8,39 +8,55 @@ import sys
 import os
 
 # Add the backend src to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
 
 # Mock the logger imports to avoid dependency issues
 class MockLogger:
-    def info(self, msg, **kwargs): print(f"INFO: {msg}")
-    def debug(self, msg, **kwargs): print(f"DEBUG: {msg}")
-    def warning(self, msg, **kwargs): print(f"WARNING: {msg}")
-    def error(self, msg, **kwargs): print(f"ERROR: {msg}")
+    def info(self, msg, **kwargs):
+        print(f"INFO: {msg}")
+
+    def debug(self, msg, **kwargs):
+        print(f"DEBUG: {msg}")
+
+    def warning(self, msg, **kwargs):
+        print(f"WARNING: {msg}")
+
+    def error(self, msg, **kwargs):
+        print(f"ERROR: {msg}")
+
 
 def get_logger(name):
     return MockLogger()
 
+
 def log_performance(name):
     def decorator(func):
         return func
+
     return decorator
+
 
 class LogContext:
     def __init__(self, **kwargs):
         pass
+
     def __enter__(self):
         return self
+
     def __exit__(self, *args):
         pass
 
+
 # Patch the logger imports
 import src.utils.logger
+
 src.utils.logger.get_logger = get_logger
 src.utils.logger.log_performance = log_performance
 src.utils.logger.LogContext = LogContext
 
 # Now import our client
-from api.angel_one_client import AngelOneClient, AngelOneConfig
+from src.api.angel_one_client import AngelOneClient, AngelOneConfig
 
 
 async def test_basic_functionality():
@@ -54,7 +70,7 @@ async def test_basic_functionality():
         api_key="test_api_key_123",
         client_code="TEST001",
         client_pin="1234",
-        totp_secret="JBSWY3DPEHPK3PXP"  # Example TOTP secret
+        totp_secret="JBSWY3DPEHPK3PXP",  # Example TOTP secret
     )
 
     print(f"   Client Code: {client.client_code}")
@@ -67,10 +83,7 @@ async def test_basic_functionality():
     print("\n✅ Test 2: Configuration")
     config = AngelOneConfig(timeout=45, max_retries=5)
     client_with_config = AngelOneClient(
-        api_key="test_api",
-        client_code="TEST002",
-        client_pin="5678",
-        config=config
+        api_key="test_api", client_code="TEST002", client_pin="5678", config=config
     )
 
     print(f"   Custom Timeout: {client_with_config.config.timeout}")
@@ -107,6 +120,7 @@ async def test_basic_functionality():
     print(f"   Token expired (no token): {client._is_token_expired()}")
 
     from datetime import datetime, timedelta
+
     client.tokens.expires_at = datetime.now() + timedelta(hours=1)
     print(f"   Token expired (future): {client._is_token_expired()}")
 
@@ -115,7 +129,7 @@ async def test_basic_functionality():
 
     # Test 7: Rate Limiter
     print("\n✅ Test 7: Rate Limiter")
-    from api.angel_one_client import RateLimiter
+    from src.api.angel_one_client import RateLimiter
 
     limiter = RateLimiter(max_calls=3, window=1)
     print(f"   Initial calls: {len(limiter.calls)}")
@@ -134,8 +148,10 @@ async def test_basic_functionality():
 
     # Test 9: Exception classes
     print("\n✅ Test 9: Exception Classes")
-    from api.angel_one_client import (
-        AngelOneError, AuthenticationError, ValidationError
+    from src.api.angel_one_client import (
+        AngelOneError,
+        AuthenticationError,
+        ValidationError,
     )
 
     try:

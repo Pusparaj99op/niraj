@@ -10,12 +10,19 @@ from datetime import datetime
 
 # Add path for imports
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
 from api.weather_client import (
-    WeatherClient, WeatherConfig, LocationQuery, WeatherUnits,
-    WeatherError, AuthenticationError, DataNotFoundError,
-    get_weather_for_trading, monitor_agricultural_weather
+    WeatherClient,
+    WeatherConfig,
+    LocationQuery,
+    WeatherUnits,
+    WeatherError,
+    AuthenticationError,
+    DataNotFoundError,
+    get_weather_for_trading,
+    monitor_agricultural_weather,
 )
 
 
@@ -40,7 +47,7 @@ class TestWeatherClientIntegration:
             rate_limit_calls_per_minute=10,  # Conservative for testing
             enable_commodity_analysis=True,
             enable_agricultural_insights=True,
-            enable_energy_insights=True
+            enable_energy_insights=True,
         )
 
     @pytest.mark.asyncio
@@ -88,10 +95,10 @@ class TestWeatherClientIntegration:
 
             # Verify insights structure
             assert insights is not None
-            assert hasattr(insights, 'crop_stress_index')
-            assert hasattr(insights, 'drought_indicator')
-            assert hasattr(insights, 'transportation_disruption_risk')
-            assert hasattr(insights, 'commodity_price_impact')
+            assert hasattr(insights, "crop_stress_index")
+            assert hasattr(insights, "drought_indicator")
+            assert hasattr(insights, "transportation_disruption_risk")
+            assert hasattr(insights, "commodity_price_impact")
 
             # Risk level should be valid
             assert insights.transportation_disruption_risk in ["low", "medium", "high"]
@@ -104,12 +111,11 @@ class TestWeatherClientIntegration:
             locations = [
                 LocationQuery(city_name="Mumbai", country_code="IN"),
                 LocationQuery(city_name="Delhi", country_code="IN"),
-                LocationQuery(city_name="Bangalore", country_code="IN")
+                LocationQuery(city_name="Bangalore", country_code="IN"),
             ]
 
             results = await client.get_multi_location_weather(
-                locations,
-                data_types=["current", "insights"]
+                locations, data_types=["current", "insights"]
             )
 
             # Should have data for all locations
@@ -274,15 +280,14 @@ class TestWeatherClientPerformance:
                 LocationQuery(city_name="Delhi", country_code="IN"),
                 LocationQuery(city_name="Bangalore", country_code="IN"),
                 LocationQuery(city_name="Chennai", country_code="IN"),
-                LocationQuery(city_name="Kolkata", country_code="IN")
+                LocationQuery(city_name="Kolkata", country_code="IN"),
             ]
 
             # Measure time for concurrent requests
             start_time = asyncio.get_event_loop().time()
 
             results = await client.get_multi_location_weather(
-                locations,
-                data_types=["current"]
+                locations, data_types=["current"]
             )
 
             end_time = asyncio.get_event_loop().time()
@@ -294,8 +299,7 @@ class TestWeatherClientPerformance:
 
             # At least some requests should succeed
             successful_requests = sum(
-                1 for data in results.values()
-                if data.get("current") is not None
+                1 for data in results.values() if data.get("current") is not None
             )
             assert successful_requests > 0
 

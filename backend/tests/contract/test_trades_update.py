@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -22,6 +23,7 @@ class TestTradesUpdateContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -32,10 +34,7 @@ class TestTradesUpdateContract:
     @pytest.fixture
     def valid_update_request(self) -> dict:
         """Valid trade update request data."""
-        return {
-            "stop_loss": 44000.00,
-            "take_profit": 46000.00
-        }
+        return {"stop_loss": 44000.00, "take_profit": 46000.00}
 
     def test_update_trade_success_contract(
         self, client: TestClient, valid_trade_id: str, valid_update_request: dict
@@ -50,15 +49,14 @@ class TestTradesUpdateContract:
         """
         # Act
         response: Response = client.patch(
-            f"/api/v1/trades/{valid_trade_id}",
-            json=valid_update_request
+            f"/api/v1/trades/{valid_trade_id}", json=valid_update_request
         )
 
         # Assert - Status Code (might be 200 if exists, 404 if not)
         acceptable_codes = [200, 404]
-        assert response.status_code in acceptable_codes, (
-            f"Expected {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Expected {acceptable_codes}, got {response.status_code}"
 
         # If trade exists and was updated, validate response structure
         if response.status_code == 200:
@@ -83,9 +81,8 @@ class TestTradesUpdateContract:
         """
         # Test stop_loss only
         stop_loss_only = {"stop_loss": 44000.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=stop_loss_only)
-        
+        response = client.patch(f"/api/v1/trades/{valid_trade_id}", json=stop_loss_only)
+
         acceptable_codes = [200, 404]
         assert response.status_code in acceptable_codes, (
             f"Stop loss only update: expected {acceptable_codes}, "
@@ -94,17 +91,16 @@ class TestTradesUpdateContract:
 
         # Test take_profit only
         take_profit_only = {"take_profit": 46000.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=take_profit_only)
-        
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=take_profit_only
+        )
+
         assert response.status_code in acceptable_codes, (
             f"Take profit only update: expected {acceptable_codes}, "
             f"got {response.status_code}"
         )
 
-    def test_update_trade_invalid_id_format_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_update_trade_invalid_id_format_contract(self, client: TestClient) -> None:
         """
         Test trade update with invalid trade_id format.
 
@@ -115,8 +111,7 @@ class TestTradesUpdateContract:
         invalid_id = "not-a-uuid"
         update_request = {"stop_loss": 44000.00}
 
-        response = client.patch(f"/api/v1/trades/{invalid_id}", 
-                               json=update_request)
+        response = client.patch(f"/api/v1/trades/{invalid_id}", json=update_request)
 
         expected_codes = [400, 422]
         assert response.status_code in expected_codes, (
@@ -124,9 +119,7 @@ class TestTradesUpdateContract:
             f"got {response.status_code}"
         )
 
-    def test_update_trade_nonexistent_id_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_update_trade_nonexistent_id_contract(self, client: TestClient) -> None:
         """
         Test trade update with non-existent trade_id.
 
@@ -136,8 +129,7 @@ class TestTradesUpdateContract:
         nonexistent_id = str(uuid.uuid4())
         update_request = {"stop_loss": 44000.00}
 
-        response = client.patch(f"/api/v1/trades/{nonexistent_id}", 
-                               json=update_request)
+        response = client.patch(f"/api/v1/trades/{nonexistent_id}", json=update_request)
 
         expected_status = 404
         assert response.status_code == expected_status, (
@@ -158,9 +150,9 @@ class TestTradesUpdateContract:
 
         # Should be handled gracefully - either no-op success or validation error
         acceptable_codes = [200, 400, 404, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Empty update returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Empty update returned {response.status_code}"
 
     def test_update_trade_negative_values_contract(
         self, client: TestClient, valid_trade_id: str
@@ -174,22 +166,24 @@ class TestTradesUpdateContract:
         """
         # Test negative stop_loss
         negative_stop_loss = {"stop_loss": -1000.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=negative_stop_loss)
-        
-        acceptable_codes = [400, 404, 422]  # 404 if trade doesn't exist
-        assert response.status_code in acceptable_codes, (
-            f"Negative stop_loss returned {response.status_code}"
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=negative_stop_loss
         )
+
+        acceptable_codes = [400, 404, 422]  # 404 if trade doesn't exist
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Negative stop_loss returned {response.status_code}"
 
         # Test negative take_profit
         negative_take_profit = {"take_profit": -1000.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=negative_take_profit)
-        
-        assert response.status_code in acceptable_codes, (
-            f"Negative take_profit returned {response.status_code}"
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=negative_take_profit
         )
+
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Negative take_profit returned {response.status_code}"
 
     def test_update_trade_zero_values_contract(
         self, client: TestClient, valid_trade_id: str
@@ -203,22 +197,22 @@ class TestTradesUpdateContract:
         """
         # Test zero stop_loss
         zero_stop_loss = {"stop_loss": 0.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=zero_stop_loss)
-        
+        response = client.patch(f"/api/v1/trades/{valid_trade_id}", json=zero_stop_loss)
+
         acceptable_codes = [400, 404, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Zero stop_loss returned {response.status_code}"
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Zero stop_loss returned {response.status_code}"
+
+        # Test zero take_profit
+        zero_take_profit = {"take_profit": 0.00}
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=zero_take_profit
         )
 
-        # Test zero take_profit  
-        zero_take_profit = {"take_profit": 0.00}
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=zero_take_profit)
-        
-        assert response.status_code in acceptable_codes, (
-            f"Zero take_profit returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Zero take_profit returned {response.status_code}"
 
     def test_update_trade_invalid_fields_contract(
         self, client: TestClient, valid_trade_id: str
@@ -234,17 +228,18 @@ class TestTradesUpdateContract:
             "stop_loss": 44000.00,
             "invalid_field": "should_be_ignored",
             "quantity": 100,  # Not allowed in update
-            "symbol": "NEWSTOCK"  # Not allowed in update
+            "symbol": "NEWSTOCK",  # Not allowed in update
         }
 
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=invalid_fields_request)
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=invalid_fields_request
+        )
 
         # Should either succeed (ignoring invalid fields) or return error
         acceptable_codes = [200, 400, 404, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Invalid fields request returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Invalid fields request returned {response.status_code}"
 
     def test_update_trade_malformed_json_contract(
         self, client: TestClient, valid_trade_id: str
@@ -258,7 +253,7 @@ class TestTradesUpdateContract:
         response = client.patch(
             f"/api/v1/trades/{valid_trade_id}",
             data="{ invalid json",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         expected_codes = [400, 422]
@@ -279,16 +274,17 @@ class TestTradesUpdateContract:
         """
         string_values_request = {
             "stop_loss": "not_a_number",
-            "take_profit": "also_not_a_number"
+            "take_profit": "also_not_a_number",
         }
 
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=string_values_request)
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=string_values_request
+        )
 
         acceptable_codes = [400, 404, 422]
-        assert response.status_code in acceptable_codes, (
-            f"String values returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"String values returned {response.status_code}"
 
     def test_update_trade_null_values_contract(
         self, client: TestClient, valid_trade_id: str
@@ -300,19 +296,17 @@ class TestTradesUpdateContract:
         - null values might be used to clear stop_loss/take_profit
         - Should handle null appropriately
         """
-        null_values_request = {
-            "stop_loss": None,
-            "take_profit": None
-        }
+        null_values_request = {"stop_loss": None, "take_profit": None}
 
-        response = client.patch(f"/api/v1/trades/{valid_trade_id}", 
-                               json=null_values_request)
+        response = client.patch(
+            f"/api/v1/trades/{valid_trade_id}", json=null_values_request
+        )
 
         # Should either accept (clearing values) or return validation error
         acceptable_codes = [200, 400, 404, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Null values request returned {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Null values request returned {response.status_code}"
 
     def _validate_trade_response_structure(self, trade: dict) -> None:
         """
@@ -322,8 +316,14 @@ class TestTradesUpdateContract:
         """
         # Required fields for Trade schema
         required_fields = [
-            "trade_id", "symbol", "trade_type", "quantity", 
-            "entry_price", "entry_timestamp", "status", "created_at"
+            "trade_id",
+            "symbol",
+            "trade_type",
+            "quantity",
+            "entry_price",
+            "entry_timestamp",
+            "status",
+            "created_at",
         ]
 
         for field in required_fields:
@@ -343,8 +343,12 @@ class TestTradesUpdateContract:
         assert trade["trade_type"] in ["BUY", "SELL"], "invalid trade_type"
         assert isinstance(trade["quantity"], int), "quantity must be integer"
         assert trade["quantity"] > 0, "quantity must be positive"
-        assert isinstance(trade["entry_price"], (int, float)), "entry_price must be number"
+        assert isinstance(
+            trade["entry_price"], (int, float)
+        ), "entry_price must be number"
         assert trade["entry_price"] > 0, "entry_price must be positive"
-        assert isinstance(trade["entry_timestamp"], str), "entry_timestamp must be string"
+        assert isinstance(
+            trade["entry_timestamp"], str
+        ), "entry_timestamp must be string"
         assert trade["status"] in ["OPEN", "CLOSED", "CANCELLED"], "invalid status"
         assert isinstance(trade["created_at"], str), "created_at must be string"

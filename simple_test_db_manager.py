@@ -10,14 +10,15 @@ import sys
 import shutil
 
 # Add backend to path
-sys.path.insert(0, '/home/pranay/Music/niraj/backend')
+sys.path.insert(0, "/home/pranay/Music/niraj/backend")
 
 from src.core.database_manager import (
     AdvancedDatabaseManager,
     ConnectionPool,
     MigrationManager,
-    DatabaseHealthMonitor
+    DatabaseHealthMonitor,
 )
+
 
 async def test_database_manager():
     """Test the advanced database manager functionality"""
@@ -69,7 +70,9 @@ async def test_database_manager():
         print("\n7. Testing Database Information...")
         try:
             db_info = await manager.get_database_info()
-            print(f"   ✓ Database info retrieved: {db_info.get('total_tables', 0)} tables")
+            print(
+                f"   ✓ Database info retrieved: {db_info.get('total_tables', 0)} tables"
+            )
         except Exception as e:
             print(f"   ℹ Database info (expected): {str(e)[:50]}...")
 
@@ -112,6 +115,7 @@ async def test_database_manager():
     except Exception as e:
         print(f"\n❌ TEST FAILED: {str(e)}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -121,6 +125,7 @@ async def test_database_manager():
             shutil.rmtree(temp_dir, ignore_errors=True)
         except:
             pass
+
 
 def test_individual_components():
     """Test individual components"""
@@ -210,6 +215,7 @@ def test_individual_components():
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     print("🚀 NIRAJ Advanced Database Manager - Test Suite")

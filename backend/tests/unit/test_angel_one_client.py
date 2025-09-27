@@ -22,7 +22,7 @@ from src.api.angel_one_client import (
     ValidationError,
     NetworkError,
     ServerError,
-    RateLimiter
+    RateLimiter,
 )
 
 
@@ -38,9 +38,7 @@ class TestAngelOneConfig:
 
     def test_custom_config(self):
         config = AngelOneConfig(
-            base_url="https://test.api.com",
-            timeout=60,
-            max_retries=5
+            base_url="https://test.api.com", timeout=60, max_retries=5
         )
         assert config.base_url == "https://test.api.com"
         assert config.timeout == 60
@@ -58,9 +56,7 @@ class TestAuthTokens:
 
     def test_tokens_with_data(self):
         tokens = AuthTokens(
-            jwt_token="test_jwt",
-            refresh_token="test_refresh",
-            client_code="TEST123"
+            jwt_token="test_jwt", refresh_token="test_refresh", client_code="TEST123"
         )
         assert tokens.jwt_token == "test_jwt"
         assert tokens.refresh_token == "test_refresh"
@@ -91,6 +87,7 @@ class TestRateLimiter:
 
         # Next call should be delayed
         import time
+
         start_time = time.time()
         await limiter.wait_if_needed()
         end_time = time.time()
@@ -109,7 +106,7 @@ class TestAngelOneClient:
             api_key="test_api_key",
             client_code="TEST123",
             client_pin="1234",
-            totp_secret="TESTSECRET123456"
+            totp_secret="TESTSECRET123456",
         )
 
     @pytest.fixture
@@ -140,7 +137,7 @@ class TestAngelOneClient:
         assert mac_address.startswith("02:00:00:")
         assert len(mac_address.split(":")) == 6
 
-    @patch('pyotp.TOTP')
+    @patch("pyotp.TOTP")
     def test_generate_totp(self, mock_totp_class, client):
         """Test TOTP generation"""
         mock_totp = MagicMock()
@@ -153,11 +150,7 @@ class TestAngelOneClient:
 
     def test_generate_totp_no_secret(self):
         """Test TOTP generation without secret"""
-        client = AngelOneClient(
-            api_key="test",
-            client_code="test",
-            client_pin="test"
-        )
+        client = AngelOneClient(api_key="test", client_code="test", client_pin="test")
 
         with pytest.raises(AuthenticationError):
             client._generate_totp()
@@ -166,20 +159,20 @@ class TestAngelOneClient:
         """Test default headers generation"""
         headers = client._get_default_headers(include_auth=False)
 
-        assert headers['Content-Type'] == 'application/json'
-        assert headers['Accept'] == 'application/json'
-        assert headers['X-UserType'] == 'USER'
-        assert headers['X-SourceID'] == 'WEB'
-        assert headers['X-PrivateKey'] == 'test_api_key'
-        assert headers['User-Agent'] == 'NIRAJ-Trading-System/1.0'
-        assert 'Authorization' not in headers
+        assert headers["Content-Type"] == "application/json"
+        assert headers["Accept"] == "application/json"
+        assert headers["X-UserType"] == "USER"
+        assert headers["X-SourceID"] == "WEB"
+        assert headers["X-PrivateKey"] == "test_api_key"
+        assert headers["User-Agent"] == "NIRAJ-Trading-System/1.0"
+        assert "Authorization" not in headers
 
     def test_get_default_headers_with_auth(self, client):
         """Test headers with authentication"""
         client.tokens.jwt_token = "test_jwt_token"
         headers = client._get_default_headers(include_auth=True)
 
-        assert headers['Authorization'] == 'Bearer test_jwt_token'
+        assert headers["Authorization"] == "Bearer test_jwt_token"
 
     def test_is_token_expired_no_token(self, client):
         """Test token expiry check without token"""
@@ -204,11 +197,11 @@ class TestAngelOneClient:
         mock_response.json.return_value = {
             "status": True,
             "message": "SUCCESS",
-            "data": {"test": "data"}
+            "data": {"test": "data"},
         }
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             result = await client._make_request("POST", "/test", data={"key": "value"})
 
         assert result["status"] is True
@@ -222,11 +215,11 @@ class TestAngelOneClient:
         mock_response.json.return_value = {
             "status": False,
             "message": "Invalid request",
-            "errorcode": "AG8006"
+            "errorcode": "AG8006",
         }
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(ValidationError):
                 await client._make_request("POST", "/test", data={"key": "value"})
 
@@ -238,7 +231,7 @@ class TestAngelOneClient:
         mock_response.json.return_value = {"error": "Unauthorized"}
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(AuthenticationError):
                 await client._make_request("POST", "/test")
 
@@ -250,7 +243,7 @@ class TestAngelOneClient:
         mock_response.json.return_value = {"error": "Forbidden"}
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(AuthorizationError):
                 await client._make_request("POST", "/test")
 
@@ -262,7 +255,7 @@ class TestAngelOneClient:
         mock_response.json.return_value = {"error": "Too many requests"}
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(RateLimitError):
                 await client._make_request("POST", "/test")
 
@@ -274,7 +267,7 @@ class TestAngelOneClient:
         mock_response.json.return_value = {"error": "Internal server error"}
         mock_http_client.post = AsyncMock(return_value=mock_response)
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(ServerError):
                 await client._make_request("POST", "/test", retries=1)
 
@@ -284,18 +277,22 @@ class TestAngelOneClient:
     @pytest.mark.asyncio
     async def test_make_request_network_error(self, client, mock_http_client):
         """Test network error handling"""
-        mock_http_client.post = AsyncMock(side_effect=httpx.NetworkError("Connection failed"))
+        mock_http_client.post = AsyncMock(
+            side_effect=httpx.NetworkError("Connection failed")
+        )
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(NetworkError):
                 await client._make_request("POST", "/test", retries=1)
 
     @pytest.mark.asyncio
     async def test_make_request_timeout_error(self, client, mock_http_client):
         """Test timeout error handling"""
-        mock_http_client.post = AsyncMock(side_effect=httpx.TimeoutException("Request timeout"))
+        mock_http_client.post = AsyncMock(
+            side_effect=httpx.TimeoutException("Request timeout")
+        )
 
-        with patch.object(client, '_get_client', return_value=mock_http_client):
+        with patch.object(client, "_get_client", return_value=mock_http_client):
             with pytest.raises(NetworkError):
                 await client._make_request("POST", "/test", retries=1)
 
@@ -308,12 +305,14 @@ class TestAngelOneClient:
             "data": {
                 "jwtToken": "test_jwt_token",
                 "refreshToken": "test_refresh_token",
-                "feedToken": "test_feed_token"
-            }
+                "feedToken": "test_feed_token",
+            },
         }
 
-        with patch.object(client, '_make_request', return_value=mock_response) as mock_request:
-            with patch.object(client, '_generate_totp', return_value="123456"):
+        with patch.object(
+            client, "_make_request", return_value=mock_response
+        ) as mock_request:
+            with patch.object(client, "_generate_totp", return_value="123456"):
                 result = await client.login()
 
         assert client.is_authenticated is True
@@ -339,11 +338,11 @@ class TestAngelOneClient:
             "data": {
                 "jwtToken": "test_jwt",
                 "refreshToken": "test_refresh",
-                "feedToken": "test_feed"
-            }
+                "feedToken": "test_feed",
+            },
         }
 
-        with patch.object(client, '_make_request', return_value=mock_response):
+        with patch.object(client, "_make_request", return_value=mock_response):
             await client.login(totp_code="654321")
 
         assert client.is_authenticated is True
@@ -359,11 +358,11 @@ class TestAngelOneClient:
             "data": {
                 "jwtToken": "new_jwt_token",
                 "refreshToken": "new_refresh_token",
-                "feedToken": "new_feed_token"
-            }
+                "feedToken": "new_feed_token",
+            },
         }
 
-        with patch.object(client, '_make_request', return_value=mock_response):
+        with patch.object(client, "_make_request", return_value=mock_response):
             result = await client.refresh_token()
 
         assert client.tokens.jwt_token == "new_jwt_token"
@@ -383,13 +382,9 @@ class TestAngelOneClient:
         client.is_authenticated = True
         client.tokens.jwt_token = "test_token"
 
-        mock_response = {
-            "status": True,
-            "message": "SUCCESS",
-            "data": ""
-        }
+        mock_response = {"status": True, "message": "SUCCESS", "data": ""}
 
-        with patch.object(client, '_make_request', return_value=mock_response):
+        with patch.object(client, "_make_request", return_value=mock_response):
             result = await client.logout()
 
         assert client.is_authenticated is False
@@ -422,14 +417,14 @@ class TestAngelOneClient:
         client.tokens.expires_at = datetime.now() - timedelta(hours=1)
         client.tokens.refresh_token = "test_refresh"
 
-        with patch.object(client, 'refresh_token') as mock_refresh:
+        with patch.object(client, "refresh_token") as mock_refresh:
             await client._ensure_authenticated()
             mock_refresh.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ensure_authenticated_no_token(self, client):
         """Test ensure authenticated without any token"""
-        with patch.object(client, 'login') as mock_login:
+        with patch.object(client, "login") as mock_login:
             await client._ensure_authenticated()
             mock_login.assert_called_once()
 
@@ -441,12 +436,12 @@ class TestAngelOneClient:
             "data": {
                 "clientcode": "TEST123",
                 "name": "Test User",
-                "email": "test@example.com"
-            }
+                "email": "test@example.com",
+            },
         }
 
-        with patch.object(client, '_ensure_authenticated'):
-            with patch.object(client, '_make_request', return_value=mock_response):
+        with patch.object(client, "_ensure_authenticated"):
+            with patch.object(client, "_make_request", return_value=mock_response):
                 result = await client.get_profile()
 
         assert result == mock_response
@@ -454,15 +449,12 @@ class TestAngelOneClient:
     @pytest.mark.asyncio
     async def test_place_order(self, client):
         """Test place order endpoint"""
-        mock_response = {
-            "status": True,
-            "data": {
-                "orderid": "123456789"
-            }
-        }
+        mock_response = {"status": True, "data": {"orderid": "123456789"}}
 
-        with patch.object(client, '_ensure_authenticated'):
-            with patch.object(client, '_make_request', return_value=mock_response) as mock_request:
+        with patch.object(client, "_ensure_authenticated"):
+            with patch.object(
+                client, "_make_request", return_value=mock_response
+            ) as mock_request:
                 result = await client.place_order(
                     variety="NORMAL",
                     tradingsymbol="RELIANCE",
@@ -473,7 +465,7 @@ class TestAngelOneClient:
                     producttype="INTRADAY",
                     duration="DAY",
                     price="0",
-                    quantity="1"
+                    quantity="1",
                 )
 
         assert result == mock_response
@@ -489,19 +481,17 @@ class TestAngelOneClient:
         """Test get historical data endpoint"""
         mock_response = {
             "status": True,
-            "data": [
-                ["2023-01-01T09:15:00+05:30", 100.0, 105.0, 95.0, 102.0, 1000]
-            ]
+            "data": [["2023-01-01T09:15:00+05:30", 100.0, 105.0, 95.0, 102.0, 1000]],
         }
 
-        with patch.object(client, '_ensure_authenticated'):
-            with patch.object(client, '_make_request', return_value=mock_response):
+        with patch.object(client, "_ensure_authenticated"):
+            with patch.object(client, "_make_request", return_value=mock_response):
                 result = await client.get_historical_data(
                     exchange="NSE",
                     symboltoken="2885",
                     interval="ONE_MINUTE",
                     fromdate="2023-01-01 09:15",
-                    todate="2023-01-01 15:30"
+                    todate="2023-01-01 15:30",
                 )
 
         assert result == mock_response
@@ -511,7 +501,7 @@ class TestAngelOneClient:
         """Test health check when authenticated"""
         client.is_authenticated = True
 
-        with patch.object(client, 'get_profile', return_value={"status": True}):
+        with patch.object(client, "get_profile", return_value={"status": True}):
             result = await client.health_check()
 
         assert result["status"] == "healthy"
@@ -523,7 +513,7 @@ class TestAngelOneClient:
         mock_response = MagicMock()
         mock_response.status_code = 200
 
-        with patch.object(client, '_get_client') as mock_get_client:
+        with patch.object(client, "_get_client") as mock_get_client:
             mock_http_client = AsyncMock()
             mock_http_client.get = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_http_client
@@ -538,7 +528,7 @@ class TestAngelOneClient:
         """Test health check with error"""
         client.is_authenticated = True
 
-        with patch.object(client, 'get_profile', side_effect=Exception("Test error")):
+        with patch.object(client, "get_profile", side_effect=Exception("Test error")):
             result = await client.health_check()
 
         assert result["status"] == "unhealthy"

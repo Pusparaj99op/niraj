@@ -2,6 +2,7 @@
 NIRAJ Configuration Management System
 Handles loading and managing configuration from YAML files and environment variables
 """
+
 import os
 import re
 from pathlib import Path
@@ -27,9 +28,13 @@ class Settings:
         self.redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
         # JWT
-        self.jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
+        self.jwt_secret_key: str = os.getenv(
+            "JWT_SECRET_KEY", "dev-secret-key-change-in-production"
+        )
         self.jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
-        self.jwt_access_token_expire_minutes: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+        self.jwt_access_token_expire_minutes: int = int(
+            os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+        )
 
         # Trading
         self.live_trading_pin: str = os.getenv("LIVE_TRADING_PIN", "1937")
@@ -47,7 +52,9 @@ class Settings:
         self.weather_api_key: Optional[str] = os.getenv("WEATHER_API_KEY")
 
         # AI
-        self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.ollama_base_url: str = os.getenv(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma3:4b-it-q4_K_M")
 
 
@@ -71,20 +78,21 @@ class ConfigManager:
 
             if not config_file.exists():
                 logger.warning(
-                    "Config file not found, using defaults",
-                    file=str(config_file)
+                    "Config file not found, using defaults", file=str(config_file)
                 )
                 self._config_data = self._get_default_config()
             else:
-                with open(config_file, 'r', encoding='utf-8') as f:
+                with open(config_file, "r", encoding="utf-8") as f:
                     raw_config = yaml.safe_load(f)
 
                 # Substitute environment variables
                 self._config_data = self._substitute_env_vars(raw_config)
 
-                logger.info("Configuration loaded",
-                           environment=self.environment,
-                           config_file=str(config_file))
+                logger.info(
+                    "Configuration loaded",
+                    environment=self.environment,
+                    config_file=str(config_file),
+                )
 
             # Override with Pydantic settings (from env vars)
             self._merge_pydantic_settings()
@@ -110,7 +118,7 @@ class ConfigManager:
     def _substitute_env_var_string(self, value: str) -> Any:
         """Substitute environment variables in a string"""
         # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
-        env_var_pattern = r'\$\{([^}:]+)(?::([^}]*))?\}'
+        env_var_pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
 
         def replace_match(match):
             var_name = match.group(1)
@@ -128,11 +136,15 @@ class ConfigManager:
         result = re.sub(env_var_pattern, replace_match, value)
 
         # Try to convert to appropriate type
-        if result.lower() in ('true', 'false'):
-            return result.lower() == 'true'
+        if result.lower() in ("true", "false"):
+            return result.lower() == "true"
         elif result.isdigit():
             return int(result)
-        elif '.' in result and result.replace('.', '').isdigit() and result.count('.') == 1:
+        elif (
+            "." in result
+            and result.replace(".", "").isdigit()
+            and result.count(".") == 1
+        ):
             # Only convert to float if it's a simple decimal number (one dot, digits only)
             return float(result)
         else:
@@ -142,16 +154,16 @@ class ConfigManager:
         """Merge Pydantic settings into config data"""
         # Map pydantic settings to config structure
         mappings = {
-            'database.url': self.settings.database_url,
-            'redis.url': self.settings.redis_url,
-            'auth.secret_key': self.settings.jwt_secret_key,
-            'auth.algorithm': self.settings.jwt_algorithm,
-            'auth.access_token_expire_minutes': self.settings.jwt_access_token_expire_minutes,
-            'auth.live_trading_pin': self.settings.live_trading_pin,
-            'ai.ollama.base_url': self.settings.ollama_base_url,
-            'ai.ollama.model': self.settings.ollama_model,
-            'application.environment': self.settings.environment,
-            'application.debug': self.settings.debug,
+            "database.url": self.settings.database_url,
+            "redis.url": self.settings.redis_url,
+            "auth.secret_key": self.settings.jwt_secret_key,
+            "auth.algorithm": self.settings.jwt_algorithm,
+            "auth.access_token_expire_minutes": self.settings.jwt_access_token_expire_minutes,
+            "auth.live_trading_pin": self.settings.live_trading_pin,
+            "ai.ollama.base_url": self.settings.ollama_base_url,
+            "ai.ollama.model": self.settings.ollama_model,
+            "application.environment": self.settings.environment,
+            "application.debug": self.settings.debug,
         }
 
         for config_path, value in mappings.items():
@@ -160,7 +172,7 @@ class ConfigManager:
 
     def _set_nested_value(self, data: dict, path: str, value: Any):
         """Set nested dictionary value using dot notation"""
-        keys = path.split('.')
+        keys = path.split(".")
         current = data
 
         for key in keys[:-1]:
@@ -173,28 +185,24 @@ class ConfigManager:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration if no config file exists"""
         return {
-            'application': {
-                'name': 'NIRAJ',
-                'version': '0.1.0',
-                'environment': self.environment,
-                'debug': self.environment == 'development'
+            "application": {
+                "name": "NIRAJ",
+                "version": "0.1.0",
+                "environment": self.environment,
+                "debug": self.environment == "development",
             },
-            'server': {
-                'host': 'localhost',
-                'port': 8000,
-                'reload': self.environment == 'development'
+            "server": {
+                "host": "localhost",
+                "port": 8000,
+                "reload": self.environment == "development",
             },
-            'database': {
-                'url': self.settings.database_url
+            "database": {"url": self.settings.database_url},
+            "redis": {"url": self.settings.redis_url},
+            "auth": {
+                "secret_key": self.settings.jwt_secret_key,
+                "algorithm": self.settings.jwt_algorithm,
+                "access_token_expire_minutes": self.settings.jwt_access_token_expire_minutes,
             },
-            'redis': {
-                'url': self.settings.redis_url
-            },
-            'auth': {
-                'secret_key': self.settings.jwt_secret_key,
-                'algorithm': self.settings.jwt_algorithm,
-                'access_token_expire_minutes': self.settings.jwt_access_token_expire_minutes
-            }
         }
 
     def get(self, path: str, default: Any = None) -> Any:
@@ -202,7 +210,7 @@ class ConfigManager:
         if not self._loaded:
             self.load_config()
 
-        keys = path.split('.')
+        keys = path.split(".")
         current = self._config_data
 
         try:
@@ -237,10 +245,10 @@ class ConfigManager:
             self.load_config()
 
         required_keys = [
-            'application.name',
-            'database.url',
-            'redis.url',
-            'auth.secret_key'
+            "application.name",
+            "database.url",
+            "redis.url",
+            "auth.secret_key",
         ]
 
         missing_keys = []
@@ -291,11 +299,11 @@ class ConfigManager:
             "",
             "# Application",
             "ENVIRONMENT=development",
-            "DEBUG=true"
+            "DEBUG=true",
         ]
 
-        with open(output_file, 'w') as f:
-            f.write('\n'.join(template_vars))
+        with open(output_file, "w") as f:
+            f.write("\n".join(template_vars))
 
         logger.info("Environment template exported", file=output_file)
 
@@ -326,95 +334,103 @@ def validate_config() -> bool:
 class AppConfig:
     @property
     def name(self) -> str:
-        return get_config('application.name', 'NIRAJ')
+        return get_config("application.name", "NIRAJ")
 
     @property
     def version(self) -> str:
-        return get_config('application.version', '0.1.0')
+        return get_config("application.version", "0.1.0")
 
     @property
     def environment(self) -> str:
-        return get_config('application.environment', 'development')
+        return get_config("application.environment", "development")
 
     @property
     def debug(self) -> bool:
-        return get_config('application.debug', False)
+        return get_config("application.debug", False)
 
 
 class ServerConfig:
     @property
     def host(self) -> str:
-        return get_config('server.host', 'localhost')
+        return get_config("server.host", "localhost")
 
     @property
     def port(self) -> int:
-        return get_config('server.port', 8000)
+        return get_config("server.port", 8000)
 
     @property
     def reload(self) -> bool:
-        return get_config('server.reload', False)
+        return get_config("server.reload", False)
 
 
 class DatabaseConfig:
     @property
     def url(self) -> str:
-        return get_config('database.url')
+        return get_config("database.url")
 
     @property
     def echo(self) -> bool:
-        return get_config('database.echo', False)
+        return get_config("database.echo", False)
 
 
 class TradingConfig:
     @property
     def default_mode(self) -> str:
-        return get_config('trading.default_mode', 'paper')
+        return get_config("trading.default_mode", "paper")
 
     @property
     def max_position_size(self) -> int:
-        return get_config('trading.max_position_size', 100000)
+        return get_config("trading.max_position_size", 100000)
 
     @property
     def risk_percentage(self) -> float:
-        return get_config('trading.risk_percentage', 2.0)
+        return get_config("trading.risk_percentage", 2.0)
 
 
 class WeatherAPIConfig:
     @property
     def api_key(self) -> Optional[str]:
-        return get_config('external_apis.weather.api_key') or config.settings.weather_api_key
+        return (
+            get_config("external_apis.weather.api_key")
+            or config.settings.weather_api_key
+        )
 
     @property
     def base_url(self) -> str:
-        return get_config('external_apis.weather.base_url', 'https://api.openweathermap.org/data/2.5')
+        return get_config(
+            "external_apis.weather.base_url", "https://api.openweathermap.org/data/2.5"
+        )
 
     @property
     def geocoding_url(self) -> str:
-        return get_config('external_apis.weather.geocoding_url', 'http://api.openweathermap.org/geo/1.0')
+        return get_config(
+            "external_apis.weather.geocoding_url",
+            "http://api.openweathermap.org/geo/1.0",
+        )
 
     @property
     def timeout(self) -> int:
-        return get_config('external_apis.weather.timeout', 15)
+        return get_config("external_apis.weather.timeout", 15)
 
     @property
     def max_retries(self) -> int:
-        return get_config('external_apis.weather.max_retries', 3)
+        return get_config("external_apis.weather.max_retries", 3)
 
     @property
     def rate_limit_calls_per_minute(self) -> int:
-        return get_config('external_apis.weather.rate_limit_calls_per_minute', 50)
+        return get_config("external_apis.weather.rate_limit_calls_per_minute", 50)
 
     @property
     def enable_commodity_analysis(self) -> bool:
-        return get_config('external_apis.weather.enable_commodity_analysis', True)
+        return get_config("external_apis.weather.enable_commodity_analysis", True)
 
     @property
     def enable_agricultural_insights(self) -> bool:
-        return get_config('external_apis.weather.enable_agricultural_insights', True)
+        return get_config("external_apis.weather.enable_agricultural_insights", True)
 
     @property
     def enable_energy_insights(self) -> bool:
-        return get_config('external_apis.weather.enable_energy_insights', True)
+        return get_config("external_apis.weather.enable_energy_insights", True)
 
 
 # Configuration objects

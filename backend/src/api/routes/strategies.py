@@ -30,8 +30,11 @@ from ...core.database import DatabaseManager
 from ...core.cache import CacheManager
 from ...services.strategy_service import StrategyService, StrategyServiceError
 from ...models.strategy import (
-    StrategyCreateRequest, StrategyUpdateRequest, StrategyResponse,
-    StrategyCategory, StrategyNotFoundError
+    StrategyCreateRequest,
+    StrategyUpdateRequest,
+    StrategyResponse,
+    StrategyCategory,
+    StrategyNotFoundError,
 )
 from ...models.backtest import BacktestRequest, BacktestResult
 from ...ai.gemma3_integration import Gemma3Client
@@ -47,8 +50,8 @@ router = APIRouter(
         404: {"description": "Not Found - Strategy not found"},
         409: {"description": "Conflict - Strategy name already exists"},
         422: {"description": "Unprocessable Entity - Validation error"},
-        500: {"description": "Internal Server Error - System error"}
-    }
+        500: {"description": "Internal Server Error - System error"},
+    },
 )
 
 # Initialize structured logger
@@ -61,6 +64,7 @@ _strategy_service: Optional[StrategyService] = None
 # Pydantic models for API requests and responses
 class StrategyListResponse(BaseModel):
     """Response model for strategy listing"""
+
     strategies: List[StrategyResponse]
     total: int
     limit: int
@@ -69,11 +73,13 @@ class StrategyListResponse(BaseModel):
 
 class BacktestResponse(BaseModel):
     """Response model for backtest results"""
+
     backtest_result: BacktestResult
 
 
 class ErrorResponse(BaseModel):
     """Enhanced error response model"""
+
     error: str
     error_code: str
     message: str
@@ -90,7 +96,7 @@ async def get_strategy_service() -> StrategyService:
     if _strategy_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Strategy service not initialized"
+            detail="Strategy service not initialized",
         )
     return _strategy_service
 
@@ -102,7 +108,7 @@ def create_error_response(
     message: str,
     status_code: int,
     details: Optional[Dict[str, Any]] = None,
-    path: Optional[str] = None
+    path: Optional[str] = None,
 ) -> JSONResponse:
     """Create standardized error response"""
     return JSONResponse(
@@ -113,8 +119,8 @@ def create_error_response(
             message=message,
             details=details,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path
-        ).dict()
+            path=path,
+        ).dict(),
     )
 
 
@@ -123,9 +129,9 @@ def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
     logger.warning(
         "Strategy operation error",
         error_type=type(e).__name__,
-        error_code=getattr(e, 'error_code', 'UNKNOWN'),
+        error_code=getattr(e, "error_code", "UNKNOWN"),
         path=request_path,
-        strategy_id=getattr(e, 'strategy_id', None)
+        strategy_id=getattr(e, "strategy_id", None),
     )
 
     # Map error types to HTTP status codes
@@ -138,7 +144,7 @@ def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
             error_code = "DUPLICATE_STRATEGY_NAME"
         else:
             status_code = status.HTTP_400_BAD_REQUEST
-            error_code = getattr(e, 'error_code', 'STRATEGY_ERROR')
+            error_code = getattr(e, "error_code", "STRATEGY_ERROR")
     else:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
@@ -148,10 +154,8 @@ def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
         error_code=error_code,
         message=str(e),
         status_code=status_code,
-        details={
-            'strategy_id': getattr(e, 'strategy_id', None)
-        },
-        path=request_path
+        details={"strategy_id": getattr(e, "strategy_id", None)},
+        path=request_path,
     )
 
 
@@ -179,15 +183,15 @@ def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
     responses={
         200: {"description": "Strategies retrieved successfully"},
         400: {"description": "Invalid filter parameters"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def list_strategies(
     category: Optional[str] = Query(None, description="Filter by strategy category"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_service: StrategyService = Depends(get_strategy_service),
 ) -> StrategyListResponse:
     """
     List strategies with filtering and pagination
@@ -199,10 +203,7 @@ async def list_strategies(
 
     try:
         with structlog.contextvars.bound_contextvars(
-            category=category,
-            is_active=is_active,
-            limit=limit,
-            offset=offset
+            category=category, is_active=is_active, limit=limit, offset=offset
         ):
             logger.info("Listing strategies")
 
@@ -210,15 +211,12 @@ async def list_strategies(
             if category and category not in [c.value for c in StrategyCategory]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid category: {category}. Must be one of: {[c.value for c in StrategyCategory]}"
+                    detail=f"Invalid category: {category}. Must be one of: {[c.value for c in StrategyCategory]}",
                 )
 
             # Get strategies from service
             strategies, total = await strategy_service.list_strategies(
-                category=category,
-                is_active=is_active,
-                limit=limit,
-                offset=offset
+                category=category, is_active=is_active, limit=limit, offset=offset
             )
 
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -226,14 +224,11 @@ async def list_strategies(
                 "Strategies listed successfully",
                 count=len(strategies),
                 total=total,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return StrategyListResponse(
-                strategies=strategies,
-                total=total,
-                limit=limit,
-                offset=offset
+                strategies=strategies, total=total, limit=limit, offset=offset
             )
 
     except HTTPException:
@@ -279,13 +274,13 @@ async def list_strategies(
         400: {"description": "Invalid request data"},
         409: {"description": "Strategy name already exists"},
         422: {"description": "Validation error"},
-        500: {"description": "Internal server error"}
+        500: {"description": "Internal server error"},
     },
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_strategy(
     strategy_data: StrategyCreateRequest,
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_service: StrategyService = Depends(get_strategy_service),
 ) -> StrategyResponse:
     """
     Create a new trading strategy
@@ -297,8 +292,7 @@ async def create_strategy(
 
     try:
         with structlog.contextvars.bound_contextvars(
-            strategy_name=strategy_data.name,
-            category=strategy_data.category.value
+            strategy_name=strategy_data.name, category=strategy_data.category.value
         ):
             logger.info("Creating strategy")
 
@@ -309,7 +303,7 @@ async def create_strategy(
             logger.info(
                 "Strategy created successfully",
                 strategy_id=strategy.strategy_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return strategy
@@ -341,12 +335,11 @@ async def create_strategy(
         200: {"description": "Strategy retrieved successfully"},
         404: {"description": "Strategy not found"},
         422: {"description": "Invalid strategy ID format"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_strategy(
-    strategy_id: str,
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_id: str, strategy_service: StrategyService = Depends(get_strategy_service)
 ) -> StrategyResponse:
     """
     Get a specific strategy by ID
@@ -362,12 +355,10 @@ async def get_strategy(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid strategy ID format. Must be a valid UUID."
+                detail="Invalid strategy ID format. Must be a valid UUID.",
             )
 
-        with structlog.contextvars.bound_contextvars(
-            strategy_id=strategy_id
-        ):
+        with structlog.contextvars.bound_contextvars(strategy_id=strategy_id):
             logger.info("Retrieving strategy")
 
             # Get strategy from service
@@ -377,7 +368,7 @@ async def get_strategy(
             logger.info(
                 "Strategy retrieved successfully",
                 strategy_id=strategy_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return strategy
@@ -426,13 +417,13 @@ async def get_strategy(
         404: {"description": "Strategy not found"},
         409: {"description": "Strategy name already exists"},
         422: {"description": "Invalid strategy ID or update data"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def update_strategy(
     strategy_id: str,
     update_data: StrategyUpdateRequest,
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_service: StrategyService = Depends(get_strategy_service),
 ) -> StrategyResponse:
     """
     Update an existing strategy
@@ -448,12 +439,12 @@ async def update_strategy(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid strategy ID format. Must be a valid UUID."
+                detail="Invalid strategy ID format. Must be a valid UUID.",
             )
 
         with structlog.contextvars.bound_contextvars(
             strategy_id=strategy_id,
-            update_fields=list(update_data.dict(exclude_unset=True).keys())
+            update_fields=list(update_data.dict(exclude_unset=True).keys()),
         ):
             logger.info("Updating strategy")
 
@@ -464,7 +455,7 @@ async def update_strategy(
             logger.info(
                 "Strategy updated successfully",
                 strategy_id=strategy_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return strategy
@@ -498,13 +489,12 @@ async def update_strategy(
         204: {"description": "Strategy deleted successfully"},
         404: {"description": "Strategy not found"},
         422: {"description": "Invalid strategy ID format"},
-        500: {"description": "Internal server error"}
+        500: {"description": "Internal server error"},
     },
-    status_code=status.HTTP_204_NO_CONTENT
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_strategy(
-    strategy_id: str,
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_id: str, strategy_service: StrategyService = Depends(get_strategy_service)
 ) -> None:
     """
     Delete a strategy by ID
@@ -520,12 +510,10 @@ async def delete_strategy(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid strategy ID format. Must be a valid UUID."
+                detail="Invalid strategy ID format. Must be a valid UUID.",
             )
 
-        with structlog.contextvars.bound_contextvars(
-            strategy_id=strategy_id
-        ):
+        with structlog.contextvars.bound_contextvars(strategy_id=strategy_id):
             logger.info("Deleting strategy")
 
             # Delete strategy through service
@@ -533,15 +521,14 @@ async def delete_strategy(
 
             if not deleted:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Strategy not found"
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found"
                 )
 
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 "Strategy deleted successfully",
                 strategy_id=strategy_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
     except HTTPException:
@@ -593,13 +580,13 @@ async def delete_strategy(
         400: {"description": "Invalid backtest parameters"},
         404: {"description": "Strategy not found"},
         422: {"description": "Invalid strategy ID or request data"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def run_backtest(
     strategy_id: str,
     backtest_request: BacktestRequest,
-    strategy_service: StrategyService = Depends(get_strategy_service)
+    strategy_service: StrategyService = Depends(get_strategy_service),
 ) -> BacktestResponse:
     """
     Run a backtest for a strategy
@@ -615,19 +602,21 @@ async def run_backtest(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid strategy ID format. Must be a valid UUID."
+                detail="Invalid strategy ID format. Must be a valid UUID.",
             )
 
         with structlog.contextvars.bound_contextvars(
             strategy_id=strategy_id,
             start_date=backtest_request.start_date.isoformat(),
             end_date=backtest_request.end_date.isoformat(),
-            initial_capital=backtest_request.initial_capital
+            initial_capital=backtest_request.initial_capital,
         ):
             logger.info("Running strategy backtest")
 
             # Run backtest through service
-            backtest_result = await strategy_service.run_backtest(strategy_id, backtest_request)
+            backtest_result = await strategy_service.run_backtest(
+                strategy_id, backtest_request
+            )
 
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
@@ -635,7 +624,7 @@ async def run_backtest(
                 strategy_id=strategy_id,
                 backtest_id=backtest_result.backtest_id,
                 total_return=backtest_result.performance_metrics.total_return,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return BacktestResponse(backtest_result=backtest_result)
@@ -651,7 +640,7 @@ async def run_backtest(
 def init_strategy_routes(
     db_manager: DatabaseManager,
     cache_manager: CacheManager,
-    ai_integration: Optional[Gemma3Client] = None
+    ai_integration: Optional[Gemma3Client] = None,
 ) -> APIRouter:
     """
     Initialize strategy routes with required services
@@ -671,7 +660,7 @@ def init_strategy_routes(
         _strategy_service = StrategyService(
             db_manager=db_manager,
             cache_manager=cache_manager,
-            ai_integration=ai_integration
+            ai_integration=ai_integration,
         )
 
         logger.info("Strategy routes initialized successfully")
@@ -688,5 +677,5 @@ __all__ = [
     "init_strategy_routes",
     "StrategyListResponse",
     "BacktestResponse",
-    "ErrorResponse"
+    "ErrorResponse",
 ]

@@ -17,13 +17,22 @@ import structlog
 from ..core.database import DatabaseManager
 from ..core.cache import CacheManager
 from ..models.strategy import (
-    Strategy, StrategyORM, StrategyCreateRequest, StrategyUpdateRequest,
-    StrategyResponse, StrategyCategory,
-    StrategyNotFoundError, validate_strategy_name_availability
+    Strategy,
+    StrategyORM,
+    StrategyCreateRequest,
+    StrategyUpdateRequest,
+    StrategyResponse,
+    StrategyCategory,
+    StrategyNotFoundError,
+    validate_strategy_name_availability,
 )
 from ..models.backtest import (
-    BacktestRequest, BacktestResult, BacktestConfiguration,
-    BacktestEngine, validate_backtest_request, BacktestExecutionError
+    BacktestRequest,
+    BacktestResult,
+    BacktestConfiguration,
+    BacktestEngine,
+    validate_backtest_request,
+    BacktestExecutionError,
 )
 from ..ai.gemma3_integration import Gemma3Client
 
@@ -32,6 +41,7 @@ logger = structlog.get_logger(__name__)
 
 class StrategyServiceError(Exception):
     """Base exception for strategy service errors"""
+
     def __init__(self, message: str, strategy_id: str = None, error_code: str = None):
         self.message = message
         self.strategy_id = strategy_id
@@ -55,7 +65,7 @@ class StrategyService:
         self,
         db_manager: DatabaseManager,
         cache_manager: CacheManager,
-        ai_integration: Optional[Gemma3Client] = None
+        ai_integration: Optional[Gemma3Client] = None,
     ):
         self.db_manager = db_manager
         self.cache_manager = cache_manager
@@ -65,7 +75,9 @@ class StrategyService:
         self._strategy_cache_prefix = "strategy:"
         self._strategies_list_cache = "strategies:list"
 
-    async def create_strategy(self, create_request: StrategyCreateRequest) -> StrategyResponse:
+    async def create_strategy(
+        self, create_request: StrategyCreateRequest
+    ) -> StrategyResponse:
         """
         Create a new trading strategy
 
@@ -82,10 +94,12 @@ class StrategyService:
             async with self.db_manager.get_session() as session:
                 # Check name availability
                 existing_names = await self._get_existing_strategy_names(session)
-                if not validate_strategy_name_availability(create_request.name, existing_names):
+                if not validate_strategy_name_availability(
+                    create_request.name, existing_names
+                ):
                     raise StrategyServiceError(
                         f"Strategy name '{create_request.name}' already exists",
-                        error_code="DUPLICATE_NAME"
+                        error_code="DUPLICATE_NAME",
                     )
 
                 # Create strategy instance
@@ -100,7 +114,7 @@ class StrategyService:
                     stop_loss_pct=create_request.stop_loss_pct,
                     take_profit_pct=create_request.take_profit_pct,
                     max_daily_trades=create_request.max_daily_trades,
-                    is_paper_only=create_request.is_paper_only
+                    is_paper_only=create_request.is_paper_only,
                 )
 
                 # Convert to ORM and save
@@ -124,7 +138,7 @@ class StrategyService:
                     sharpe_ratio=strategy.sharpe_ratio,
                     max_drawdown=strategy.max_drawdown,
                     created_at=strategy.created_at,
-                    updated_at=strategy.updated_at
+                    updated_at=strategy.updated_at,
                 )
 
                 session.add(orm_strategy)
@@ -137,7 +151,9 @@ class StrategyService:
                 # Invalidate cache
                 await self._invalidate_strategy_cache()
 
-                logger.info("Strategy created successfully", strategy_id=strategy.strategy_id)
+                logger.info(
+                    "Strategy created successfully", strategy_id=strategy.strategy_id
+                )
                 return response
 
         except Exception as e:
@@ -175,14 +191,18 @@ class StrategyService:
                 response = await self._orm_to_response(orm_strategy)
 
                 # Cache result
-                await self.cache_manager.set(cache_key, response.dict(), ttl=300)  # 5 minutes
+                await self.cache_manager.set(
+                    cache_key, response.dict(), ttl=300
+                )  # 5 minutes
 
                 return response
 
         except StrategyNotFoundError:
             raise
         except Exception as e:
-            logger.error("Strategy retrieval failed", strategy_id=strategy_id, error=str(e))
+            logger.error(
+                "Strategy retrieval failed", strategy_id=strategy_id, error=str(e)
+            )
             raise StrategyServiceError(f"Failed to retrieve strategy: {str(e)}")
 
     async def list_strategies(
@@ -190,7 +210,7 @@ class StrategyService:
         category: Optional[str] = None,
         is_active: Optional[bool] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> Tuple[List[StrategyResponse], int]:
         """
         List strategies with optional filtering
@@ -206,12 +226,14 @@ class StrategyService:
         """
         try:
             # Check cache for unfiltered results
-            cache_key = f"{self._strategies_list_cache}:{category}:{is_active}:{limit}:{offset}"
+            cache_key = (
+                f"{self._strategies_list_cache}:{category}:{is_active}:{limit}:{offset}"
+            )
             if not any([category, is_active]):
                 cached = await self.cache_manager.get(cache_key)
                 if cached:
-                    strategies = [StrategyResponse(**s) for s in cached['strategies']]
-                    return strategies, cached['total']
+                    strategies = [StrategyResponse(**s) for s in cached["strategies"]]
+                    return strategies, cached["total"]
 
             async with self.db_manager.get_session() as session:
                 # Build query
@@ -234,7 +256,11 @@ class StrategyService:
                 total = count_result.scalar()
 
                 # Apply pagination and ordering
-                query = query.order_by(StrategyORM.created_at.desc()).limit(limit).offset(offset)
+                query = (
+                    query.order_by(StrategyORM.created_at.desc())
+                    .limit(limit)
+                    .offset(offset)
+                )
 
                 # Execute query
                 result = await session.execute(query)
@@ -248,8 +274,8 @@ class StrategyService:
                 # Cache unfiltered results
                 if not any([category, is_active]):
                     cache_data = {
-                        'strategies': [s.dict() for s in strategies],
-                        'total': total
+                        "strategies": [s.dict() for s in strategies],
+                        "total": total,
                     }
                     await self.cache_manager.set(cache_key, cache_data, ttl=300)
 
@@ -260,9 +286,7 @@ class StrategyService:
             raise StrategyServiceError(f"Failed to list strategies: {str(e)}")
 
     async def update_strategy(
-        self,
-        strategy_id: str,
-        update_request: StrategyUpdateRequest
+        self, strategy_id: str, update_request: StrategyUpdateRequest
     ) -> StrategyResponse:
         """
         Update an existing strategy
@@ -289,12 +313,16 @@ class StrategyService:
 
                 # Check name uniqueness if name is being updated
                 if update_request.name and update_request.name != orm_strategy.name:
-                    existing_names = await self._get_existing_strategy_names(session, exclude_id=strategy_id)
-                    if not validate_strategy_name_availability(update_request.name, existing_names):
+                    existing_names = await self._get_existing_strategy_names(
+                        session, exclude_id=strategy_id
+                    )
+                    if not validate_strategy_name_availability(
+                        update_request.name, existing_names
+                    ):
                         raise StrategyServiceError(
                             f"Strategy name '{update_request.name}' already exists",
                             strategy_id=strategy_id,
-                            error_code="DUPLICATE_NAME"
+                            error_code="DUPLICATE_NAME",
                         )
 
                 # Apply updates
@@ -324,7 +352,9 @@ class StrategyService:
         except StrategyNotFoundError:
             raise
         except Exception as e:
-            logger.error("Strategy update failed", strategy_id=strategy_id, error=str(e))
+            logger.error(
+                "Strategy update failed", strategy_id=strategy_id, error=str(e)
+            )
             raise StrategyServiceError(f"Failed to update strategy: {str(e)}")
 
     async def delete_strategy(self, strategy_id: str) -> bool:
@@ -351,18 +381,20 @@ class StrategyService:
                 if deleted:
                     # Invalidate caches
                     await self._invalidate_strategy_cache(strategy_id)
-                    logger.info("Strategy deleted successfully", strategy_id=strategy_id)
+                    logger.info(
+                        "Strategy deleted successfully", strategy_id=strategy_id
+                    )
 
                 return deleted
 
         except Exception as e:
-            logger.error("Strategy deletion failed", strategy_id=strategy_id, error=str(e))
+            logger.error(
+                "Strategy deletion failed", strategy_id=strategy_id, error=str(e)
+            )
             raise StrategyServiceError(f"Failed to delete strategy: {str(e)}")
 
     async def run_backtest(
-        self,
-        strategy_id: str,
-        backtest_request: BacktestRequest
+        self, strategy_id: str, backtest_request: BacktestRequest
     ) -> BacktestResult:
         """
         Run a backtest for a strategy
@@ -394,20 +426,20 @@ class StrategyService:
                 start_date=backtest_request.start_date,
                 end_date=backtest_request.end_date,
                 initial_capital=Decimal(str(backtest_request.initial_capital)),
-                symbols=symbols
+                symbols=symbols,
             )
 
             # Get historical market data (placeholder - would integrate with data manager)
             market_data = await self._get_historical_data(
                 symbols=symbols,
                 start_date=backtest_request.start_date,
-                end_date=backtest_request.end_date
+                end_date=backtest_request.end_date,
             )
 
             if not market_data:
                 raise BacktestExecutionError(
                     "No market data available for the specified period",
-                    config.backtest_id
+                    config.backtest_id,
                 )
 
             # Create backtest engine
@@ -423,7 +455,7 @@ class StrategyService:
                 "Backtest completed successfully",
                 strategy_id=strategy_id,
                 backtest_id=result.backtest_id,
-                total_return=result.performance_metrics.total_return
+                total_return=result.performance_metrics.total_return,
             )
 
             return result
@@ -431,13 +463,13 @@ class StrategyService:
         except (StrategyNotFoundError, BacktestExecutionError):
             raise
         except Exception as e:
-            logger.error("Backtest execution failed", strategy_id=strategy_id, error=str(e))
+            logger.error(
+                "Backtest execution failed", strategy_id=strategy_id, error=str(e)
+            )
             raise BacktestExecutionError(f"Backtest failed: {str(e)}")
 
     async def _get_existing_strategy_names(
-        self,
-        session: AsyncSession,
-        exclude_id: Optional[str] = None
+        self, session: AsyncSession, exclude_id: Optional[str] = None
     ) -> List[str]:
         """Get list of existing strategy names"""
         query = select(StrategyORM.name)
@@ -469,7 +501,7 @@ class StrategyService:
             sharpe_ratio=orm_strategy.sharpe_ratio,
             max_drawdown=Decimal(str(orm_strategy.max_drawdown)),
             created_at=orm_strategy.created_at,
-            updated_at=orm_strategy.updated_at
+            updated_at=orm_strategy.updated_at,
         )
 
     async def _orm_to_strategy(self, orm_strategy: StrategyORM) -> Strategy:
@@ -494,10 +526,12 @@ class StrategyService:
             sharpe_ratio=orm_strategy.sharpe_ratio,
             max_drawdown=Decimal(str(orm_strategy.max_drawdown)),
             created_at=orm_strategy.created_at,
-            updated_at=orm_strategy.updated_at
+            updated_at=orm_strategy.updated_at,
         )
 
-    async def _invalidate_strategy_cache(self, strategy_id: Optional[str] = None) -> None:
+    async def _invalidate_strategy_cache(
+        self, strategy_id: Optional[str] = None
+    ) -> None:
         """Invalidate strategy-related cache entries"""
         keys_to_delete = [self._strategies_list_cache]
 
@@ -508,10 +542,7 @@ class StrategyService:
             await self.cache_manager.delete(key)
 
     async def _get_historical_data(
-        self,
-        symbols: List[str],
-        start_date: date,
-        end_date: date
+        self, symbols: List[str], start_date: date, end_date: date
     ) -> List[Dict[str, Any]]:
         """
         Get historical market data for backtesting
@@ -537,15 +568,19 @@ class StrategyService:
                     close_price = low_price + random.uniform(0, high_price - low_price)
                     volume = random.randint(10000, 1000000)
 
-                    data.append({
-                        'symbol': symbol,
-                        'timestamp': datetime.combine(current_date, datetime.min.time()),
-                        'open': open_price,
-                        'high': high_price,
-                        'low': low_price,
-                        'close': close_price,
-                        'volume': volume
-                    })
+                    data.append(
+                        {
+                            "symbol": symbol,
+                            "timestamp": datetime.combine(
+                                current_date, datetime.min.time()
+                            ),
+                            "open": open_price,
+                            "high": high_price,
+                            "low": low_price,
+                            "close": close_price,
+                            "volume": volume,
+                        }
+                    )
 
             current_date += timedelta(days=1)
 
@@ -557,6 +592,7 @@ class StrategyService:
 
         Placeholder implementation - would load actual strategy implementation
         """
+
         def strategy_logic(market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             """
             Mock strategy logic - buy on dip, sell on rally
@@ -571,10 +607,10 @@ class StrategyService:
                 quantity = random.uniform(10, 100)
 
                 return {
-                    'symbol': market_data['symbol'],
-                    'side': action,
-                    'quantity': quantity,
-                    'confidence': random.uniform(0.5, 0.9)
+                    "symbol": market_data["symbol"],
+                    "side": action,
+                    "quantity": quantity,
+                    "confidence": random.uniform(0.5, 0.9),
                 }
 
             return None
@@ -586,19 +622,15 @@ class StrategyService:
 async def create_strategy_service(
     db_manager: DatabaseManager,
     cache_manager: CacheManager,
-    ai_integration: Optional[Gemma3Client] = None
+    ai_integration: Optional[Gemma3Client] = None,
 ) -> StrategyService:
     """Create and initialize strategy service"""
     return StrategyService(
         db_manager=db_manager,
         cache_manager=cache_manager,
-        ai_integration=ai_integration
+        ai_integration=ai_integration,
     )
 
 
 # Export classes and functions
-__all__ = [
-    'StrategyService',
-    'StrategyServiceError',
-    'create_strategy_service'
-]
+__all__ = ["StrategyService", "StrategyServiceError", "create_strategy_service"]

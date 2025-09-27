@@ -11,7 +11,8 @@ from unittest.mock import Mock, AsyncMock
 # Import the implementation
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from backend.src.core.information_processor import (
     InformationProcessor,
@@ -26,7 +27,7 @@ from backend.src.core.information_processor import (
     NewsStream,
     WeatherStream,
     SystemAlert,
-    StreamMetrics
+    StreamMetrics,
 )
 
 
@@ -41,7 +42,7 @@ async def test_stream_data_classes():
         source="angel_one",
         ohlcv={"open": 45000, "close": 45100},
         indicators={"rsi": 65.4},
-        quote={"bid": 45099, "ask": 45101}
+        quote={"bid": 45099, "ask": 45101},
     )
 
     message = market_data.to_websocket_message()
@@ -57,7 +58,7 @@ async def test_stream_data_classes():
         content="Banks show strong performance...",
         relevance_score=0.8,
         sentiment_score=0.6,
-        extracted_symbols=["HDFCBANK", "ICICIBANK"]
+        extracted_symbols=["HDFCBANK", "ICICIBANK"],
     )
 
     news_message = news_data.to_websocket_message()
@@ -73,7 +74,7 @@ async def test_stream_data_classes():
         temperature=32.5,
         humidity=78.0,
         conditions="Partly cloudy",
-        sector_impact={"agricultural_banks": 0.1}
+        sector_impact={"agricultural_banks": 0.1},
     )
 
     weather_message = weather_data.to_websocket_message()
@@ -92,7 +93,7 @@ async def test_stream_metrics():
     metrics.record_message(25.5, success=True)  # Good latency
     metrics.record_message(75.0, success=True)  # Higher latency
     metrics.record_message(15.2, success=True)  # Low latency
-    metrics.record_message(0.0, success=False)   # Failed message
+    metrics.record_message(0.0, success=False)  # Failed message
 
     stats = metrics.get_stats()
 
@@ -131,12 +132,12 @@ async def test_market_data_processor():
 
     # Test data processing
     mock_tick_data = {
-        'symbol': 'BANKNIFTY',
-        'ltp': 45150.25,
-        'timestamp': datetime.now(timezone.utc).timestamp() * 1000,
-        'volume': 125680,
-        'bid': 45148.0,
-        'ask': 45152.5
+        "symbol": "BANKNIFTY",
+        "ltp": 45150.25,
+        "timestamp": datetime.now(timezone.utc).timestamp() * 1000,
+        "volume": 125680,
+        "bid": 45148.0,
+        "ask": 45152.5,
     }
 
     stream_data = await processor.process_data(mock_tick_data)
@@ -161,10 +162,10 @@ async def test_news_processor():
 
     # Test news processing
     mock_article = {
-        'title': 'Bank Nifty Surges on Strong Earnings',
-        'description': 'Banking stocks showed remarkable performance with HDFCBANK leading gains.',
-        'source': {'name': 'Financial Times'},
-        'publishedAt': datetime.now(timezone.utc).isoformat()
+        "title": "Bank Nifty Surges on Strong Earnings",
+        "description": "Banking stocks showed remarkable performance with HDFCBANK leading gains.",
+        "source": {"name": "Financial Times"},
+        "publishedAt": datetime.now(timezone.utc).isoformat(),
     }
 
     stream_data = await processor.process_data(mock_article)
@@ -176,10 +177,14 @@ async def test_news_processor():
     assert "HDFCBANK" in stream_data.extracted_symbols
 
     # Test sentiment analysis
-    sentiment = processor._calculate_sentiment_score("Strong bull rally continues with positive outlook")
+    sentiment = processor._calculate_sentiment_score(
+        "Strong bull rally continues with positive outlook"
+    )
     assert sentiment > 0  # Should be positive
 
-    sentiment = processor._calculate_sentiment_score("Market crash and bearish decline expected")
+    sentiment = processor._calculate_sentiment_score(
+        "Market crash and bearish decline expected"
+    )
     assert sentiment < 0  # Should be negative
 
     print("✅ News processor works correctly")
@@ -196,12 +201,9 @@ async def test_weather_processor():
 
     # Test weather processing
     mock_weather_data = {
-        'name': 'Mumbai',
-        'main': {
-            'temp': 305.15,  # Kelvin (32°C)
-            'humidity': 78
-        },
-        'weather': [{'description': 'partly cloudy'}]
+        "name": "Mumbai",
+        "main": {"temp": 305.15, "humidity": 78},  # Kelvin (32°C)
+        "weather": [{"description": "partly cloudy"}],
     }
 
     stream_data = await processor.process_data(mock_weather_data)
@@ -213,19 +215,21 @@ async def test_weather_processor():
     assert stream_data.humidity == 78
 
     # Test sector impact calculation
-    impacts = processor._calculate_sector_impact({
-        'temperature': 42,  # High temperature
-        'humidity': 60,
-        'conditions': 'clear sky'
-    })
+    impacts = processor._calculate_sector_impact(
+        {
+            "temperature": 42,  # High temperature
+            "humidity": 60,
+            "conditions": "clear sky",
+        }
+    )
 
     # High temperature should negatively impact agricultural banks
-    assert 'agricultural_banks' in impacts
-    assert impacts['agricultural_banks'] < 0
+    assert "agricultural_banks" in impacts
+    assert impacts["agricultural_banks"] < 0
 
     # Should positively impact power sector due to cooling demand
-    assert 'power_sector' in impacts
-    assert impacts['power_sector'] > 0
+    assert "power_sector" in impacts
+    assert impacts["power_sector"] > 0
 
     print("✅ Weather processor works correctly")
 
@@ -242,10 +246,7 @@ async def test_information_processor():
     mock_cache.get = AsyncMock(return_value=None)
 
     # Create processor
-    processor = InformationProcessor(
-        data_manager=mock_data_manager,
-        cache=mock_cache
-    )
+    processor = InformationProcessor(data_manager=mock_data_manager, cache=mock_cache)
 
     # Test initialization
     assert processor.status == ProcessingStatus.STOPPED
@@ -268,7 +269,7 @@ async def test_information_processor():
     subscriptions = {
         "market_data": {"symbols": ["BANKNIFTY"]},
         "news": {},
-        "weather": {}
+        "weather": {},
     }
 
     await processor.add_websocket_client(mock_websocket, subscriptions)
@@ -286,12 +287,14 @@ async def test_error_handling():
 
     # Test with invalid data
     mock_news_client = Mock()
-    mock_news_client.calculate_relevance_score = AsyncMock(side_effect=Exception("API Error"))
+    mock_news_client.calculate_relevance_score = AsyncMock(
+        side_effect=Exception("API Error")
+    )
 
     processor = NewsProcessor(mock_news_client)
 
     # This should handle the error gracefully
-    invalid_article = {'title': '', 'description': None}  # Invalid data
+    invalid_article = {"title": "", "description": None}  # Invalid data
     stream_data = await processor.process_data(invalid_article)
 
     # Should return None for invalid data
@@ -316,12 +319,14 @@ async def test_performance_characteristics():
     # Process multiple articles and measure latency
     articles = []
     for i in range(10):
-        articles.append({
-            'title': f'Financial News Article {i}',
-            'description': f'Content about market analysis {i} with BANKNIFTY and HDFCBANK mentions',
-            'source': {'name': 'Test Source'},
-            'publishedAt': datetime.now(timezone.utc).isoformat()
-        })
+        articles.append(
+            {
+                "title": f"Financial News Article {i}",
+                "description": f"Content about market analysis {i} with BANKNIFTY and HDFCBANK mentions",
+                "source": {"name": "Test Source"},
+                "publishedAt": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     start_time = datetime.now(timezone.utc)
 
@@ -343,7 +348,9 @@ async def test_performance_characteristics():
     print(f"   - Target: <50ms per message")
 
     # Verify sub-second processing (generous threshold for mock)
-    assert processing_time < 1000, f"Processing took {processing_time:.2f}ms, should be under 1000ms"
+    assert (
+        processing_time < 1000
+    ), f"Processing took {processing_time:.2f}ms, should be under 1000ms"
 
 
 async def run_all_tests():
@@ -360,7 +367,7 @@ async def run_all_tests():
         test_weather_processor,
         test_information_processor,
         test_error_handling,
-        test_performance_characteristics
+        test_performance_characteristics,
     ]
 
     passed = 0

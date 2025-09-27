@@ -9,14 +9,23 @@ import os
 from datetime import datetime, timedelta
 
 # Add src to path
-sys.path.insert(0, '/home/pranay/Music/niraj/backend/src')
+sys.path.insert(0, "/home/pranay/Music/niraj/backend/src")
+
 
 # Simple mock implementations to avoid logger issues
 class MockLogger:
-    def info(self, msg): print(f"INFO: {msg}")
-    def debug(self, msg): print(f"DEBUG: {msg}")
-    def warning(self, msg): print(f"WARNING: {msg}")
-    def error(self, msg): print(f"ERROR: {msg}")
+    def info(self, msg):
+        print(f"INFO: {msg}")
+
+    def debug(self, msg):
+        print(f"DEBUG: {msg}")
+
+    def warning(self, msg):
+        print(f"WARNING: {msg}")
+
+    def error(self, msg):
+        print(f"ERROR: {msg}")
+
 
 # Mock the imports before importing our module
 import sys
@@ -30,8 +39,8 @@ logger_mock.log_performance = lambda x: lambda func: func  # Pass-through decora
 logger_mock.LogContext = MagicMock()
 
 utils_mock.logger = logger_mock
-sys.modules['utils'] = utils_mock
-sys.modules['utils.logger'] = logger_mock
+sys.modules["utils"] = utils_mock
+sys.modules["utils.logger"] = logger_mock
 
 # Now create the client directly
 print("🧪 Testing Angel One Client Implementation")
@@ -41,8 +50,10 @@ try:
     # Import the classes directly
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location("angel_one_client",
-        "/home/pranay/Music/niraj/backend/src/api/angel_one_client.py")
+    spec = importlib.util.spec_from_file_location(
+        "angel_one_client",
+        "/home/pranay/Music/niraj/backend/src/api/angel_one_client.py",
+    )
     angel_module = importlib.util.module_from_spec(spec)
 
     # Mock the logger imports in the module
@@ -70,9 +81,7 @@ try:
     print(f"   Default rate limit: {config.rate_limit_calls}")
 
     custom_config = AngelOneConfig(
-        base_url="https://test.api.com",
-        timeout=60,
-        max_retries=5
+        base_url="https://test.api.com", timeout=60, max_retries=5
     )
     print(f"   Custom base URL: {custom_config.base_url}")
     print(f"   Custom timeout: {custom_config.timeout}")
@@ -84,7 +93,7 @@ try:
         client_code="TEST001",
         client_pin="1234",
         totp_secret="JBSWY3DPEHPK3PXP",
-        config=custom_config
+        config=custom_config,
     )
 
     print(f"   Client Code: {client.client_code}")
@@ -121,9 +130,15 @@ try:
     print("\n✅ Test 4: Header Generation")
     headers = client._get_default_headers(include_auth=False)
     expected_headers = [
-        'Content-Type', 'Accept', 'X-UserType', 'X-SourceID',
-        'X-ClientLocalIP', 'X-ClientPublicIP', 'X-MACAddress',
-        'X-PrivateKey', 'User-Agent'
+        "Content-Type",
+        "Accept",
+        "X-UserType",
+        "X-SourceID",
+        "X-ClientLocalIP",
+        "X-ClientPublicIP",
+        "X-MACAddress",
+        "X-PrivateKey",
+        "User-Agent",
     ]
 
     for header in expected_headers:
@@ -137,7 +152,9 @@ try:
     # Test with auth
     client.tokens.jwt_token = "test_jwt_token_123"
     headers_with_auth = client._get_default_headers(include_auth=True)
-    print(f"   Auth header with token: {'Bearer test_jwt' in headers_with_auth.get('Authorization', '')}")
+    print(
+        f"   Auth header with token: {'Bearer test_jwt' in headers_with_auth.get('Authorization', '')}"
+    )
 
     # Test 5: Token Expiry Logic
     print("\n✅ Test 5: Token Expiry Logic")
@@ -153,7 +170,9 @@ try:
     client.tokens.expires_at = datetime.now() - timedelta(hours=1)
     print(f"   Past token - expired: {client._is_token_expired()}")
 
-    client.tokens.expires_at = datetime.now() + timedelta(minutes=3)  # Within 5-min buffer
+    client.tokens.expires_at = datetime.now() + timedelta(
+        minutes=3
+    )  # Within 5-min buffer
     print(f"   Soon expiring token - expired: {client._is_token_expired()}")
 
     # Test 6: TOTP Generation
@@ -168,9 +187,7 @@ try:
 
     # Test client without TOTP secret
     client_no_totp = AngelOneClient(
-        api_key="test_api",
-        client_code="TEST002",
-        client_pin="5678"
+        api_key="test_api", client_code="TEST002", client_pin="5678"
     )
 
     try:
@@ -196,6 +213,7 @@ try:
 
         # Test window cleanup
         import time
+
         limiter.calls = [time.time() - 70 for _ in range(2)]  # Old calls
         await limiter.wait_if_needed()
         print(f"   After cleanup: {len(limiter.calls)}")
@@ -213,7 +231,7 @@ try:
         (AuthenticationError, "Auth failed", "AG8001", 401),
         (angel_module.AuthorizationError, "Not authorized", "AG8004", 403),
         (angel_module.ValidationError, "Invalid input", "AG8006", 400),
-        (angel_module.RateLimitError, "Too many requests", "AG8007", 429)
+        (angel_module.RateLimitError, "Too many requests", "AG8007", 429),
     ]
 
     for exc_class, message, error_code, status_code in exceptions_to_test:
@@ -230,8 +248,12 @@ try:
 
     stats = client.get_client_stats()
     expected_stats = [
-        'session_id', 'client_code', 'is_authenticated',
-        'token_expires_at', 'api_calls_in_window', 'rate_limit_max'
+        "session_id",
+        "client_code",
+        "is_authenticated",
+        "token_expires_at",
+        "api_calls_in_window",
+        "rate_limit_max",
     ]
 
     for stat in expected_stats:
@@ -244,11 +266,23 @@ try:
     print("\n✅ Test 10: API Method Signatures")
 
     methods_to_check = [
-        'login', 'logout', 'refresh_token', 'get_profile', 'get_rms_limits',
-        'get_ltp_data', 'get_quotes', 'get_historical_data',
-        'place_order', 'modify_order', 'cancel_order', 'get_order_book',
-        'get_holdings', 'get_positions', 'convert_position',
-        'health_check', 'close'
+        "login",
+        "logout",
+        "refresh_token",
+        "get_profile",
+        "get_rms_limits",
+        "get_ltp_data",
+        "get_quotes",
+        "get_historical_data",
+        "place_order",
+        "modify_order",
+        "cancel_order",
+        "get_order_book",
+        "get_holdings",
+        "get_positions",
+        "convert_position",
+        "health_check",
+        "close",
     ]
 
     missing_methods = []
@@ -284,6 +318,7 @@ try:
 except Exception as e:
     print(f"❌ Error during validation: {e}")
     import traceback
+
     traceback.print_exc()
 
 print("\n" + "=" * 60)

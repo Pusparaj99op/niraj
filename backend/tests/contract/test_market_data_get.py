@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -21,6 +22,7 @@ class TestMarketDataGetContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -44,9 +46,9 @@ class TestMarketDataGetContract:
 
         # Assert - Status Code
         expected_status = 200
-        assert response.status_code == expected_status, (
-            f"Expected status {expected_status}, got {response.status_code}"
-        )
+        assert (
+            response.status_code == expected_status
+        ), f"Expected status {expected_status}, got {response.status_code}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -79,9 +81,7 @@ class TestMarketDataGetContract:
 
             # Assert - Response Structure
             response_json = response.json()
-            self._validate_market_data_response_structure(
-                response_json, valid_symbol
-            )
+            self._validate_market_data_response_structure(response_json, valid_symbol)
 
             # Assert - Timeframe is reflected in response
             if "timeframe" in response_json:
@@ -133,8 +133,7 @@ class TestMarketDataGetContract:
         # Assert - Status Code
         expected_status = 200
         assert response.status_code == expected_status, (
-            f"Limit query: expected {expected_status}, "
-            f"got {response.status_code}"
+            f"Limit query: expected {expected_status}, " f"got {response.status_code}"
         )
 
         # Assert - Response Structure
@@ -144,13 +143,11 @@ class TestMarketDataGetContract:
         # Assert - Data array should respect limit
         if "data" in response_json:
             data_points = len(response_json["data"])
-            assert data_points <= 10, (
-                f"Data points should be limited to 10, got {data_points}"
-            )
+            assert (
+                data_points <= 10
+            ), f"Data points should be limited to 10, got {data_points}"
 
-    def test_get_market_data_invalid_symbol_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_get_market_data_invalid_symbol_contract(self, client: TestClient) -> None:
         """
         Test market data retrieval with invalid symbol.
 
@@ -176,9 +173,9 @@ class TestMarketDataGetContract:
             has_error_field = any(
                 field in response_json for field in possible_error_fields
             )
-            assert has_error_field or len(response_json) == 0, (
-                "Error response should contain error details or be empty"
-            )
+            assert (
+                has_error_field or len(response_json) == 0
+            ), "Error response should contain error details or be empty"
 
     def test_get_market_data_empty_symbol_contract(self, client: TestClient) -> None:
         """
@@ -192,9 +189,7 @@ class TestMarketDataGetContract:
         response = client.get("/api/v1/market-data/")
 
         # Assert - Should not succeed with 200
-        assert response.status_code != 200, (
-            "Empty symbol should not return success"
-        )
+        assert response.status_code != 200, "Empty symbol should not return success"
 
         # Common responses for empty/missing path parameters
         acceptable_codes = [400, 404, 405, 422]
@@ -218,8 +213,7 @@ class TestMarketDataGetContract:
         for invalid_timeframe in invalid_timeframes:
             # Act
             response = client.get(
-                f"/api/v1/market-data/{valid_symbol}"
-                f"?timeframe={invalid_timeframe}"
+                f"/api/v1/market-data/{valid_symbol}" f"?timeframe={invalid_timeframe}"
             )
 
             # Assert - Should return validation error
@@ -269,8 +263,7 @@ class TestMarketDataGetContract:
         for invalid_date in invalid_dates:
             # Act
             response = client.get(
-                f"/api/v1/market-data/{valid_symbol}"
-                f"?start_date={invalid_date}"
+                f"/api/v1/market-data/{valid_symbol}" f"?start_date={invalid_date}"
             )
 
             # Assert - Should return validation error
@@ -297,9 +290,9 @@ class TestMarketDataGetContract:
             response = client.get(f"/api/v1/market-data/{special_symbol}")
 
             # Assert - Should not cause server error
-            assert response.status_code < 500, (
-                f"Special symbol '{special_symbol}' should not cause server error"
-            )
+            assert (
+                response.status_code < 500
+            ), f"Special symbol '{special_symbol}' should not cause server error"
 
             # Should return appropriate error
             acceptable_codes = [400, 404, 422]
@@ -327,9 +320,9 @@ class TestMarketDataGetContract:
 
             # Assert - Should handle consistently
             acceptable_codes = [200, 400, 404]
-            assert response.status_code in acceptable_codes, (
-                f"Symbol '{symbol}' returned {response.status_code}"
-            )
+            assert (
+                response.status_code in acceptable_codes
+            ), f"Symbol '{symbol}' returned {response.status_code}"
 
     def test_get_market_data_performance_contract(
         self, client: TestClient, valid_symbol: str
@@ -351,14 +344,14 @@ class TestMarketDataGetContract:
         response_time = end_time - start_time
 
         # Assert - Response time should be reasonable (less than 10 seconds)
-        assert response_time < 10.0, (
-            f"Response time {response_time:.2f}s should be under 10 seconds"
-        )
+        assert (
+            response_time < 10.0
+        ), f"Response time {response_time:.2f}s should be under 10 seconds"
 
         # Assert - Should get a valid HTTP response
-        assert 200 <= response.status_code < 600, (
-            f"Should return valid HTTP status code, got {response.status_code}"
-        )
+        assert (
+            200 <= response.status_code < 600
+        ), f"Should return valid HTTP status code, got {response.status_code}"
 
     def test_get_market_data_response_headers_contract(
         self, client: TestClient, valid_symbol: str
@@ -376,9 +369,9 @@ class TestMarketDataGetContract:
         # Assert - Content-Type header for JSON responses
         if response.status_code == 200:
             content_type = response.headers.get("content-type", "")
-            assert "application/json" in content_type.lower(), (
-                f"Response should have JSON content-type, got {content_type}"
-            )
+            assert (
+                "application/json" in content_type.lower()
+            ), f"Response should have JSON content-type, got {content_type}"
 
     def test_get_market_data_authentication_contract(
         self, client: TestClient, valid_symbol: str
@@ -395,9 +388,9 @@ class TestMarketDataGetContract:
 
         # Assert - Should either succeed (if no auth required) or return 401
         acceptable_codes = [200, 401]
-        assert response.status_code in acceptable_codes, (
-            f"Expected {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Expected {acceptable_codes}, got {response.status_code}"
 
         # If 401, should have appropriate error response
         if response.status_code == 401:
@@ -406,9 +399,9 @@ class TestMarketDataGetContract:
             has_error_field = any(
                 field in response_json for field in possible_error_fields
             )
-            assert has_error_field or len(response_json) == 0, (
-                "401 response should contain error details or be empty"
-            )
+            assert (
+                has_error_field or len(response_json) == 0
+            ), "401 response should contain error details or be empty"
 
     def _validate_market_data_response_structure(
         self, market_data: dict, expected_symbol: str
@@ -447,9 +440,9 @@ class TestMarketDataGetContract:
             timeframe = market_data["timeframe"]
             assert isinstance(timeframe, str), "timeframe must be string"
             valid_timeframes = ["1min", "5min", "15min", "1hour", "1day"]
-            assert timeframe in valid_timeframes, (
-                f"timeframe must be one of {valid_timeframes}, got {timeframe}"
-            )
+            assert (
+                timeframe in valid_timeframes
+            ), f"timeframe must be one of {valid_timeframes}, got {timeframe}"
 
     def _validate_ohlcv_structure(self, ohlcv: dict) -> None:
         """
@@ -494,6 +487,6 @@ class TestMarketDataGetContract:
         # Optional change_percent field
         if "change_percent" in ohlcv:
             change_percent = ohlcv["change_percent"]
-            assert isinstance(change_percent, (int, float)), (
-                "change_percent must be number"
-            )
+            assert isinstance(
+                change_percent, (int, float)
+            ), "change_percent must be number"

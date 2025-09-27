@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -22,6 +23,7 @@ class TestStrategiesGetContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -41,44 +43,36 @@ class TestStrategiesGetContract:
         - Response 200: Strategy schema object
         """
         # Act
-        response: Response = client.get(
-            f"/api/v1/strategies/{valid_strategy_id}"
-        )
+        response: Response = client.get(f"/api/v1/strategies/{valid_strategy_id}")
 
         # Assert - Status Code (will be 404 until strategy exists,
         # but endpoint should exist)
         # Initially expecting 404 since no strategies exist in empty system
         acceptable_codes = [200, 404]
         actual_status = response.status_code
-        assert actual_status in acceptable_codes, (
-            f"Expected status {acceptable_codes}, got {actual_status}"
-        )
+        assert (
+            actual_status in acceptable_codes
+        ), f"Expected status {acceptable_codes}, got {actual_status}"
 
         # If 200 response, validate structure
         if actual_status == 200:
             response_json = response.json()
             self._validate_strategy_structure(response_json)
-            
+
             # Verify the returned strategy has the requested ID
             returned_id = response_json["strategy_id"]
-            assert returned_id == valid_strategy_id, (
-                f"Expected strategy_id {valid_strategy_id}, got {returned_id}"
-            )
+            assert (
+                returned_id == valid_strategy_id
+            ), f"Expected strategy_id {valid_strategy_id}, got {returned_id}"
 
         # If 404 response, validate error structure
         elif actual_status == 404:
             # This is expected behavior when strategy doesn't exist
             response_json = response.json()
-            assert "detail" in response_json, (
-                "404 response must contain 'detail' field"
-            )
-            assert isinstance(response_json["detail"], str), (
-                "detail must be a string"
-            )
+            assert "detail" in response_json, "404 response must contain 'detail' field"
+            assert isinstance(response_json["detail"], str), "detail must be a string"
 
-    def test_get_strategy_not_found_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_get_strategy_not_found_contract(self, client: TestClient) -> None:
         """
         Test strategy not found contract compliance.
 
@@ -90,23 +84,19 @@ class TestStrategiesGetContract:
         non_existent_id = str(uuid.uuid4())
 
         # Act
-        response: Response = client.get(
-            f"/api/v1/strategies/{non_existent_id}"
-        )
+        response: Response = client.get(f"/api/v1/strategies/{non_existent_id}")
 
         # Assert - Status Code
         expected_status = 404
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
-        assert "detail" in response_json, (
-            "404 response must contain 'detail' field"
-        )
-        
+        assert "detail" in response_json, "404 response must contain 'detail' field"
+
         detail = response_json["detail"]
         assert isinstance(detail, str), "detail must be a string"
         assert len(detail) > 0, "detail cannot be empty"
@@ -146,13 +136,9 @@ class TestStrategiesGetContract:
             if actual_status == 422:
                 # FastAPI validation error format
                 response_json = response.json()
-                assert "detail" in response_json, (
-                    "422 response must contain 'detail'"
-                )
+                assert "detail" in response_json, "422 response must contain 'detail'"
 
-    def test_get_strategy_empty_uuid_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_get_strategy_empty_uuid_contract(self, client: TestClient) -> None:
         """
         Test strategy retrieval with empty strategy_id.
 
@@ -187,7 +173,7 @@ class TestStrategiesGetContract:
         # Arrange - UUIDs with special characters/URL encoding issues
         special_char_ids = [
             "123e4567-e89b-12d3-a456-426614174000%20",  # URL encoded space
-            "123e4567-e89b-12d3-a456-426614174000/",     # Trailing slash
+            "123e4567-e89b-12d3-a456-426614174000/",  # Trailing slash
             "123e4567-e89b-12d3-a456-426614174000?param=value",  # Query params
             # Path traversal attempt
             "../123e4567-e89b-12d3-a456-426614174000",
@@ -224,9 +210,7 @@ class TestStrategiesGetContract:
 
         for method_name, method_func in methods_to_test:
             # Act
-            response: Response = method_func(
-                f"/api/v1/strategies/{valid_strategy_id}"
-            )
+            response: Response = method_func(f"/api/v1/strategies/{valid_strategy_id}")
 
             # Assert - Status Code
             if method_name == "DELETE":
@@ -235,16 +219,14 @@ class TestStrategiesGetContract:
             else:
                 # Other methods should not be allowed
                 acceptable_codes = [405]
-            
+
             actual_status = response.status_code
             assert actual_status in acceptable_codes, (
                 f"{method_name} method should return {acceptable_codes}, "
                 f"got {actual_status}"
             )
 
-    def test_get_strategy_case_sensitivity_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_get_strategy_case_sensitivity_contract(self, client: TestClient) -> None:
         """
         Test UUID case sensitivity in strategy retrieval.
 
@@ -285,23 +267,21 @@ class TestStrategiesGetContract:
         - Standard HTTP headers should be present
         """
         # Act
-        response: Response = client.get(
-            f"/api/v1/strategies/{valid_strategy_id}"
-        )
+        response: Response = client.get(f"/api/v1/strategies/{valid_strategy_id}")
 
         # Assert - Response Headers
         headers = response.headers
-        
+
         # Content-Type should be JSON for both success and error responses
         content_type = headers.get("content-type", "").lower()
-        assert "application/json" in content_type, (
-            f"Expected JSON content type, got {content_type}"
-        )
+        assert (
+            "application/json" in content_type
+        ), f"Expected JSON content type, got {content_type}"
 
         # Should have standard HTTP headers
-        assert "date" in headers or "Date" in headers, (
-            "Response should include Date header"
-        )
+        assert (
+            "date" in headers or "Date" in headers
+        ), "Response should include Date header"
 
     def test_get_strategy_concurrent_requests_contract(
         self, client: TestClient, valid_strategy_id: str
@@ -322,11 +302,10 @@ class TestStrategiesGetContract:
         # Assert - All responses should have same status code
         status_codes = [r.status_code for r in responses]
         first_status = status_codes[0]
-        
+
         for i, status in enumerate(status_codes):
             assert status == first_status, (
-                f"Request {i} returned status {status}, "
-                f"expected {first_status}"
+                f"Request {i} returned status {status}, " f"expected {first_status}"
             )
 
         # If all responses are 200, verify consistent data
@@ -334,9 +313,9 @@ class TestStrategiesGetContract:
             first_response_data = responses[0].json()
             for i, response in enumerate(responses[1:], 1):
                 response_data = response.json()
-                assert response_data == first_response_data, (
-                    f"Request {i} returned different data than first request"
-                )
+                assert (
+                    response_data == first_response_data
+                ), f"Request {i} returned different data than first request"
 
     def _validate_strategy_structure(self, strategy: dict) -> None:
         """
@@ -346,8 +325,14 @@ class TestStrategiesGetContract:
         """
         # Required fields for Strategy schema
         required_fields = [
-            "strategy_id", "name", "category", "target_symbols",
-            "is_active", "is_paper_only", "created_at", "updated_at"
+            "strategy_id",
+            "name",
+            "category",
+            "target_symbols",
+            "is_active",
+            "is_paper_only",
+            "created_at",
+            "updated_at",
         ]
 
         for field in required_fields:
@@ -368,14 +353,15 @@ class TestStrategiesGetContract:
 
         category = strategy["category"]
         assert category in [
-            "predatory", "quantitative", "psychological",
-            "mathematical", "extreme"
+            "predatory",
+            "quantitative",
+            "psychological",
+            "mathematical",
+            "extreme",
         ], f"category must be one of the valid values, got {category}"
 
         target_symbols = strategy["target_symbols"]
-        assert isinstance(target_symbols, list), (
-            "target_symbols must be an array"
-        )
+        assert isinstance(target_symbols, list), "target_symbols must be an array"
         assert len(target_symbols) > 0, "target_symbols cannot be empty"
         for symbol in target_symbols:
             assert isinstance(symbol, str), "each target_symbol must be string"
@@ -388,36 +374,32 @@ class TestStrategiesGetContract:
 
         # Optional fields validation
         if "description" in strategy:
-            assert isinstance(strategy["description"], str), (
-                "description must be string"
-            )
+            assert isinstance(
+                strategy["description"], str
+            ), "description must be string"
 
         if "parameters" in strategy:
-            assert isinstance(strategy["parameters"], dict), (
-                "parameters must be object"
-            )
+            assert isinstance(strategy["parameters"], dict), "parameters must be object"
 
         if "min_confidence" in strategy:
             min_conf = strategy["min_confidence"]
-            assert isinstance(min_conf, (int, float)), (
-                "min_confidence must be number"
-            )
+            assert isinstance(min_conf, (int, float)), "min_confidence must be number"
             assert 0 <= min_conf <= 1, "min_confidence must be between 0 and 1"
 
         if "max_position_size" in strategy:
-            assert isinstance(strategy["max_position_size"], (int, float)), (
-                "max_position_size must be number"
-            )
+            assert isinstance(
+                strategy["max_position_size"], (int, float)
+            ), "max_position_size must be number"
 
         if "stop_loss_pct" in strategy:
-            assert isinstance(strategy["stop_loss_pct"], (int, float)), (
-                "stop_loss_pct must be number"
-            )
+            assert isinstance(
+                strategy["stop_loss_pct"], (int, float)
+            ), "stop_loss_pct must be number"
 
         if "take_profit_pct" in strategy:
-            assert isinstance(strategy["take_profit_pct"], (int, float)), (
-                "take_profit_pct must be number"
-            )
+            assert isinstance(
+                strategy["take_profit_pct"], (int, float)
+            ), "take_profit_pct must be number"
 
         # Performance object validation
         if "performance" in strategy:
@@ -425,19 +407,22 @@ class TestStrategiesGetContract:
             assert isinstance(performance, dict), "performance must be object"
 
             perf_fields = [
-                "total_trades", "win_rate", "total_pnl",
-                "sharpe_ratio", "max_drawdown"
+                "total_trades",
+                "win_rate",
+                "total_pnl",
+                "sharpe_ratio",
+                "max_drawdown",
             ]
             for field in perf_fields:
                 if field in performance:
                     if field == "total_trades":
-                        assert isinstance(performance[field], int), (
-                            f"{field} must be integer"
-                        )
+                        assert isinstance(
+                            performance[field], int
+                        ), f"{field} must be integer"
                     else:
-                        assert isinstance(performance[field], (int, float)), (
-                            f"{field} must be number"
-                        )
+                        assert isinstance(
+                            performance[field], (int, float)
+                        ), f"{field} must be number"
 
         # Timestamp validation
         created_at = strategy["created_at"]

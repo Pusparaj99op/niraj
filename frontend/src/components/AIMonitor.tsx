@@ -494,8 +494,8 @@ const ConfidenceTrackingCard: React.FC = () => {
             {selectedMetricData.calibration_curve.slice(0, 10).map((point, index) => (
               <div key={index} className="flex flex-col items-center">
                 <div
-                  className="w-2 bg-blue-500 rounded-t"
-                  style={{ height: `${point.accuracy * 100}%` }} // eslint-disable-line react/style-prop-object
+                  className={`w-2 bg-blue-500 rounded-t`}
+                  style={{ height: `${point.accuracy * 100}%` }} // eslint-disable-line @typescript-eslint/no-explicit-any
                   title={`Confidence: ${formatPercentage(point.confidence)}, Accuracy: ${formatPercentage(point.accuracy)}`}
                 ></div>
                 <span className="text-xs text-gray-500 mt-1">{Math.round(point.confidence * 100)}</span>
@@ -607,13 +607,13 @@ const ModelPerformanceChart: React.FC = () => {
                     {/* Accuracy bar */}
                     <div
                       className="w-3 bg-blue-500 rounded-t"
-                      style={{ height: `${Math.max(accuracy * 50, 2)}px` }} // eslint-disable-line react/style-prop-object
+                      style={{ height: `${Math.max(accuracy * 50, 2)}px` }} // eslint-disable-next-line
                       title={`Accuracy: ${formatPercentage(accuracy)}`}
                     ></div>
                     {/* P&L bar */}
                     <div
                       className={`w-3 rounded-t ${pnl >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
-                      style={{ height: `${Math.max(Math.abs(pnl) * 10, 2)}px` }} // eslint-disable-line react/style-prop-object
+                      style={{ height: `${Math.max(Math.abs(pnl) * 10, 2)}px` }} // eslint-disable-next-line
                       title={`P&L: ${formatCurrency(pnl)}`}
                     ></div>
                   </div>
@@ -1431,7 +1431,7 @@ const SystemDiagnostics: React.FC = () => {
                   (systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3,
                   { warning: 60, critical: 80 }
                 )}`}
-                style={{ width: `${((systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3)}%` }}
+                style={{ width: `${((systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3)}%` }} // eslint-disable-next-line
               ></div>
             </div>
             <p className="text-xs text-gray-500">Average system load</p>

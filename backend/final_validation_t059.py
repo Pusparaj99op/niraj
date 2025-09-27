@@ -11,6 +11,8 @@ try:
     from datetime import datetime, timedelta
     import asyncio
     import time
+    import hashlib
+    import secrets
 
     print("✅ All required dependencies are available")
     print("   - httpx: HTTP client library")
@@ -25,14 +27,17 @@ except ImportError as e:
 # Test configuration structure
 print("\n✅ Testing Configuration Structure")
 
+
 class AngelOneConfig(BaseModel):
     """Angel One API configuration"""
+
     base_url: str = Field(default="https://apiconnect.angelone.in")
     timeout: int = Field(default=30)
     max_retries: int = Field(default=3)
     retry_delay: float = Field(default=1.0)
     rate_limit_calls: int = Field(default=100)
     rate_limit_window: int = Field(default=60)
+
 
 config = AngelOneConfig()
 print(f"   ✓ Default configuration: {config.base_url}")
@@ -43,28 +48,33 @@ print(f"   ✓ Custom configuration: timeout={custom_config.timeout}")
 # Test token structure
 print("\n✅ Testing Token Management Structure")
 
+
 class AuthTokens(BaseModel):
     """Authentication tokens"""
+
     jwt_token: str = None
     refresh_token: str = None
     feed_token: str = None
     client_code: str = None
     expires_at: datetime = None
 
+
 tokens = AuthTokens()
-print(f"   ✓ Token structure initialized")
+print("   ✓ Token structure initialized")
 
 tokens.jwt_token = "test_token"
 tokens.expires_at = datetime.now() + timedelta(hours=1)
-print(f"   ✓ Token assignment works")
+print("   ✓ Token assignment works")
 
 # Test TOTP functionality
 print("\n✅ Testing TOTP Generation")
+
 
 def test_totp(secret: str = "JBSWY3DPEHPK3PXP") -> str:
     """Generate TOTP code"""
     totp = pyotp.TOTP(secret)
     return totp.now()
+
 
 try:
     code = test_totp()
@@ -75,6 +85,7 @@ except Exception as e:
 
 # Test rate limiting logic
 print("\n✅ Testing Rate Limiting Logic")
+
 
 class RateLimiter:
     """Rate limiting implementation"""
@@ -89,8 +100,9 @@ class RateLimiter:
         now = time.time()
 
         # Remove old calls outside the window
-        self.calls = [call_time for call_time in self.calls
-                     if now - call_time < self.window]
+        self.calls = [
+            call_time for call_time in self.calls if now - call_time < self.window
+        ]
 
         if len(self.calls) >= self.max_calls:
             # Would wait in real implementation
@@ -98,6 +110,7 @@ class RateLimiter:
 
         # Record this call
         self.calls.append(now)
+
 
 async def test_rate_limiter():
     limiter = RateLimiter(max_calls=3, window=60)
@@ -113,29 +126,41 @@ async def test_rate_limiter():
     await limiter.wait_if_needed()
     print(f"   ✓ Rate limiter cleans up old calls: {len(limiter.calls)}")
 
+
 asyncio.run(test_rate_limiter())
 
 # Test exception hierarchy
 print("\n✅ Testing Exception Hierarchy")
 
+
 class AngelOneError(Exception):
     """Base exception for Angel One API errors"""
 
-    def __init__(self, message: str, error_code: str = None,
-                 status_code: int = None, response_data: dict = None):
+    def __init__(
+        self,
+        message: str,
+        error_code: str = None,
+        status_code: int = None,
+        response_data: dict = None,
+    ):
         super().__init__(message)
         self.message = message
         self.error_code = error_code
         self.status_code = status_code
         self.response_data = response_data or {}
 
+
 class AuthenticationError(AngelOneError):
     """Authentication related errors"""
+
     pass
+
 
 class ValidationError(AngelOneError):
     """Request validation errors"""
+
     pass
+
 
 # Test exception creation
 try:
@@ -147,35 +172,37 @@ except AngelOneError as e:
 # Test HTTP client configuration
 print("\n✅ Testing HTTP Client Configuration")
 
+
 async def test_http_client():
     timeout = httpx.Timeout(30)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 
-    async with httpx.AsyncClient(timeout=timeout, limits=limits, http2=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, limits=limits, http2=True):
         print(f"   ✓ HTTP client configured with timeout: {timeout.connect}")
         print(f"   ✓ Connection limits: {limits.max_connections}")
-        print(f"   ✓ HTTP/2 enabled")
+        print("   ✓ HTTP/2 enabled")
         return True
+
 
 result = asyncio.run(test_http_client())
 
 # Test header generation logic
 print("\n✅ Testing Header Generation")
 
-import hashlib
-import secrets
 
 def generate_device_id(client_code: str) -> str:
     """Generate a unique device ID"""
     return hashlib.md5(f"{client_code}_{time.time()}".encode()).hexdigest()
+
 
 def generate_mac_address() -> str:
     """Generate a MAC address for headers"""
     return "02:00:00:%02x:%02x:%02x" % (
         secrets.randbelow(256),
         secrets.randbelow(256),
-        secrets.randbelow(256)
+        secrets.randbelow(256),
     )
+
 
 device_id = generate_device_id("TEST123")
 mac_address = generate_mac_address()
@@ -184,66 +211,77 @@ print(f"   ✓ Device ID: {device_id} (length: {len(device_id)})")
 print(f"   ✓ MAC Address: {mac_address}")
 print(f"   ✓ MAC format valid: {mac_address.count(':') == 5}")
 
+
 def get_default_headers(api_key: str, mac_address: str, jwt_token: str = None):
     """Get default headers for API requests"""
     headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': '192.168.1.1',
-        'X-ClientPublicIP': '203.0.113.1',
-        'X-MACAddress': mac_address,
-        'X-PrivateKey': api_key,
-        'User-Agent': 'NIRAJ-Trading-System/1.0'
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-UserType": "USER",
+        "X-SourceID": "WEB",
+        "X-ClientLocalIP": "192.168.1.1",
+        "X-ClientPublicIP": "203.0.113.1",
+        "X-MACAddress": mac_address,
+        "X-PrivateKey": api_key,
+        "User-Agent": "NIRAJ-Trading-System/1.0",
     }
 
     if jwt_token:
-        headers['Authorization'] = f'Bearer {jwt_token}'
+        headers["Authorization"] = f"Bearer {jwt_token}"
 
     return headers
 
+
 headers = get_default_headers("test_api_key", mac_address, "test_jwt")
 required_headers = [
-    'Content-Type', 'Accept', 'X-UserType', 'X-SourceID',
-    'X-ClientLocalIP', 'X-ClientPublicIP', 'X-MACAddress',
-    'X-PrivateKey', 'User-Agent', 'Authorization'
+    "Content-Type",
+    "Accept",
+    "X-UserType",
+    "X-SourceID",
+    "X-ClientLocalIP",
+    "X-ClientPublicIP",
+    "X-MACAddress",
+    "X-PrivateKey",
+    "User-Agent",
+    "Authorization",
 ]
 
-print(f"   ✓ All required headers present: {all(h in headers for h in required_headers)}")
+print(
+    f"   ✓ All required headers present: {all(h in headers for h in required_headers)}"
+)
 
 # Test API endpoint structure validation
 print("\n✅ Testing API Endpoint Structure")
 
 # Core API endpoints that should be implemented
 api_endpoints = {
-    'authentication': [
-        '/rest/auth/angelbroking/user/v1/loginByPassword',
-        '/rest/auth/angelbroking/jwt/v1/generateTokens',
-        '/rest/secure/angelbroking/user/v1/logout'
+    "authentication": [
+        "/rest/auth/angelbroking/user/v1/loginByPassword",
+        "/rest/auth/angelbroking/jwt/v1/generateTokens",
+        "/rest/secure/angelbroking/user/v1/logout",
     ],
-    'profile': [
-        '/rest/secure/angelbroking/user/v1/getProfile',
-        '/rest/secure/angelbroking/user/v1/getRMS'
+    "profile": [
+        "/rest/secure/angelbroking/user/v1/getProfile",
+        "/rest/secure/angelbroking/user/v1/getRMS",
     ],
-    'market_data': [
-        '/rest/secure/angelbroking/order/v1/getLTPData',
-        '/rest/secure/angelbroking/market/v1/getQuotes',
-        '/rest/secure/angelbroking/historical/v1/getCandleData'
+    "market_data": [
+        "/rest/secure/angelbroking/order/v1/getLTPData",
+        "/rest/secure/angelbroking/market/v1/getQuotes",
+        "/rest/secure/angelbroking/historical/v1/getCandleData",
     ],
-    'trading': [
-        '/rest/secure/angelbroking/order/v1/placeOrder',
-        '/rest/secure/angelbroking/order/v1/modifyOrder',
-        '/rest/secure/angelbroking/order/v1/cancelOrder',
-        '/rest/secure/angelbroking/order/v1/getOrderBook',
-        '/rest/secure/angelbroking/order/v1/getTradeBook'
+    "trading": [
+        "/rest/secure/angelbroking/order/v1/placeOrder",
+        "/rest/secure/angelbroking/order/v1/modifyOrder",
+        "/rest/secure/angelbroking/order/v1/cancelOrder",
+        "/rest/secure/angelbroking/order/v1/getOrderBook",
+        "/rest/secure/angelbroking/order/v1/getTradeBook",
     ],
-    'portfolio': [
-        '/rest/secure/angelbroking/portfolio/v1/getHolding',
-        '/rest/secure/angelbroking/portfolio/v1/getAllHolding',
-        '/rest/secure/angelbroking/order/v1/getPosition',
-        '/rest/secure/angelbroking/portfolio/v1/convertPosition'
-    ]
+    "portfolio": [
+        "/rest/secure/angelbroking/portfolio/v1/getHolding",
+        "/rest/secure/angelbroking/portfolio/v1/getAllHolding",
+        "/rest/secure/angelbroking/order/v1/getPosition",
+        "/rest/secure/angelbroking/portfolio/v1/convertPosition",
+    ],
 }
 
 total_endpoints = sum(len(endpoints) for endpoints in api_endpoints.values())

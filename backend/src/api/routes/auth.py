@@ -61,7 +61,7 @@ from ...services.auth_service import (
     SecurityError,
     SecurityContext,
     TradingMode,
-    AuthRole
+    AuthRole,
 )
 
 # Initialize router with advanced configuration
@@ -75,8 +75,8 @@ router = APIRouter(
         404: {"description": "Not Found - Resource not found"},
         429: {"description": "Too Many Requests - Rate limit exceeded"},
         500: {"description": "Internal Server Error - System error"},
-        503: {"description": "Service Unavailable - Service temporarily unavailable"}
-    }
+        503: {"description": "Service Unavailable - Service temporarily unavailable"},
+    },
 )
 
 # Initialize structured logger
@@ -92,50 +92,63 @@ security = HTTPBearer(auto_error=False)
 
 # Advanced security configuration
 SECURITY_CONFIG = {
-    'max_login_attempts': 5,
-    'lockout_duration_minutes': 15,
-    'rate_limit_login': {'requests': 10, 'window': 300},  # 10 per 5 minutes
-    'rate_limit_refresh': {'requests': 20, 'window': 3600},  # 20 per hour
-    'rate_limit_global': {'requests': 1000, 'window': 3600},  # 1000 per hour
-    'session_timeout_minutes': 60,
-    'max_concurrent_sessions': 3,
-    'enable_geo_blocking': True,
-    'blocked_countries': ['CU', 'IR', 'KP', 'SY'],  # Example blocked countries
-    'enable_device_fingerprinting': True,
-    'require_mfa_for_live_trading': True,
-    'password_history_count': 5,
-    'password_min_age_days': 1,
-    'enable_audit_logging': True,
-    'enable_suspicious_activity_detection': True,
-    'enable_advanced_monitoring': True
+    "max_login_attempts": 5,
+    "lockout_duration_minutes": 15,
+    "rate_limit_login": {"requests": 10, "window": 300},  # 10 per 5 minutes
+    "rate_limit_refresh": {"requests": 20, "window": 3600},  # 20 per hour
+    "rate_limit_global": {"requests": 1000, "window": 3600},  # 1000 per hour
+    "session_timeout_minutes": 60,
+    "max_concurrent_sessions": 3,
+    "enable_geo_blocking": True,
+    "blocked_countries": ["CU", "IR", "KP", "SY"],  # Example blocked countries
+    "enable_device_fingerprinting": True,
+    "require_mfa_for_live_trading": True,
+    "password_history_count": 5,
+    "password_min_age_days": 1,
+    "enable_audit_logging": True,
+    "enable_suspicious_activity_detection": True,
+    "enable_advanced_monitoring": True,
 }
 
 
 # Enhanced Pydantic models for request/response with advanced validation
 class LoginRequestModel(BaseModel):
     """Enhanced login request model with device fingerprinting"""
-    username: str = Field(min_length=3, max_length=50, description="Username")
-    pin: str = Field(min_length=4, max_length=4, pattern=r'^\d{4}$', description="4-digit PIN")
-    remember_me: bool = Field(default=False, description="Remember login for extended period")
-    device_info: Optional[Dict[str, Any]] = Field(default=None, description="Device information")
-    mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if enabled")
-    client_fingerprint: Optional[str] = Field(None, description="Device fingerprint for security")
 
-    @field_validator('pin')
+    username: str = Field(min_length=3, max_length=50, description="Username")
+    pin: str = Field(
+        min_length=4, max_length=4, pattern=r"^\d{4}$", description="4-digit PIN"
+    )
+    remember_me: bool = Field(
+        default=False, description="Remember login for extended period"
+    )
+    device_info: Optional[Dict[str, Any]] = Field(
+        default=None, description="Device information"
+    )
+    mfa_code: Optional[str] = Field(
+        None, min_length=6, max_length=8, description="MFA code if enabled"
+    )
+    client_fingerprint: Optional[str] = Field(
+        None, description="Device fingerprint for security"
+    )
+
+    @field_validator("pin")
     @classmethod
     def validate_pin_format(cls, v):
         if not v.isdigit():
             raise ValueError("PIN must contain only digits")
         return v
 
-    @field_validator('username')
+    @field_validator("username")
     @classmethod
     def validate_username_format(cls, v):
-        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
-            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "Username can only contain letters, numbers, underscores, and hyphens"
+            )
         return v
 
-    @field_validator('mfa_code')
+    @field_validator("mfa_code")
     @classmethod
     def validate_mfa_code(cls, v):
         if v and not v.isdigit():
@@ -145,21 +158,32 @@ class LoginRequestModel(BaseModel):
 
 class SwitchModeRequestModel(BaseModel):
     """Enhanced trading mode switch request model"""
-    mode: str = Field(description="Trading mode ('paper' or 'live')")
-    pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern=r'^\d{4}$', description="PIN required for live mode")
-    mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if required")
-    confirmation_message: Optional[str] = Field(None, description="User confirmation message")
 
-    @field_validator('mode')
+    mode: str = Field(description="Trading mode ('paper' or 'live')")
+    pin: Optional[str] = Field(
+        None,
+        min_length=4,
+        max_length=4,
+        pattern=r"^\d{4}$",
+        description="PIN required for live mode",
+    )
+    mfa_code: Optional[str] = Field(
+        None, min_length=6, max_length=8, description="MFA code if required"
+    )
+    confirmation_message: Optional[str] = Field(
+        None, description="User confirmation message"
+    )
+
+    @field_validator("mode")
     @classmethod
     def validate_mode(cls, v):
-        if v not in ['paper', 'live']:
+        if v not in ["paper", "live"]:
             raise ValueError("Mode must be 'paper' or 'live'")
         return v
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_live_mode_requirements(self):
-        if self.mode == 'live':
+        if self.mode == "live":
             if not self.pin:
                 raise ValueError("PIN required for live trading mode")
             if not self.confirmation_message:
@@ -171,12 +195,21 @@ class SwitchModeRequestModel(BaseModel):
 
 class ChangePasswordRequestModel(BaseModel):
     """Enhanced password change request model"""
-    current_pin: str = Field(min_length=4, max_length=4, pattern=r'^\d{4}$', description="Current PIN")
-    new_pin: str = Field(min_length=4, max_length=4, pattern=r'^\d{4}$', description="New PIN")
-    confirm_pin: str = Field(min_length=4, max_length=4, pattern=r'^\d{4}$', description="Confirm new PIN")
-    mfa_code: Optional[str] = Field(None, min_length=6, max_length=8, description="MFA code if enabled")
 
-    @model_validator(mode='after')
+    current_pin: str = Field(
+        min_length=4, max_length=4, pattern=r"^\d{4}$", description="Current PIN"
+    )
+    new_pin: str = Field(
+        min_length=4, max_length=4, pattern=r"^\d{4}$", description="New PIN"
+    )
+    confirm_pin: str = Field(
+        min_length=4, max_length=4, pattern=r"^\d{4}$", description="Confirm new PIN"
+    )
+    mfa_code: Optional[str] = Field(
+        None, min_length=6, max_length=8, description="MFA code if enabled"
+    )
+
+    @model_validator(mode="after")
     def validate_pin_change(self):
         new_pin = self.new_pin
         confirm_pin = self.confirm_pin
@@ -189,7 +222,19 @@ class ChangePasswordRequestModel(BaseModel):
             raise ValueError("New PIN must be different from current PIN")
 
         # Check for weak PINs
-        if new_pin in ['0000', '1234', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999']:
+        if new_pin in [
+            "0000",
+            "1234",
+            "1111",
+            "2222",
+            "3333",
+            "4444",
+            "5555",
+            "6666",
+            "7777",
+            "8888",
+            "9999",
+        ]:
             raise ValueError("PIN too weak, avoid common patterns")
 
         return self
@@ -197,22 +242,24 @@ class ChangePasswordRequestModel(BaseModel):
 
 class MFASetupRequestModel(BaseModel):
     """MFA setup request model"""
+
     method: str = Field(description="MFA method ('totp', 'sms', 'email')")
 
-    @field_validator('method')
+    @field_validator("method")
     @classmethod
     def validate_method(cls, v):
-        if v not in ['totp', 'sms', 'email']:
+        if v not in ["totp", "sms", "email"]:
             raise ValueError("MFA method must be 'totp', 'sms', or 'email'")
         return v
 
 
 class MFAVerifyRequestModel(BaseModel):
     """MFA verification request model"""
+
     code: str = Field(min_length=6, max_length=8, description="MFA verification code")
     method: str = Field(description="MFA method used")
 
-    @field_validator('code')
+    @field_validator("code")
     @classmethod
     def validate_code(cls, v):
         if not v.isdigit():
@@ -222,6 +269,7 @@ class MFAVerifyRequestModel(BaseModel):
 
 class TokenResponseModel(BaseModel):
     """Enhanced token response model"""
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -238,6 +286,7 @@ class TokenResponseModel(BaseModel):
 
 class SwitchModeResponseModel(BaseModel):
     """Enhanced mode switch response model"""
+
     mode: str
     switched_at: str
     message: str = "Trading mode switched successfully"
@@ -247,6 +296,7 @@ class SwitchModeResponseModel(BaseModel):
 
 class SessionInfoModel(BaseModel):
     """Session information model"""
+
     session_id: str
     user_id: str
     username: str
@@ -264,6 +314,7 @@ class SessionInfoModel(BaseModel):
 
 class MFASetupResponseModel(BaseModel):
     """MFA setup response model"""
+
     method: str
     secret: Optional[str] = None
     qr_code: Optional[str] = None
@@ -273,6 +324,7 @@ class MFASetupResponseModel(BaseModel):
 
 class SecurityMetricsModel(BaseModel):
     """Security metrics model"""
+
     timestamp: str
     auth_metrics: Dict[str, Any]
     security_stats: Dict[str, Any]
@@ -284,6 +336,7 @@ class SecurityMetricsModel(BaseModel):
 
 class ErrorResponseModel(BaseModel):
     """Enhanced error response model"""
+
     error: str
     error_code: str
     message: str
@@ -302,20 +355,20 @@ async def get_auth_service() -> AuthenticationService:
     if _auth_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service not initialized"
+            detail="Authentication service not initialized",
         )
     return _auth_service
 
 
 async def get_security_context(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> SecurityContext:
     """Extract and validate security context from request"""
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
@@ -327,13 +380,13 @@ async def get_security_context(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
         logger.error("Security context extraction failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication system error"
+            detail="Authentication system error",
         )
 
 
@@ -343,7 +396,7 @@ def create_error_response(
     error_code: str,
     message: str,
     status_code: int,
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None,
 ) -> JSONResponse:
     """Create standardized error response"""
     return JSONResponse(
@@ -353,20 +406,22 @@ def create_error_response(
             error_code=error_code,
             message=message,
             details=details,
-            timestamp=datetime.now(timezone.utc).isoformat()
-        ).dict()
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        ).dict(),
     )
 
 
-def handle_authentication_error(e: AuthenticationError, request: Request) -> JSONResponse:
+def handle_authentication_error(
+    e: AuthenticationError, request: Request
+) -> JSONResponse:
     """Handle authentication errors with appropriate HTTP status codes"""
     logger.warning(
         "Authentication error",
         error_type=type(e).__name__,
-        error_code=getattr(e, 'error_code', 'UNKNOWN'),
+        error_code=getattr(e, "error_code", "UNKNOWN"),
         path=request.url.path,
         method=request.method,
-        client_ip=get_client_ip(request)
+        client_ip=get_client_ip(request),
     )
 
     # Map error types to HTTP status codes
@@ -383,22 +438,23 @@ def handle_authentication_error(e: AuthenticationError, request: Request) -> JSO
 
     # Extract retry-after for rate limiting
     retry_after = None
-    if isinstance(e, RateLimitError) and hasattr(e, 'retry_after'):
+    if isinstance(e, RateLimitError) and hasattr(e, "retry_after"):
         retry_after = e.retry_after
 
     response = create_error_response(
         error=type(e).__name__,
-        error_code=getattr(e, 'error_code', 'AUTH_ERROR'),
+        error_code=getattr(e, "error_code", "AUTH_ERROR"),
         message=str(e.message),
         status_code=status_code,
-        details={
-            'retry_after': retry_after,
-            'path': request.url.path
-        } if retry_after else {'path': request.url.path}
+        details=(
+            {"retry_after": retry_after, "path": request.url.path}
+            if retry_after
+            else {"path": request.url.path}
+        ),
     )
 
     if retry_after:
-        response.headers['Retry-After'] = str(retry_after)
+        response.headers["Retry-After"] = str(retry_after)
 
     return response
 
@@ -406,18 +462,18 @@ def handle_authentication_error(e: AuthenticationError, request: Request) -> JSO
 def get_client_ip(request: Request) -> str:
     """Extract client IP address from request"""
     # Check for forwarded headers (common in proxy setups)
-    forwarded_for = request.headers.get('X-Forwarded-For')
+    forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
         # Take the first IP in case of multiple
-        return forwarded_for.split(',')[0].strip()
+        return forwarded_for.split(",")[0].strip()
 
     # Check for other proxy headers
-    real_ip = request.headers.get('X-Real-IP')
+    real_ip = request.headers.get("X-Real-IP")
     if real_ip:
         return real_ip
 
     # Fall back to direct client IP
-    return request.client.host if request.client else 'unknown'
+    return request.client.host if request.client else "unknown"
 
 
 # Route handlers
@@ -445,13 +501,13 @@ def get_client_ip(request: Request) -> str:
         400: {"description": "Invalid request data"},
         401: {"description": "Invalid credentials"},
         429: {"description": "Too many requests"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def login(
     login_data: LoginRequestModel,
     request: Request,
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> TokenResponseModel:
     """
     Authenticate user and return tokens
@@ -466,14 +522,16 @@ async def login(
     """
     start_time = datetime.now(timezone.utc)
     client_ip = get_client_ip(request)
-    user_agent = request.headers.get('User-Agent', 'unknown')
+    user_agent = request.headers.get("User-Agent", "unknown")
 
     try:
         with structlog.contextvars.bound_contextvars(
             username=login_data.username,
             client_ip=client_ip,
-            user_agent=user_agent[:100] if user_agent else 'unknown',  # Truncate long user agents
-            request_id=str(id(request))  # Simple request ID
+            user_agent=(
+                user_agent[:100] if user_agent else "unknown"
+            ),  # Truncate long user agents
+            request_id=str(id(request)),  # Simple request ID
         ):
             logger.info("Login attempt started")
 
@@ -482,14 +540,12 @@ async def login(
                 username=login_data.username,
                 pin=login_data.pin,
                 remember_me=login_data.remember_me,
-                device_info=login_data.device_info
+                device_info=login_data.device_info,
             )
 
             # Perform authentication
             token_response = await auth_service.authenticate_user(
-                login_request=login_request,
-                ip_address=client_ip,
-                user_agent=user_agent
+                login_request=login_request, ip_address=client_ip, user_agent=user_agent
             )
 
             # Log successful login
@@ -498,7 +554,7 @@ async def login(
                 "Login successful",
                 user_id=token_response.user_id,
                 session_id=token_response.session_id,
-                duration=f"{duration:.3f}s"
+                duration=f"{duration:.3f}s",
             )
 
             return TokenResponseModel(**token_response.dict())
@@ -513,7 +569,7 @@ async def login(
             "Unexpected error during login",
             error=str(e),
             error_type=type(e).__name__,
-            traceback=True
+            traceback=True,
         )
 
         return create_error_response(
@@ -521,10 +577,7 @@ async def login(
             error_code="INTERNAL_ERROR",
             message="An unexpected error occurred during login",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            details={
-                'request_id': str(id(request)),
-                'path': request.url.path
-            }
+            details={"request_id": str(id(request)), "path": request.url.path},
         )
 
 
@@ -555,14 +608,14 @@ async def login(
         400: {"description": "Invalid request data"},
         401: {"description": "Authentication required"},
         403: {"description": "Insufficient permissions or PIN required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def switch_trading_mode(
     switch_data: SwitchModeRequestModel,
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> SwitchModeResponseModel:
     """
     Switch user's trading mode with security validation
@@ -580,24 +633,23 @@ async def switch_trading_mode(
             current_mode=security_context.trading_mode,
             target_mode=switch_data.mode,
             client_ip=client_ip,
-            session_id=security_context.session_id
+            session_id=security_context.session_id,
         ):
             logger.info("Trading mode switch attempt")
 
             # Convert mode string to enum
-            target_mode = TradingMode.PAPER if switch_data.mode == 'paper' else TradingMode.LIVE
+            target_mode = (
+                TradingMode.PAPER if switch_data.mode == "paper" else TradingMode.LIVE
+            )
 
             # Create service request
-            switch_request = SwitchModeRequest(
-                mode=target_mode,
-                pin=switch_data.pin
-            )
+            switch_request = SwitchModeRequest(mode=target_mode, pin=switch_data.pin)
 
             # Perform mode switch
             result = await auth_service.switch_trading_mode(
                 user_id=security_context.user_id,
                 switch_request=switch_request,
-                ip_address=client_ip
+                ip_address=client_ip,
             )
 
             # Log successful mode switch
@@ -605,14 +657,14 @@ async def switch_trading_mode(
             logger.info(
                 "Trading mode switched successfully",
                 old_mode=security_context.trading_mode,
-                new_mode=result['mode'],
-                duration=f"{duration:.3f}s"
+                new_mode=result["mode"],
+                duration=f"{duration:.3f}s",
             )
 
             return SwitchModeResponseModel(
-                mode=result['mode'],
-                switched_at=result['switched_at'],
-                message="Trading mode switched successfully"
+                mode=result["mode"],
+                switched_at=result["switched_at"],
+                message="Trading mode switched successfully",
             )
 
     except AuthenticationError as e:
@@ -625,7 +677,7 @@ async def switch_trading_mode(
             "Unexpected error during mode switch",
             error=str(e),
             error_type=type(e).__name__,
-            traceback=True
+            traceback=True,
         )
 
         return create_error_response(
@@ -634,14 +686,15 @@ async def switch_trading_mode(
             message="An unexpected error occurred during mode switch",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             details={
-                'user_id': security_context.user_id,
-                'target_mode': switch_data.mode,
-                'path': request.url.path
-            }
+                "user_id": security_context.user_id,
+                "target_mode": switch_data.mode,
+                "path": request.url.path,
+            },
         )
 
 
 # Enhanced Authentication Endpoints
+
 
 @router.post(
     "/logout",
@@ -658,13 +711,13 @@ async def switch_trading_mode(
     responses={
         200: {"description": "Logout successful"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def logout(
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> Dict[str, Any]:
     """Logout user and revoke session"""
     client_ip = get_client_ip(request)
@@ -673,7 +726,7 @@ async def logout(
         with structlog.contextvars.bound_contextvars(
             user_id=security_context.user_id,
             session_id=security_context.session_id,
-            client_ip=client_ip
+            client_ip=client_ip,
         ):
             logger.info("User logout initiated")
 
@@ -681,7 +734,7 @@ async def logout(
             result = await auth_service.logout(
                 user_id=security_context.user_id,
                 session_id=security_context.session_id,
-                ip_address=client_ip
+                ip_address=client_ip,
             )
 
             logger.info("User logged out successfully")
@@ -693,7 +746,7 @@ async def logout(
             error="LogoutError",
             error_code="LOGOUT_FAILED",
             message="Failed to logout securely",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -715,44 +768,44 @@ async def logout(
         200: {"description": "Token refreshed successfully"},
         401: {"description": "Invalid refresh token"},
         429: {"description": "Too many requests"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def refresh_token(
     refresh_data: Dict[str, str],
     request: Request,
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> TokenResponseModel:
     """Refresh access token using refresh token"""
     client_ip = get_client_ip(request)
-    user_agent = request.headers.get('User-Agent', 'unknown')
+    user_agent = request.headers.get("User-Agent", "unknown")
 
     try:
-        refresh_token = refresh_data.get('refresh_token')
+        refresh_token = refresh_data.get("refresh_token")
         if not refresh_token:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Refresh token required"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Refresh token required"
             )
 
         with structlog.contextvars.bound_contextvars(
             refresh_token_hash=hashlib.sha256(refresh_token.encode()).hexdigest()[:16],
-            client_ip=client_ip
+            client_ip=client_ip,
         ):
             logger.info("Token refresh attempt")
 
             # Create refresh request
             from ...services.auth_service import RefreshTokenRequest
+
             refresh_request = RefreshTokenRequest(
                 refresh_token=refresh_token,
-                device_info={'user_agent': user_agent, 'ip': client_ip}
+                device_info={"user_agent": user_agent, "ip": client_ip},
             )
 
             # Perform token refresh
             token_response = await auth_service.refresh_token(
                 refresh_request=refresh_request,
                 ip_address=client_ip,
-                user_agent=user_agent
+                user_agent=user_agent,
             )
 
             logger.info("Token refreshed successfully")
@@ -766,7 +819,7 @@ async def refresh_token(
             error="TokenRefreshError",
             error_code="REFRESH_FAILED",
             message="Failed to refresh token",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -789,36 +842,34 @@ async def refresh_token(
         400: {"description": "Invalid request data"},
         401: {"description": "Authentication required"},
         403: {"description": "Current password incorrect"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def change_password(
     change_data: ChangePasswordRequestModel,
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> Dict[str, Any]:
     """Change user password with security validation"""
     client_ip = get_client_ip(request)
 
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=security_context.user_id,
-            client_ip=client_ip
+            user_id=security_context.user_id, client_ip=client_ip
         ):
             logger.info("Password change attempt")
 
             # Create change request
             change_request = ChangePasswordRequest(
-                current_pin=change_data.current_pin,
-                new_pin=change_data.new_pin
+                current_pin=change_data.current_pin, new_pin=change_data.new_pin
             )
 
             # Perform password change
             result = await auth_service.change_password(
                 user_id=security_context.user_id,
                 change_request=change_request,
-                ip_address=client_ip
+                ip_address=client_ip,
             )
 
             logger.info("Password changed successfully")
@@ -832,7 +883,7 @@ async def change_password(
             error="PasswordChangeError",
             error_code="CHANGE_FAILED",
             message="Failed to change password",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -852,18 +903,16 @@ async def change_password(
     responses={
         200: {"description": "Sessions retrieved successfully"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_user_sessions(
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> List[SessionInfoModel]:
     """Get all sessions for authenticated user"""
     try:
-        with structlog.contextvars.bound_contextvars(
-            user_id=security_context.user_id
-        ):
+        with structlog.contextvars.bound_contextvars(user_id=security_context.user_id):
             logger.info("Retrieving user sessions")
 
             # Get user sessions
@@ -872,21 +921,23 @@ async def get_user_sessions(
             # Convert to response model
             session_models = []
             for session in sessions:
-                session_models.append(SessionInfoModel(
-                    session_id=session.session_id,
-                    user_id=session.user_id,
-                    username=session.username,
-                    role=session.role,
-                    trading_mode=session.trading_mode,
-                    created_at=session.created_at.isoformat(),
-                    last_activity=session.last_activity.isoformat(),
-                    expires_at=session.expires_at.isoformat(),
-                    device_info=session.device_info,
-                    is_active=session.is_active,
-                    security_level=session.security_level,
-                    ip_address=getattr(session, 'ip_address', None),
-                    user_agent=getattr(session, 'user_agent', None)
-                ))
+                session_models.append(
+                    SessionInfoModel(
+                        session_id=session.session_id,
+                        user_id=session.user_id,
+                        username=session.username,
+                        role=session.role,
+                        trading_mode=session.trading_mode,
+                        created_at=session.created_at.isoformat(),
+                        last_activity=session.last_activity.isoformat(),
+                        expires_at=session.expires_at.isoformat(),
+                        device_info=session.device_info,
+                        is_active=session.is_active,
+                        security_level=session.security_level,
+                        ip_address=getattr(session, "ip_address", None),
+                        user_agent=getattr(session, "user_agent", None),
+                    )
+                )
 
             logger.info(f"Retrieved {len(session_models)} sessions")
             return session_models
@@ -895,7 +946,7 @@ async def get_user_sessions(
         logger.error("Get sessions error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve sessions"
+            detail="Failed to retrieve sessions",
         )
 
 
@@ -915,14 +966,14 @@ async def get_user_sessions(
         401: {"description": "Authentication required"},
         403: {"description": "Cannot revoke own session or insufficient permissions"},
         404: {"description": "Session not found"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def revoke_session(
     session_id: str,
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> Dict[str, Any]:
     """Revoke a specific session"""
     client_ip = get_client_ip(request)
@@ -931,7 +982,7 @@ async def revoke_session(
         with structlog.contextvars.bound_contextvars(
             user_id=security_context.user_id,
             target_session_id=session_id,
-            client_ip=client_ip
+            client_ip=client_ip,
         ):
             logger.info("Session revocation attempt")
 
@@ -939,14 +990,14 @@ async def revoke_session(
             if session_id == security_context.session_id:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Cannot revoke current session"
+                    detail="Cannot revoke current session",
                 )
 
             # Revoke session
             result = await auth_service.revoke_session(
                 user_id=security_context.user_id,
                 session_id=session_id,
-                ip_address=client_ip
+                ip_address=client_ip,
             )
 
             logger.info("Session revoked successfully")
@@ -960,7 +1011,7 @@ async def revoke_session(
             error="SessionRevocationError",
             error_code="REVOKE_FAILED",
             message="Failed to revoke session",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -985,18 +1036,17 @@ async def revoke_session(
         200: {"description": "MFA setup initiated"},
         400: {"description": "Invalid MFA method"},
         401: {"description": "Authentication required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def setup_mfa(
     setup_data: MFASetupRequestModel,
-    security_context: SecurityContext = Depends(get_security_context)
+    security_context: SecurityContext = Depends(get_security_context),
 ) -> MFASetupResponseModel:
     """Setup multi-factor authentication"""
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=security_context.user_id,
-            mfa_method=setup_data.method
+            user_id=security_context.user_id, mfa_method=setup_data.method
         ):
             logger.info("MFA setup initiated")
 
@@ -1007,8 +1057,7 @@ async def setup_mfa(
                 # Create TOTP object for QR code
                 totp = pyotp.TOTP(secret)
                 provisioning_uri = totp.provisioning_uri(
-                    name=security_context.username,
-                    issuer_name="NIRAJ Trading System"
+                    name=security_context.username, issuer_name="NIRAJ Trading System"
                 )
 
                 # Generate QR code
@@ -1030,21 +1079,21 @@ async def setup_mfa(
                     secret=secret,
                     qr_code=qr_code_b64,
                     backup_codes=backup_codes,
-                    message="Scan QR code with authenticator app and save backup codes"
+                    message="Scan QR code with authenticator app and save backup codes",
                 )
 
             else:
                 # SMS/Email setup (placeholder for future implementation)
                 return MFASetupResponseModel(
                     method=setup_data.method,
-                    message=f"{setup_data.method.upper()} MFA setup initiated"
+                    message=f"{setup_data.method.upper()} MFA setup initiated",
                 )
 
     except Exception as e:
         logger.error("MFA setup error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to setup MFA"
+            detail="Failed to setup MFA",
         )
 
 
@@ -1064,18 +1113,17 @@ async def setup_mfa(
         400: {"description": "Invalid MFA code"},
         401: {"description": "Authentication required"},
         429: {"description": "Too many attempts"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def verify_mfa(
     verify_data: MFAVerifyRequestModel,
-    security_context: SecurityContext = Depends(get_security_context)
+    security_context: SecurityContext = Depends(get_security_context),
 ) -> Dict[str, Any]:
     """Verify MFA code"""
     try:
         with structlog.contextvars.bound_contextvars(
-            user_id=security_context.user_id,
-            mfa_method=verify_data.method
+            user_id=security_context.user_id, mfa_method=verify_data.method
         ):
             logger.info("MFA verification attempt")
 
@@ -1084,12 +1132,11 @@ async def verify_mfa(
                 return {
                     "verified": True,
                     "method": verify_data.method,
-                    "message": "MFA code verified successfully"
+                    "message": "MFA code verified successfully",
                 }
             else:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid MFA code"
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code"
                 )
 
     except HTTPException:
@@ -1098,7 +1145,7 @@ async def verify_mfa(
         logger.error("MFA verification error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to verify MFA code"
+            detail="Failed to verify MFA code",
         )
 
 
@@ -1123,25 +1170,22 @@ async def verify_mfa(
         200: {"description": "Metrics retrieved successfully"},
         401: {"description": "Authentication required"},
         403: {"description": "Admin access required"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_security_metrics(
     security_context: SecurityContext = Depends(get_security_context),
-    auth_service: AuthenticationService = Depends(get_auth_service)
+    auth_service: AuthenticationService = Depends(get_auth_service),
 ) -> SecurityMetricsModel:
     """Get security and performance metrics"""
     try:
         # Check admin access (placeholder - implement proper role checking)
         if security_context.role != AuthRole.ADMIN:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
+                status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
             )
 
-        with structlog.contextvars.bound_contextvars(
-            user_id=security_context.user_id
-        ):
+        with structlog.contextvars.bound_contextvars(user_id=security_context.user_id):
             logger.info("Security metrics requested")
 
             # Get metrics from service
@@ -1149,12 +1193,12 @@ async def get_security_metrics(
 
             return SecurityMetricsModel(
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                auth_metrics=metrics.get('auth_metrics', {}),
-                security_stats=metrics.get('security_stats', {}),
-                rate_limit_status=metrics.get('rate_limit_status', {}),
-                active_sessions=metrics.get('active_sessions', 0),
+                auth_metrics=metrics.get("auth_metrics", {}),
+                security_stats=metrics.get("security_stats", {}),
+                rate_limit_status=metrics.get("rate_limit_status", {}),
+                active_sessions=metrics.get("active_sessions", 0),
                 blocked_ips=[],  # Placeholder
-                suspicious_activities=[]  # Placeholder
+                suspicious_activities=[],  # Placeholder
             )
 
     except HTTPException:
@@ -1163,7 +1207,7 @@ async def get_security_metrics(
         logger.error("Metrics retrieval error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve metrics"
+            detail="Failed to retrieve metrics",
         )
 
 
@@ -1175,17 +1219,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Security headers
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        response.headers['Content-Security-Policy'] = "default-src 'self'"
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
 
         # Remove server header for security
-        if 'server' in response.headers:
-            del response.headers['server']
+        if "server" in response.headers:
+            del response.headers["server"]
 
         return response
 
@@ -1194,7 +1242,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 def is_ip_blocked(ip_address: str) -> bool:
     """Check if IP address is blocked based on geo-location"""
     try:
-        if not SECURITY_CONFIG['enable_geo_blocking']:
+        if not SECURITY_CONFIG["enable_geo_blocking"]:
             return False
 
         # Placeholder geo-blocking logic
@@ -1207,7 +1255,7 @@ def is_ip_blocked(ip_address: str) -> bool:
 
         # Block specific countries (placeholder)
         blocked_ranges = [
-            ipaddress.ip_network('192.0.2.0/24'),  # Example blocked range
+            ipaddress.ip_network("192.0.2.0/24"),  # Example blocked range
         ]
 
         for blocked_range in blocked_ranges:
@@ -1224,18 +1272,18 @@ def is_ip_blocked(ip_address: str) -> bool:
 def generate_device_fingerprint(request: Request) -> str:
     """Generate device fingerprint for security tracking"""
     try:
-        if not SECURITY_CONFIG['enable_device_fingerprinting']:
+        if not SECURITY_CONFIG["enable_device_fingerprinting"]:
             return ""
 
         components = [
-            request.headers.get('User-Agent', ''),
-            request.headers.get('Accept-Language', ''),
+            request.headers.get("User-Agent", ""),
+            request.headers.get("Accept-Language", ""),
             get_client_ip(request),
-            request.headers.get('Accept', ''),
-            request.headers.get('Accept-Encoding', ''),
+            request.headers.get("Accept", ""),
+            request.headers.get("Accept-Encoding", ""),
         ]
 
-        fingerprint_string = '|'.join(components)
+        fingerprint_string = "|".join(components)
         return hashlib.sha256(fingerprint_string.encode()).hexdigest()[:16]
 
     except Exception:
@@ -1245,6 +1293,7 @@ def generate_device_fingerprint(request: Request) -> str:
 # Performance monitoring decorator
 def monitor_performance(operation: str):
     """Decorator for performance monitoring"""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -1257,7 +1306,7 @@ def monitor_performance(operation: str):
                 logger.info(
                     f"Operation completed: {operation}",
                     duration=f"{duration:.3f}s",
-                    operation=operation
+                    operation=operation,
                 )
 
                 return result
@@ -1267,10 +1316,12 @@ def monitor_performance(operation: str):
                     f"Operation failed: {operation}",
                     duration=f"{duration:.3f}s",
                     error=str(e),
-                    operation=operation
+                    operation=operation,
                 )
                 raise
+
         return wrapper
+
     return decorator
 
 
@@ -1278,7 +1329,7 @@ def monitor_performance(operation: str):
 def init_auth_routes(
     db_manager: DatabaseManager,
     cache_manager: CacheManager,
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
 ) -> APIRouter:
     """
     Initialize authentication routes with required services
@@ -1300,9 +1351,7 @@ def init_auth_routes(
 
         # Initialize authentication service
         _auth_service = AuthenticationService(
-            db_manager=db_manager,
-            cache_manager=cache_manager,
-            config=config
+            db_manager=db_manager, cache_manager=cache_manager, config=config
         )
 
         logger.info("Authentication routes initialized successfully")
@@ -1328,7 +1377,9 @@ async def lifespan_manager():
             await _auth_service.start_background_tasks()
             logger.info("Authentication background tasks started")
         except Exception as e:
-            logger.error("Failed to start authentication background tasks", error=str(e))
+            logger.error(
+                "Failed to start authentication background tasks", error=str(e)
+            )
 
     yield
 
@@ -1360,5 +1411,5 @@ __all__ = [
     "SecurityHeadersMiddleware",
     "generate_device_fingerprint",
     "is_ip_blocked",
-    "monitor_performance"
+    "monitor_performance",
 ]

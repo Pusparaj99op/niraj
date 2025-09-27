@@ -12,16 +12,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Callable
 
-from sqlalchemy import (
-    create_engine, text, event, inspect, func
-)
+from sqlalchemy import create_engine, text, event, inspect, func
 from sqlalchemy.ext.asyncio import (
-    AsyncSession, AsyncEngine, async_sessionmaker, create_async_engine
+    AsyncSession,
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
 )
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool, QueuePool
 from sqlalchemy.exc import (
-    IntegrityError as SQLIntegrityError, OperationalError, DisconnectionError
+    IntegrityError as SQLIntegrityError,
+    OperationalError,
+    DisconnectionError,
 )
 from pydantic import BaseModel
 import structlog
@@ -33,44 +36,51 @@ from .config import get_config
 logger = structlog.get_logger(__name__)
 
 # Type variables for generic operations
-T = TypeVar('T', bound=BaseModel)
-ORM_T = TypeVar('ORM_T')
+T = TypeVar("T", bound=BaseModel)
+ORM_T = TypeVar("ORM_T")
 
 
 # Database exceptions
 class DatabaseManagerError(Exception):
     """Base exception for database manager errors"""
+
     pass
 
 
 class ConnectionError(DatabaseManagerError):
     """Database connection error"""
+
     pass
 
 
 class MigrationError(DatabaseManagerError):
     """Database migration error"""
+
     pass
 
 
 class TransactionError(DatabaseManagerError):
     """Database transaction error"""
+
     pass
 
 
 class ValidationError(DatabaseManagerError):
     """Data validation error"""
+
     pass
 
 
 class IntegrityError(DatabaseManagerError):
     """Data integrity error"""
+
     pass
 
 
 # Migration models
 class Migration(BaseModel):
     """Database migration model"""
+
     version: str
     name: str
     description: str
@@ -90,7 +100,7 @@ class ConnectionPool:
         max_overflow: int = 20,
         pool_timeout: int = 30,
         pool_recycle: int = 3600,
-        pool_pre_ping: bool = True
+        pool_pre_ping: bool = True,
     ):
         self.database_url = database_url
         self.pool_size = pool_size
@@ -110,35 +120,33 @@ class ConnectionPool:
         if self._sync_engine is None:
             connect_args = {}
             engine_kwargs = {
-                'pool_recycle': self.pool_recycle,
-                'pool_pre_ping': self.pool_pre_ping,
-                'echo': get_config('database.echo', False)
+                "pool_recycle": self.pool_recycle,
+                "pool_pre_ping": self.pool_pre_ping,
+                "echo": get_config("database.echo", False),
             }
 
             if "sqlite" in self.database_url:
                 connect_args = {"check_same_thread": False}
-                engine_kwargs.update({
-                    'poolclass': StaticPool,
-                    'connect_args': connect_args
-                })
+                engine_kwargs.update(
+                    {"poolclass": StaticPool, "connect_args": connect_args}
+                )
             else:
-                engine_kwargs.update({
-                    'poolclass': QueuePool,
-                    'pool_size': self.pool_size,
-                    'max_overflow': self.max_overflow,
-                    'pool_timeout': self.pool_timeout,
-                    'connect_args': connect_args
-                })
+                engine_kwargs.update(
+                    {
+                        "poolclass": QueuePool,
+                        "pool_size": self.pool_size,
+                        "max_overflow": self.max_overflow,
+                        "pool_timeout": self.pool_timeout,
+                        "connect_args": connect_args,
+                    }
+                )
 
-            self._sync_engine = create_engine(
-                self.database_url,
-                **engine_kwargs
-            )
+            self._sync_engine = create_engine(self.database_url, **engine_kwargs)
 
             # Add connection event listeners
-            event.listen(self._sync_engine, 'connect', self._on_connect)
-            event.listen(self._sync_engine, 'checkout', self._on_checkout)
-            event.listen(self._sync_engine, 'checkin', self._on_checkin)
+            event.listen(self._sync_engine, "connect", self._on_connect)
+            event.listen(self._sync_engine, "checkout", self._on_checkout)
+            event.listen(self._sync_engine, "checkin", self._on_checkin)
 
         return self._sync_engine
 
@@ -150,24 +158,23 @@ class ConnectionPool:
                 async_url = async_url.replace("sqlite:", "sqlite+aiosqlite:")
 
             engine_kwargs = {
-                'pool_recycle': self.pool_recycle,
-                'pool_pre_ping': self.pool_pre_ping,
-                'echo': get_config('database.echo', False)
+                "pool_recycle": self.pool_recycle,
+                "pool_pre_ping": self.pool_pre_ping,
+                "echo": get_config("database.echo", False),
             }
 
             if "sqlite" in async_url:
-                engine_kwargs['connect_args'] = {"check_same_thread": False}
+                engine_kwargs["connect_args"] = {"check_same_thread": False}
             else:
-                engine_kwargs.update({
-                    'pool_size': self.pool_size,
-                    'max_overflow': self.max_overflow,
-                    'pool_timeout': self.pool_timeout
-                })
+                engine_kwargs.update(
+                    {
+                        "pool_size": self.pool_size,
+                        "max_overflow": self.max_overflow,
+                        "pool_timeout": self.pool_timeout,
+                    }
+                )
 
-            self._async_engine = create_async_engine(
-                async_url,
-                **engine_kwargs
-            )
+            self._async_engine = create_async_engine(async_url, **engine_kwargs)
 
         return self._async_engine
 
@@ -181,7 +188,7 @@ class ConnectionPool:
 
     def _on_checkin(self, dbapi_conn, connection_record):
         """Connection checkin event handler"""
-        if hasattr(connection_record, 'checkout_time'):
+        if hasattr(connection_record, "checkout_time"):
             duration = time.time() - connection_record.checkout_time
             logger.debug("Connection checked in", duration=duration)
 
@@ -213,29 +220,29 @@ class ConnectionPool:
         pool = sync_engine.pool
 
         # Handle different pool types
-        if hasattr(pool, 'size'):
+        if hasattr(pool, "size"):
             # QueuePool and similar
             return {
-                'pool_size': pool.size(),
-                'checked_out': pool.checkedout(),
-                'overflow': pool.overflow(),
-                'checked_in': pool.checkedin(),
-                'invalid': getattr(pool, '_invalidated', 0),
-                'is_healthy': self._is_healthy,
-                'last_health_check': datetime.fromtimestamp(self._last_health_check),
-                'pool_type': type(pool).__name__
+                "pool_size": pool.size(),
+                "checked_out": pool.checkedout(),
+                "overflow": pool.overflow(),
+                "checked_in": pool.checkedin(),
+                "invalid": getattr(pool, "_invalidated", 0),
+                "is_healthy": self._is_healthy,
+                "last_health_check": datetime.fromtimestamp(self._last_health_check),
+                "pool_type": type(pool).__name__,
             }
         else:
             # StaticPool (SQLite)
             return {
-                'pool_size': self.pool_size,
-                'checked_out': getattr(pool, '_checkedout', 0),
-                'overflow': 0,  # StaticPool doesn't have overflow
-                'checked_in': 0,  # StaticPool manages connections differently
-                'invalid': 0,
-                'is_healthy': self._is_healthy,
-                'last_health_check': datetime.fromtimestamp(self._last_health_check),
-                'pool_type': type(pool).__name__
+                "pool_size": self.pool_size,
+                "checked_out": getattr(pool, "_checkedout", 0),
+                "overflow": 0,  # StaticPool doesn't have overflow
+                "checked_in": 0,  # StaticPool manages connections differently
+                "invalid": 0,
+                "is_healthy": self._is_healthy,
+                "last_health_check": datetime.fromtimestamp(self._last_health_check),
+                "pool_type": type(pool).__name__,
             }
 
 
@@ -247,9 +254,7 @@ class TransactionManager:
 
     @asynccontextmanager
     async def transaction(
-        self,
-        isolation_level: Optional[str] = None,
-        rollback_on_exception: bool = True
+        self, isolation_level: Optional[str] = None, rollback_on_exception: bool = True
     ):
         """Async transaction context manager"""
         async with self.session_factory() as session:
@@ -270,17 +275,9 @@ class TransactionManager:
                 raise TransactionError(f"Transaction failed: {str(e)}") from e
 
     @backoff.on_exception(
-        backoff.expo,
-        (OperationalError, DisconnectionError),
-        max_tries=3,
-        max_time=30
+        backoff.expo, (OperationalError, DisconnectionError), max_tries=3, max_time=30
     )
-    async def execute_with_retry(
-        self,
-        func: Callable,
-        *args,
-        **kwargs
-    ) -> Any:
+    async def execute_with_retry(self, func: Callable, *args, **kwargs) -> Any:
         """Execute database operation with retry logic"""
         try:
             return await func(*args, **kwargs)
@@ -344,7 +341,7 @@ class MigrationManager:
                     up_sql=up_sql,
                     down_sql=down_sql,
                     checksum=self._calculate_checksum(up_sql),
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.now(timezone.utc),
                 )
 
                 migrations.append(migration)
@@ -353,27 +350,27 @@ class MigrationManager:
 
     def _parse_migration_content(self, content: str) -> tuple[str, str]:
         """Parse migration file content into up and down SQL"""
-        lines = content.split('\n')
+        lines = content.split("\n")
         up_sql_lines = []
         down_sql_lines = []
-        current_section = 'up'
+        current_section = "up"
 
         for line in lines:
             line = line.strip()
-            if line.lower().startswith('-- down'):
-                current_section = 'down'
+            if line.lower().startswith("-- down"):
+                current_section = "down"
                 continue
-            elif line.lower().startswith('-- up'):
-                current_section = 'up'
+            elif line.lower().startswith("-- up"):
+                current_section = "up"
                 continue
 
-            if current_section == 'up':
+            if current_section == "up":
                 up_sql_lines.append(line)
             else:
                 down_sql_lines.append(line)
 
-        up_sql = '\n'.join(up_sql_lines).strip()
-        down_sql = '\n'.join(down_sql_lines).strip()
+        up_sql = "\n".join(up_sql_lines).strip()
+        down_sql = "\n".join(down_sql_lines).strip()
 
         return up_sql, down_sql
 
@@ -405,28 +402,34 @@ class MigrationManager:
                 # Record migration in tracking table
                 execution_time = int((time.time() - start_time) * 1000)
                 await conn.execute(
-                    text("""
+                    text(
+                        """
                         INSERT INTO schema_migrations
                         (version, name, description, checksum, execution_time_ms)
                         VALUES (:version, :name, :description, :checksum, :execution_time)
-                    """),
+                    """
+                    ),
                     {
-                        'version': migration.version,
-                        'name': migration.name,
-                        'description': migration.description,
-                        'checksum': migration.checksum,
-                        'execution_time': execution_time
-                    }
+                        "version": migration.version,
+                        "name": migration.name,
+                        "description": migration.description,
+                        "checksum": migration.checksum,
+                        "execution_time": execution_time,
+                    },
                 )
 
-            logger.info("Migration applied successfully",
-                       version=migration.version,
-                       execution_time_ms=execution_time)
+            logger.info(
+                "Migration applied successfully",
+                version=migration.version,
+                execution_time_ms=execution_time,
+            )
             return True
 
         except Exception as e:
             logger.error("Migration failed", version=migration.version, error=str(e))
-            raise MigrationError(f"Failed to apply migration {migration.version}: {str(e)}")
+            raise MigrationError(
+                f"Failed to apply migration {migration.version}: {str(e)}"
+            )
 
     async def rollback_migration(self, version: str) -> bool:
         """Rollback a specific migration"""
@@ -454,7 +457,7 @@ class MigrationManager:
                 # Remove migration record
                 await conn.execute(
                     text("DELETE FROM schema_migrations WHERE version = :version"),
-                    {'version': version}
+                    {"version": version},
                 )
 
             logger.info("Migration rolled back successfully", version=version)
@@ -472,14 +475,12 @@ class MigrationManager:
         applied_migrations = await self.get_applied_migrations()
 
         pending_migrations = [
-            m for m in available_migrations
-            if m.version not in applied_migrations
+            m for m in available_migrations if m.version not in applied_migrations
         ]
 
         if target_version:
             pending_migrations = [
-                m for m in pending_migrations
-                if m.version <= target_version
+                m for m in pending_migrations if m.version <= target_version
             ]
 
         applied_versions = []
@@ -497,12 +498,12 @@ class DatabaseHealthMonitor:
     def __init__(self, connection_pool: ConnectionPool):
         self.connection_pool = connection_pool
         self.metrics = {
-            'connection_count': 0,
-            'query_count': 0,
-            'error_count': 0,
-            'average_response_time': 0.0,
-            'last_error': None,
-            'uptime': datetime.now(timezone.utc)
+            "connection_count": 0,
+            "query_count": 0,
+            "error_count": 0,
+            "average_response_time": 0.0,
+            "last_error": None,
+            "uptime": datetime.now(timezone.utc),
         }
         self._monitoring = False
 
@@ -527,7 +528,7 @@ class DatabaseHealthMonitor:
         try:
             # Check connection pool health
             pool_status = self.connection_pool.get_pool_status()
-            self.metrics['connection_count'] = pool_status['checked_out']
+            self.metrics["connection_count"] = pool_status["checked_out"]
 
             # Measure query response time
             start_time = time.time()
@@ -535,30 +536,32 @@ class DatabaseHealthMonitor:
             response_time = (time.time() - start_time) * 1000
 
             if is_healthy:
-                self.metrics['average_response_time'] = (
-                    self.metrics['average_response_time'] + response_time
+                self.metrics["average_response_time"] = (
+                    self.metrics["average_response_time"] + response_time
                 ) / 2
             else:
-                self.metrics['error_count'] += 1
-                self.metrics['last_error'] = datetime.now(timezone.utc)
+                self.metrics["error_count"] += 1
+                self.metrics["last_error"] = datetime.now(timezone.utc)
 
             logger.debug("Health metrics collected", metrics=self.metrics)
 
         except Exception as e:
-            self.metrics['error_count'] += 1
-            self.metrics['last_error'] = datetime.now(timezone.utc)
+            self.metrics["error_count"] += 1
+            self.metrics["last_error"] = datetime.now(timezone.utc)
             logger.error("Failed to collect health metrics", error=str(e))
 
     def get_health_status(self) -> Dict[str, Any]:
         """Get current health status"""
-        uptime_seconds = (datetime.now(timezone.utc) - self.metrics['uptime']).total_seconds()
+        uptime_seconds = (
+            datetime.now(timezone.utc) - self.metrics["uptime"]
+        ).total_seconds()
 
         return {
-            'is_healthy': self.connection_pool._is_healthy,
-            'uptime_seconds': uptime_seconds,
-            'connection_pool': self.connection_pool.get_pool_status(),
-            'metrics': self.metrics.copy(),
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "is_healthy": self.connection_pool._is_healthy,
+            "uptime_seconds": uptime_seconds,
+            "connection_pool": self.connection_pool.get_pool_status(),
+            "metrics": self.metrics.copy(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
 
@@ -569,15 +572,15 @@ class AdvancedDatabaseManager:
         self,
         database_url: Optional[str] = None,
         pool_size: int = 10,
-        max_overflow: int = 20
+        max_overflow: int = 20,
     ):
-        self.database_url = database_url or get_config('database.url')
+        self.database_url = database_url or get_config("database.url")
 
         # Initialize components
         self.connection_pool = ConnectionPool(
             database_url=self.database_url,
             pool_size=pool_size,
-            max_overflow=max_overflow
+            max_overflow=max_overflow,
         )
 
         self.transaction_manager = TransactionManager(
@@ -591,13 +594,13 @@ class AdvancedDatabaseManager:
         self.async_session_factory = async_sessionmaker(
             self.connection_pool.get_async_engine(),
             class_=AsyncSession,
-            expire_on_commit=False
+            expire_on_commit=False,
         )
 
         self.sync_session_factory = sessionmaker(
             bind=self.connection_pool.get_sync_engine(),
             autocommit=False,
-            autoflush=False
+            autoflush=False,
         )
 
         logger.info("Advanced Database Manager initialized", url=self.database_url)
@@ -639,10 +642,7 @@ class AdvancedDatabaseManager:
             raise DatabaseManagerError(f"Failed to create record: {str(e)}") from e
 
     async def read(
-        self,
-        session: AsyncSession,
-        model: Type[ORM_T],
-        obj_id: Union[int, str]
+        self, session: AsyncSession, model: Type[ORM_T], obj_id: Union[int, str]
     ) -> Optional[ORM_T]:
         """Read a database record by ID"""
         try:
@@ -656,10 +656,7 @@ class AdvancedDatabaseManager:
             raise DatabaseManagerError(f"Failed to read record: {str(e)}") from e
 
     async def update(
-        self,
-        session: AsyncSession,
-        obj: ORM_T,
-        update_data: Dict[str, Any]
+        self, session: AsyncSession, obj: ORM_T, update_data: Dict[str, Any]
     ) -> ORM_T:
         """Update a database record"""
         try:
@@ -690,10 +687,7 @@ class AdvancedDatabaseManager:
             raise DatabaseManagerError(f"Failed to delete record: {str(e)}") from e
 
     async def bulk_insert(
-        self,
-        session: AsyncSession,
-        model: Type[ORM_T],
-        data_list: List[Dict[str, Any]]
+        self, session: AsyncSession, model: Type[ORM_T], data_list: List[Dict[str, Any]]
     ) -> List[ORM_T]:
         """Bulk insert records for better performance"""
         try:
@@ -705,9 +699,9 @@ class AdvancedDatabaseManager:
             for obj in objects:
                 await session.refresh(obj)
 
-            logger.info("Bulk insert completed",
-                       model=model.__name__,
-                       count=len(objects))
+            logger.info(
+                "Bulk insert completed", model=model.__name__, count=len(objects)
+            )
             return objects
 
         except SQLIntegrityError as e:
@@ -719,10 +713,7 @@ class AdvancedDatabaseManager:
 
     # Advanced query methods
     async def execute_raw_sql(
-        self,
-        session: AsyncSession,
-        sql: str,
-        params: Optional[Dict[str, Any]] = None
+        self, session: AsyncSession, sql: str, params: Optional[Dict[str, Any]] = None
     ) -> Any:
         """Execute raw SQL with parameters"""
         try:
@@ -742,7 +733,7 @@ class AdvancedDatabaseManager:
         self,
         session: AsyncSession,
         model: Type[ORM_T],
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
     ) -> int:
         """Count records with optional filters"""
         try:
@@ -777,7 +768,9 @@ class AdvancedDatabaseManager:
 
         except Exception as e:
             logger.error("Database initialization failed", error=str(e))
-            raise DatabaseManagerError(f"Database initialization failed: {str(e)}") from e
+            raise DatabaseManagerError(
+                f"Database initialization failed: {str(e)}"
+            ) from e
 
     async def backup_database(self, backup_path: Optional[str] = None) -> str:
         """Create database backup"""
@@ -793,6 +786,7 @@ class AdvancedDatabaseManager:
 
         try:
             import shutil
+
             source_db = self.database_url.replace("sqlite:///", "")
             shutil.copy2(source_db, backup_path)
 
@@ -812,6 +806,7 @@ class AdvancedDatabaseManager:
 
         try:
             import shutil
+
             target_db = self.database_url.replace("sqlite:///", "")
 
             # Stop monitoring during restore
@@ -827,7 +822,7 @@ class AdvancedDatabaseManager:
             self.connection_pool = ConnectionPool(
                 database_url=self.database_url,
                 pool_size=self.connection_pool.pool_size,
-                max_overflow=self.connection_pool.max_overflow
+                max_overflow=self.connection_pool.max_overflow,
             )
 
             logger.info("Database restored successfully", backup_path=backup_path)
@@ -840,12 +835,12 @@ class AdvancedDatabaseManager:
     async def health_check(self) -> Dict[str, Any]:
         """Comprehensive database health check"""
         health_status = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'database_url': self.database_url.split('@')[-1],  # Hide credentials
-            'connection_pool': self.connection_pool.get_pool_status(),
-            'is_healthy': False,
-            'response_time_ms': 0,
-            'error': None
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "database_url": self.database_url.split("@")[-1],  # Hide credentials
+            "connection_pool": self.connection_pool.get_pool_status(),
+            "is_healthy": False,
+            "response_time_ms": 0,
+            "error": None,
         }
 
         start_time = time.time()
@@ -859,14 +854,14 @@ class AdvancedDatabaseManager:
                 async with self.get_async_session() as session:
                     await session.execute(text("SELECT 1"))
 
-                health_status['is_healthy'] = True
-                health_status['response_time_ms'] = round(
+                health_status["is_healthy"] = True
+                health_status["response_time_ms"] = round(
                     (time.time() - start_time) * 1000, 2
                 )
 
         except Exception as e:
-            health_status['error'] = str(e)
-            health_status['response_time_ms'] = round(
+            health_status["error"] = str(e)
+            health_status["response_time_ms"] = round(
                 (time.time() - start_time) * 1000, 2
             )
 
@@ -878,7 +873,11 @@ class AdvancedDatabaseManager:
             async with self.get_async_session() as session:
                 # Get database version
                 version_result = await session.execute(
-                    text("SELECT sqlite_version()" if "sqlite" in self.database_url else "SELECT version()")
+                    text(
+                        "SELECT sqlite_version()"
+                        if "sqlite" in self.database_url
+                        else "SELECT version()"
+                    )
                 )
                 db_version = version_result.scalar()
 
@@ -890,17 +889,17 @@ class AdvancedDatabaseManager:
                 for table in tables:
                     columns = inspector.get_columns(table)
                     table_info[table] = {
-                        'columns': len(columns),
-                        'column_names': [col['name'] for col in columns]
+                        "columns": len(columns),
+                        "column_names": [col["name"] for col in columns],
                     }
 
                 return {
-                    'database_version': db_version,
-                    'total_tables': len(tables),
-                    'table_names': tables,
-                    'table_info': table_info,
-                    'connection_pool_status': self.connection_pool.get_pool_status(),
-                    'health_status': await self.health_check()
+                    "database_version": db_version,
+                    "total_tables": len(tables),
+                    "table_names": tables,
+                    "table_info": table_info,
+                    "connection_pool_status": self.connection_pool.get_pool_status(),
+                    "health_status": await self.health_check(),
                 }
 
         except Exception as e:
@@ -913,11 +912,11 @@ class AdvancedDatabaseManager:
             self.health_monitor.stop_monitoring()
 
             # Close async engine
-            if hasattr(self, 'connection_pool') and self.connection_pool._async_engine:
+            if hasattr(self, "connection_pool") and self.connection_pool._async_engine:
                 await self.connection_pool._async_engine.dispose()
 
             # Close sync engine
-            if hasattr(self, 'connection_pool') and self.connection_pool._sync_engine:
+            if hasattr(self, "connection_pool") and self.connection_pool._sync_engine:
                 self.connection_pool._sync_engine.dispose()
 
             logger.info("Database manager cleanup completed")
@@ -928,6 +927,7 @@ class AdvancedDatabaseManager:
 
 # Global database manager instance
 db_manager = None
+
 
 def get_database_manager() -> AdvancedDatabaseManager:
     """Get global database manager instance"""

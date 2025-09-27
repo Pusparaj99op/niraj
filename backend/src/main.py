@@ -31,20 +31,24 @@ import uvicorn
 
 from .core.config import config
 from .core.database import DatabaseManager
+
 try:
     from .core.cache import CacheManager
+
     CACHE_AVAILABLE = True
 except ImportError:
     CacheManager = None
     CACHE_AVAILABLE = False
 try:
     from .ai.gemma3_integration import Gemma3Client
+
     AI_AVAILABLE = True
 except ImportError:
     Gemma3Client = None
     AI_AVAILABLE = False
 try:
     from .api.websocket_server import init_websocket_server, shutdown_websocket_server
+
     WEBSOCKET_AVAILABLE = True
 except ImportError:
     WEBSOCKET_AVAILABLE = False
@@ -109,6 +113,13 @@ async def initialize_services():
     global _db_manager, _cache_manager, _ai_integration, _websocket_server
 
     try:
+        # Initialize database first
+        if _db_manager:
+            from .core.database import init_database
+
+            await init_database()
+            logger.info("Database initialized successfully")
+
         # Services are already initialized in create_application()
         # Only initialize WebSocket server here
 
@@ -116,6 +127,7 @@ async def initialize_services():
         if WEBSOCKET_AVAILABLE and _db_manager:
             try:
                 from .services.auth_service import AuthenticationService
+
                 auth_service = AuthenticationService(_db_manager, _cache_manager)
                 _websocket_server = await init_websocket_server(
                     _db_manager, _cache_manager, auth_service
@@ -125,7 +137,9 @@ async def initialize_services():
                 logger.warning("WebSocket server not available", error=str(e))
                 _websocket_server = None
         else:
-            logger.warning("WebSocket server not available - websockets not installed or db_manager not ready")
+            logger.warning(
+                "WebSocket server not available - websockets not installed or db_manager not ready"
+            )
             _websocket_server = None
 
         logger.info("Core services initialized successfully")
@@ -139,15 +153,15 @@ async def start_background_tasks():
     """Start all background tasks and services"""
     try:
         # Start database maintenance tasks
-        if _db_manager and hasattr(_db_manager, 'start_background_tasks'):
+        if _db_manager and hasattr(_db_manager, "start_background_tasks"):
             await _db_manager.start_background_tasks()
 
         # Start cache maintenance tasks
-        if _cache_manager and hasattr(_cache_manager, 'start_background_tasks'):
+        if _cache_manager and hasattr(_cache_manager, "start_background_tasks"):
             await _cache_manager.start_background_tasks()
 
         # Start AI background tasks
-        if _ai_integration and hasattr(_ai_integration, 'start_background_tasks'):
+        if _ai_integration and hasattr(_ai_integration, "start_background_tasks"):
             await _ai_integration.start_background_tasks()
 
         logger.info("Background tasks started successfully")
@@ -202,14 +216,14 @@ def create_application() -> FastAPI:
         # Initialize database manager
         _db_manager = DatabaseManager()
         # Note: Database URL is configured via environment/config files
-        if hasattr(_db_manager, 'initialize'):
+        if hasattr(_db_manager, "initialize"):
             # Cannot use asyncio.run here as we're not in sync context
             pass
 
         # Initialize cache manager
         if CACHE_AVAILABLE:
             _cache_manager = CacheManager(
-                redis_url=config.get('redis_url', 'redis://localhost:6379')
+                redis_url=config.get("redis_url", "redis://localhost:6379")
             )
         else:
             logger.warning("Cache manager not available - Redis not installed")
@@ -226,7 +240,9 @@ def create_application() -> FastAPI:
         # Initialize WebSocket server
         if WEBSOCKET_AVAILABLE:
             try:
-                _websocket_server = None  # Cannot initialize websocket here without async
+                _websocket_server = (
+                    None  # Cannot initialize websocket here without async
+                )
                 logger.info("WebSocket server will be initialized in lifespan")
             except Exception as e:
                 logger.warning("WebSocket server not available", error=str(e))
@@ -264,13 +280,13 @@ def create_application() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
 
     # Configure CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=config.get('cors_origins', ["http://localhost:3000"]),
+        allow_origins=config.get("cors_origins", ["http://localhost:3000"]),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
@@ -278,8 +294,7 @@ def create_application() -> FastAPI:
 
     # Add trusted host middleware
     app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=config.get('trusted_hosts', ["*"])
+        TrustedHostMiddleware, allowed_hosts=config.get("trusted_hosts", ["*"])
     )
 
     # Add security headers middleware
@@ -294,7 +309,7 @@ def create_application() -> FastAPI:
             error=str(exc),
             error_type=type(exc).__name__,
             path=request.url.path,
-            method=request.method
+            method=request.method,
         )
 
         return JSONResponse(
@@ -302,22 +317,22 @@ def create_application() -> FastAPI:
             content={
                 "error": "InternalServerError",
                 "message": "An unexpected error occurred",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
 
     # Health check endpoint
     @app.get(
         "/health",
         summary="Health Check",
-        description="Check the health status of all system components"
+        description="Check the health status of all system components",
     )
     async def health_check():
         """System health check endpoint"""
         health_status = {
             "status": "healthy",
             "timestamp": asyncio.get_event_loop().time(),
-            "services": {}
+            "services": {},
         }
 
         try:
@@ -357,14 +372,18 @@ def create_application() -> FastAPI:
             health_status["status"] = "unhealthy"
             health_status["error"] = str(e)
 
-        status_code = status.HTTP_200_OK if health_status["status"] == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+        status_code = (
+            status.HTTP_200_OK
+            if health_status["status"] == "healthy"
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
         return JSONResponse(status_code=status_code, content=health_status)
 
     # System info endpoint
     @app.get(
         "/info",
         summary="System Information",
-        description="Get system version and configuration information"
+        description="Get system version and configuration information",
     )
     async def system_info():
         """System information endpoint"""
@@ -378,10 +397,10 @@ def create_application() -> FastAPI:
                 "AI Integration",
                 "Real-time Processing",
                 "Risk Management",
-                "Performance Analytics"
+                "Performance Analytics",
             ],
             "api_version": "v1",
-            "environment": os.getenv("ENVIRONMENT", "development")
+            "environment": os.getenv("ENVIRONMENT", "development"),
         }
 
     # WebSocket endpoint for real-time data streaming
@@ -415,7 +434,9 @@ def create_application() -> FastAPI:
         app.include_router(auth_router, prefix="/api/v1")
 
         # Strategy management routes
-        strategy_router = init_strategy_routes(_db_manager, _cache_manager, _ai_integration)
+        strategy_router = init_strategy_routes(
+            _db_manager, _cache_manager, _ai_integration
+        )
         app.include_router(strategy_router, prefix="/api/v1")
 
         # Trade management routes
@@ -442,6 +463,7 @@ def create_application() -> FastAPI:
             # Setup development credentials
             try:
                 from .api.auth_manager import setup_development_credentials
+
                 setup_development_credentials(auth_manager)
                 logger.info("Development credentials setup completed")
             except Exception as e:
@@ -449,14 +471,18 @@ def create_application() -> FastAPI:
 
             # Clients will be created on-demand via auth_manager
             angel_client = AngelOneClient(
-                api_key=config.get('brokers.angel_one.api_key', 'dummy_angel_api_key'),
-                client_code=config.get('brokers.angel_one.client_code', 'dummy_client_code'),
-                client_pin=config.get('brokers.angel_one.password', 'dummy_password'),
-                totp_secret=config.get('brokers.angel_one.totp_secret')
+                api_key=config.get("brokers.angel_one.api_key", "dummy_angel_api_key"),
+                client_code=config.get(
+                    "brokers.angel_one.client_code", "dummy_client_code"
+                ),
+                client_pin=config.get("brokers.angel_one.password", "dummy_password"),
+                totp_secret=config.get("brokers.angel_one.totp_secret"),
             )
             dhan_client = DhanClient(
-                client_id=config.get('brokers.dhan.client_id', 'dummy_dhan_client_id'),
-                access_token=config.get('brokers.dhan.access_token', 'dummy_dhan_token')
+                client_id=config.get("brokers.dhan.client_id", "dummy_dhan_client_id"),
+                access_token=config.get(
+                    "brokers.dhan.access_token", "dummy_dhan_token"
+                ),
             )
 
             market_data_router = init_market_data_routes(
@@ -513,11 +539,11 @@ def main():
     config.load_config()
 
     # Get server configuration
-    host = config.get('host', '0.0.0.0')
-    port = config.get('port', 8000)
-    workers = config.get('workers', 1)
-    reload = config.get('reload', True)
-    environment = config.get('environment', 'development')
+    host = config.get("host", "0.0.0.0")
+    port = config.get("port", 8000)
+    workers = config.get("workers", 1)
+    reload = config.get("reload", True)
+    environment = config.get("environment", "development")
 
     logger.info(
         "Starting NIRAJ server",
@@ -525,7 +551,7 @@ def main():
         port=port,
         workers=workers,
         reload=reload,
-        environment=environment
+        environment=environment,
     )
 
     # Run the server
@@ -535,7 +561,7 @@ def main():
         port=port,
         workers=workers,
         reload=reload,
-        log_level="info"
+        log_level="info",
     )
 
 
@@ -544,9 +570,4 @@ if __name__ == "__main__":
 
 
 # Export the app for external usage (e.g., testing, deployment)
-__all__ = [
-    "app",
-    "create_application",
-    "lifespan",
-    "main"
-]
+__all__ = ["app", "create_application", "lifespan", "main"]

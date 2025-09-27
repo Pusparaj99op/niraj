@@ -18,14 +18,17 @@ from sqlalchemy import text
 
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     psutil = None
     PSUTIL_AVAILABLE = False
 
 from ..core.database import DatabaseManager
+
 try:
     from ..core.cache import CacheManager
+
     CACHE_AVAILABLE = True
     CacheManagerType = CacheManager
 except ImportError:
@@ -33,8 +36,10 @@ except ImportError:
     CACHE_AVAILABLE = False
     CacheManagerType = Any
 from ..core.config import config
+
 try:
     from ..ai.gemma3_integration import Gemma3Client
+
     AI_AVAILABLE = True
     Gemma3ClientType = Gemma3Client
 except ImportError:
@@ -42,11 +47,8 @@ except ImportError:
     AI_AVAILABLE = False
     Gemma3ClientType = Any
 
-# Import AI prediction classes directly to avoid models package issues
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'models'))
-from ai_prediction import AIPrediction, PredictionStatus
+# Import AI prediction classes
+from ..models.ai_prediction import AIPrediction, PredictionStatus
 
 from ..api.angel_one_client import AngelOneClient
 from ..api.dhan_client import DhanClient
@@ -54,6 +56,7 @@ from ..api.dhan_client import DhanClient
 
 class SystemStatus(str, Enum):
     """System overall status enumeration"""
+
     HEALTHY = "HEALTHY"
     DEGRADED = "DEGRADED"
     DOWN = "DOWN"
@@ -61,6 +64,7 @@ class SystemStatus(str, Enum):
 
 class ServiceStatus(str, Enum):
     """Individual service status enumeration"""
+
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
     ERROR = "ERROR"
@@ -69,6 +73,7 @@ class ServiceStatus(str, Enum):
 
 class TradingMode(str, Enum):
     """Trading mode enumeration"""
+
     PAPER = "paper"
     LIVE = "live"
 
@@ -76,6 +81,7 @@ class TradingMode(str, Enum):
 @dataclass
 class SystemMetrics:
     """System performance metrics"""
+
     cpu_usage_pct: float
     memory_usage_pct: float
     disk_usage_pct: float
@@ -89,6 +95,7 @@ class SystemMetrics:
 @dataclass
 class ServiceHealth:
     """Individual service health information"""
+
     status: ServiceStatus
     last_check: datetime
     response_time_ms: Optional[float] = None
@@ -100,6 +107,7 @@ class ServiceHealth:
 @dataclass
 class APIConnectionStatus:
     """API connection status information"""
+
     status: str  # CONNECTED, DISCONNECTED, ERROR
     last_heartbeat: Optional[datetime] = None
     response_time_ms: Optional[float] = None
@@ -108,6 +116,7 @@ class APIConnectionStatus:
 
 class SystemServiceError(Exception):
     """Custom exception for system service errors"""
+
     def __init__(self, message: str, service: str = None, error_code: str = None):
         self.message = message
         self.service = service
@@ -129,7 +138,7 @@ class SystemService:
         cache_manager: Optional[Any] = None,
         ai_client: Optional[Any] = None,
         angel_one_client: Optional[AngelOneClient] = None,
-        dhan_client: Optional[DhanClient] = None
+        dhan_client: Optional[DhanClient] = None,
     ):
         """
         Initialize system service
@@ -193,21 +202,23 @@ class SystemService:
                 "timestamp": now.isoformat(),
                 "services": services,
                 "api_connections": api_connections,
-                "system_metrics": system_metrics
+                "system_metrics": system_metrics,
             }
 
             self.logger.info(
                 "System status retrieved",
                 overall_status=overall_status.value,
                 trading_mode=trading_mode.value,
-                market_hours=market_hours
+                market_hours=market_hours,
             )
 
             return status_data
 
         except Exception as e:
             self.logger.error("Failed to get system status", error=str(e))
-            raise SystemServiceError(f"Failed to get system status: {str(e)}", "system_status")
+            raise SystemServiceError(
+                f"Failed to get system status: {str(e)}", "system_status"
+            )
 
     async def get_ai_predictions(
         self,
@@ -215,7 +226,7 @@ class SystemService:
         strategy_id: Optional[str] = None,
         min_confidence: float = 0.7,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> Dict[str, Any]:
         """
         Get AI predictions with optional filtering
@@ -237,30 +248,38 @@ class SystemService:
                 strategy_id=strategy_id,
                 min_confidence=min_confidence,
                 limit=limit,
-                offset=offset
+                offset=offset,
             )
 
             # Build query conditions
             conditions = []
-            params = []
+            params = {}
 
             # Status filter - only active predictions
-            conditions.append("status IN (?, ?, ?)")
-            params.extend([PredictionStatus.PENDING.value, PredictionStatus.VALIDATED.value, PredictionStatus.EXPIRED.value])
+            conditions.append("status IN (:status1, :status2, :status3)")
+            params.update(
+                {
+                    "status1": PredictionStatus.PENDING.value,
+                    "status2": PredictionStatus.VALIDATED.value,
+                    "status3": PredictionStatus.EXPIRED.value,
+                }
+            )
 
             # Confidence filter
-            conditions.append("confidence_score >= ?")
-            params.append(min_confidence)
+            conditions.append("confidence_score >= :min_confidence")
+            params["min_confidence"] = min_confidence
 
             # Symbol filter
             if symbol:
-                conditions.append("JSON_EXTRACT(prediction_value, '$.symbol') = ?")
-                params.append(symbol)
+                conditions.append(
+                    "JSON_EXTRACT(prediction_value, '$.symbol') = :symbol"
+                )
+                params["symbol"] = symbol
 
             # Strategy ID filter (if provided)
             if strategy_id:
-                conditions.append("strategy_id = ?")
-                params.append(strategy_id)
+                conditions.append("strategy_id = :strategy_id")
+                params["strategy_id"] = strategy_id
 
             # Build query
             where_clause = " AND ".join(conditions)
@@ -282,10 +301,10 @@ class SystemService:
                 FROM ai_predictions
                 WHERE {where_clause}
                 ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
+                LIMIT :limit OFFSET :offset
             """
 
-            params.extend([limit, offset])
+            params.update({"limit": limit, "offset": offset})
 
             # Execute query
             async with self.db_manager.get_connection() as session:
@@ -298,12 +317,19 @@ class SystemService:
                 prediction_data = dict(row)
                 # Convert JSON fields back to dict
                 json_fields = [
-                    'prediction_value', 'input_features', 'market_context',
-                    'actual_outcome', 'algorithm_parameters', 'feature_importance',
-                    'tags', 'prediction_metadata'
+                    "prediction_value",
+                    "input_features",
+                    "market_context",
+                    "actual_outcome",
+                    "algorithm_parameters",
+                    "feature_importance",
+                    "tags",
+                    "prediction_metadata",
                 ]
                 for field in json_fields:
-                    if prediction_data[field] and isinstance(prediction_data[field], str):
+                    if prediction_data[field] and isinstance(
+                        prediction_data[field], str
+                    ):
                         try:
                             prediction_data[field] = json.loads(prediction_data[field])
                         except json.JSONDecodeError:
@@ -318,44 +344,70 @@ class SystemService:
             for prediction in predictions:
                 pred_dict = {
                     "prediction_id": prediction.prediction_id,
-                    "symbol": prediction.prediction_value.get("symbol", "") if isinstance(prediction.prediction_value, dict) else "",
-                    "strategy_id": getattr(prediction, 'strategy_id', ''),
+                    "symbol": (
+                        prediction.prediction_value.get("symbol", "")
+                        if isinstance(prediction.prediction_value, dict)
+                        else ""
+                    ),
+                    "strategy_id": getattr(prediction, "strategy_id", ""),
                     "timestamp": prediction.prediction_time.isoformat(),
-                    "predicted_direction": prediction.prediction_value.get("direction", "UNKNOWN") if isinstance(prediction.prediction_value, dict) else "UNKNOWN",
+                    "predicted_direction": (
+                        prediction.prediction_value.get("direction", "UNKNOWN")
+                        if isinstance(prediction.prediction_value, dict)
+                        else "UNKNOWN"
+                    ),
                     "confidence_score": prediction.confidence_score,
-                    "predicted_magnitude": prediction.prediction_value.get("magnitude", 0.0) if isinstance(prediction.prediction_value, dict) else 0.0,
-                    "prediction_horizon": prediction.prediction_value.get("horizon", 1) if isinstance(prediction.prediction_value, dict) else 1,
+                    "predicted_magnitude": (
+                        prediction.prediction_value.get("magnitude", 0.0)
+                        if isinstance(prediction.prediction_value, dict)
+                        else 0.0
+                    ),
+                    "prediction_horizon": (
+                        prediction.prediction_value.get("horizon", 1)
+                        if isinstance(prediction.prediction_value, dict)
+                        else 1
+                    ),
                     "reasoning": prediction.notes or "AI-generated prediction",
                     "market_features": prediction.market_context or {},
-                    "was_correct": prediction.outcome_accuracy if prediction.outcome_accuracy is not None else None,
-                    "trade_executed": prediction.trade_executed
+                    "was_correct": (
+                        prediction.outcome_accuracy
+                        if prediction.outcome_accuracy is not None
+                        else None
+                    ),
+                    "trade_executed": prediction.trade_executed,
                 }
                 predictions_response.append(pred_dict)
 
             result = {
                 "predictions": predictions_response,
-                "total": len(predictions_response),  # Simplified - in production would need COUNT query
+                "total": len(
+                    predictions_response
+                ),  # Simplified - in production would need COUNT query
                 "limit": limit,
-                "offset": offset
+                "offset": offset,
             }
 
             self.logger.info(
                 "AI predictions retrieved",
                 count=len(predictions_response),
                 symbol=symbol,
-                strategy_id=strategy_id
+                strategy_id=strategy_id,
             )
 
             return result
 
         except Exception as e:
             self.logger.error("Failed to get AI predictions", error=str(e))
-            raise SystemServiceError(f"Failed to get AI predictions: {str(e)}", "ai_predictions")
+            raise SystemServiceError(
+                f"Failed to get AI predictions: {str(e)}",
+                "ai_predictions",
+                "AI_PREDICTIONS_ERROR",
+            )
 
     def _get_trading_mode(self) -> TradingMode:
         """Get current trading mode from configuration"""
         try:
-            mode = config.get('trading.default_mode', 'paper')
+            mode = config.get("trading.default_mode", "paper")
             return TradingMode(mode)
         except ValueError:
             return TradingMode.PAPER
@@ -430,7 +482,7 @@ class SystemService:
                     "open_positions": 0,
                     "total_predictions_today": 0,
                     "successful_predictions_today": 0,
-                    "uptime_seconds": time.time() - self._start_time
+                    "uptime_seconds": time.time() - self._start_time,
                 }
 
             # CPU usage
@@ -441,7 +493,7 @@ class SystemService:
             memory_usage = memory.percent
 
             # Disk usage
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage("/")
             disk_usage = disk.percent
 
             # Active strategies (simplified - would query database)
@@ -465,7 +517,7 @@ class SystemService:
                 "open_positions": open_positions,
                 "total_predictions_today": total_predictions_today,
                 "successful_predictions_today": successful_predictions_today,
-                "uptime_seconds": uptime_seconds
+                "uptime_seconds": uptime_seconds,
             }
 
         except Exception as e:
@@ -478,7 +530,7 @@ class SystemService:
                 "open_positions": 0,
                 "total_predictions_today": 0,
                 "successful_predictions_today": 0,
-                "uptime_seconds": time.time() - self._start_time
+                "uptime_seconds": time.time() - self._start_time,
             }
 
     async def _check_database_health(self) -> Dict[str, Any]:
@@ -498,7 +550,7 @@ class SystemService:
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "response_time_ms": response_time,
                 "version": "SQLite",  # Would be more specific in production
-                "message": "Database connection healthy"
+                "message": "Database connection healthy",
             }
 
         except Exception as e:
@@ -506,7 +558,7 @@ class SystemService:
                 "status": ServiceStatus.ERROR.value,
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
-                "message": "Database connection failed"
+                "message": "Database connection failed",
             }
 
     async def _check_ai_health(self) -> Dict[str, Any]:
@@ -515,7 +567,7 @@ class SystemService:
             return {
                 "status": ServiceStatus.NOT_CONFIGURED.value,
                 "last_check": datetime.now(timezone.utc).isoformat(),
-                "message": "AI client not configured"
+                "message": "AI client not configured",
             }
 
         try:
@@ -533,7 +585,7 @@ class SystemService:
                     "response_time_ms": response_time,
                     "version": health_result.get("version", "unknown"),
                     "model": health_result.get("model", "unknown"),
-                    "message": "AI service healthy"
+                    "message": "AI service healthy",
                 }
             else:
                 return {
@@ -541,7 +593,7 @@ class SystemService:
                     "last_check": datetime.now(timezone.utc).isoformat(),
                     "response_time_ms": response_time,
                     "error_message": health_result.get("error", "Unknown error"),
-                    "message": "AI service unhealthy"
+                    "message": "AI service unhealthy",
                 }
 
         except Exception as e:
@@ -549,7 +601,7 @@ class SystemService:
                 "status": ServiceStatus.ERROR.value,
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
-                "message": "AI service check failed"
+                "message": "AI service check failed",
             }
 
     async def _check_execution_engine_health(self) -> Dict[str, Any]:
@@ -559,33 +611,35 @@ class SystemService:
             from ..core.execution_engine import ExecutionEngine
 
             # Check if broker clients are available
-            has_brokers = self.angel_one_client is not None or self.dhan_client is not None
+            has_brokers = (
+                self.angel_one_client is not None or self.dhan_client is not None
+            )
 
             if has_brokers:
                 return {
                     "status": ServiceStatus.RUNNING.value,
                     "last_check": datetime.now(timezone.utc).isoformat(),
-                    "message": "Execution engine ready"
+                    "message": "Execution engine ready",
                 }
             else:
                 return {
                     "status": ServiceStatus.NOT_CONFIGURED.value,
                     "last_check": datetime.now(timezone.utc).isoformat(),
-                    "message": "Execution engine available but no broker clients configured"
+                    "message": "Execution engine available but no broker clients configured",
                 }
 
         except ImportError:
             return {
                 "status": ServiceStatus.NOT_CONFIGURED.value,
                 "last_check": datetime.now(timezone.utc).isoformat(),
-                "message": "Execution engine not implemented"
+                "message": "Execution engine not implemented",
             }
         except Exception as e:
             return {
                 "status": ServiceStatus.ERROR.value,
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
-                "message": "Execution engine check failed"
+                "message": "Execution engine check failed",
             }
 
     async def _check_angel_one_connection(self) -> Dict[str, Any]:
@@ -594,7 +648,7 @@ class SystemService:
             return {
                 "status": "NOT_CONFIGURED",
                 "last_check": datetime.now(timezone.utc).isoformat(),
-                "message": "Angel One client not configured"
+                "message": "Angel One client not configured",
             }
 
         try:
@@ -603,7 +657,7 @@ class SystemService:
                 "status": "CONNECTED",
                 "last_heartbeat": datetime.now(timezone.utc).isoformat(),
                 "response_time_ms": 150.0,  # Mock response time
-                "message": "Angel One API connected"
+                "message": "Angel One API connected",
             }
 
         except Exception as e:
@@ -611,7 +665,7 @@ class SystemService:
                 "status": "ERROR",
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
-                "message": "Angel One API connection failed"
+                "message": "Angel One API connection failed",
             }
 
     async def _check_dhan_connection(self) -> Dict[str, Any]:
@@ -620,7 +674,7 @@ class SystemService:
             return {
                 "status": "NOT_CONFIGURED",
                 "last_check": datetime.now(timezone.utc).isoformat(),
-                "message": "Dhan client not configured"
+                "message": "Dhan client not configured",
             }
 
         try:
@@ -629,7 +683,7 @@ class SystemService:
                 "status": "CONNECTED",
                 "last_heartbeat": datetime.now(timezone.utc).isoformat(),
                 "response_time_ms": 120.0,  # Mock response time
-                "message": "Dhan API connected"
+                "message": "Dhan API connected",
             }
 
         except Exception as e:
@@ -637,13 +691,13 @@ class SystemService:
                 "status": "ERROR",
                 "last_check": datetime.now(timezone.utc).isoformat(),
                 "error_message": str(e),
-                "message": "Dhan API connection failed"
+                "message": "Dhan API connection failed",
             }
 
     def _calculate_overall_status(
         self,
         services: Dict[str, Dict[str, Any]],
-        api_connections: Dict[str, Dict[str, Any]]
+        api_connections: Dict[str, Dict[str, Any]],
     ) -> SystemStatus:
         """
         Calculate overall system status based on service and API health

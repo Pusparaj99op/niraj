@@ -24,8 +24,16 @@ import time
 
 # Mock imports for integration testing
 from sqlalchemy import (
-    create_engine, Column, Integer, String, DateTime,
-    Numeric, Boolean, ForeignKey, Index, text
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Numeric,
+    Boolean,
+    ForeignKey,
+    Index,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
@@ -35,6 +43,7 @@ from sqlalchemy.pool import QueuePool
 
 class TransactionStatus(Enum):
     """Transaction status enumeration"""
+
     PENDING = "pending"
     COMMITTED = "committed"
     ROLLED_BACK = "rolled_back"
@@ -43,6 +52,7 @@ class TransactionStatus(Enum):
 
 class ConnectionState(Enum):
     """Database connection state enumeration"""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -51,6 +61,7 @@ class ConnectionState(Enum):
 
 class BackupStatus(Enum):
     """Backup status enumeration"""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -59,26 +70,31 @@ class BackupStatus(Enum):
 
 class DatabaseError(Exception):
     """Base exception for database errors"""
+
     pass
 
 
 class ConnectionError(DatabaseError):
     """Raised when database connection fails"""
+
     pass
 
 
 class TransactionError(DatabaseError):
     """Raised when transaction fails"""
+
     pass
 
 
 class DataIntegrityError(DatabaseError):
     """Raised when data integrity is violated"""
+
     pass
 
 
 class ConcurrencyError(DatabaseError):
     """Raised when concurrency issues occur"""
+
     pass
 
 
@@ -88,7 +104,8 @@ Base = declarative_base()
 
 class MockUser(Base):
     """Mock User model for testing"""
-    __tablename__ = 'users'
+
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
@@ -104,10 +121,11 @@ class MockUser(Base):
 
 class MockPortfolio(Base):
     """Mock Portfolio model for testing"""
-    __tablename__ = 'portfolios'
+
+    __tablename__ = "portfolios"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String(100), nullable=False)
     total_value = Column(Numeric(15, 2), default=0)
     cash_balance = Column(Numeric(15, 2), default=0)
@@ -119,17 +137,16 @@ class MockPortfolio(Base):
     positions = relationship("MockPosition", back_populates="portfolio")
 
     # Indexes for performance
-    __table_args__ = (
-        Index('idx_portfolio_user_id', 'user_id'),
-    )
+    __table_args__ = (Index("idx_portfolio_user_id", "user_id"),)
 
 
 class MockTrade(Base):
     """Mock Trade model for testing"""
-    __tablename__ = 'trades'
+
+    __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     symbol = Column(String(20), nullable=False)
     quantity = Column(Integer, nullable=False)
     price = Column(Numeric(10, 2), nullable=False)
@@ -141,17 +158,18 @@ class MockTrade(Base):
 
     # Indexes for performance
     __table_args__ = (
-        Index('idx_trade_user_symbol', 'user_id', 'symbol'),
-        Index('idx_trade_executed_at', 'executed_at'),
+        Index("idx_trade_user_symbol", "user_id", "symbol"),
+        Index("idx_trade_executed_at", "executed_at"),
     )
 
 
 class MockPosition(Base):
     """Mock Position model for testing"""
-    __tablename__ = 'positions'
+
+    __tablename__ = "positions"
 
     id = Column(Integer, primary_key=True)
-    portfolio_id = Column(Integer, ForeignKey('portfolios.id'), nullable=False)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False)
     quantity = Column(Integer, nullable=False)
     avg_price = Column(Numeric(10, 2), nullable=False)
@@ -162,9 +180,7 @@ class MockPosition(Base):
     portfolio = relationship("MockPortfolio", back_populates="positions")
 
     # Constraints
-    __table_args__ = (
-        Index('idx_position_portfolio_symbol', 'portfolio_id', 'symbol'),
-    )
+    __table_args__ = (Index("idx_position_portfolio_symbol", "portfolio_id", "symbol"),)
 
 
 class MockDatabaseManager:
@@ -183,7 +199,7 @@ class MockDatabaseManager:
             poolclass=QueuePool,
             pool_size=10,
             max_overflow=20,
-            echo=False
+            echo=False,
         )
         self.session_factory = sessionmaker(bind=self.engine)
         self.connection_state = ConnectionState.CONNECTED
@@ -271,10 +287,7 @@ def migration_manager():
 class TestDatabaseOperations:
     """Integration tests for database operations and data integrity"""
 
-    def test_database_connection_and_session_management(
-        self,
-        test_db_manager
-    ):
+    def test_database_connection_and_session_management(self, test_db_manager):
         """Test database connection establishment and session management"""
 
         try:
@@ -312,11 +325,7 @@ class TestDatabaseOperations:
         except Exception as e:
             pytest.fail(f"Database connection/session management failed: {str(e)}")
 
-    def test_crud_operations_comprehensive(
-        self,
-        test_db_manager,
-        db_session
-    ):
+    def test_crud_operations_comprehensive(self, test_db_manager, db_session):
         """Test comprehensive CRUD operations with data integrity"""
 
         try:
@@ -325,7 +334,7 @@ class TestDatabaseOperations:
             user = MockUser(
                 username="testuser",
                 email="test@example.com",
-                password_hash="hashed_password_123"
+                password_hash="hashed_password_123",
             )
             db_session.add(user)
             db_session.commit()
@@ -338,7 +347,7 @@ class TestDatabaseOperations:
                 user_id=user.id,
                 name="Test Portfolio",
                 total_value=Decimal("100000.00"),
-                cash_balance=Decimal("20000.00")
+                cash_balance=Decimal("20000.00"),
             )
             db_session.add(portfolio)
             db_session.commit()
@@ -347,17 +356,29 @@ class TestDatabaseOperations:
 
             # Create trades
             trades_data = [
-                {"symbol": "RELIANCE", "quantity": 100, "price": Decimal("2500.00"), "trade_type": "BUY"},
-                {"symbol": "TCS", "quantity": 50, "price": Decimal("3000.00"), "trade_type": "BUY"},
-                {"symbol": "INFY", "quantity": 25, "price": Decimal("1500.00"), "trade_type": "SELL"}
+                {
+                    "symbol": "RELIANCE",
+                    "quantity": 100,
+                    "price": Decimal("2500.00"),
+                    "trade_type": "BUY",
+                },
+                {
+                    "symbol": "TCS",
+                    "quantity": 50,
+                    "price": Decimal("3000.00"),
+                    "trade_type": "BUY",
+                },
+                {
+                    "symbol": "INFY",
+                    "quantity": 25,
+                    "price": Decimal("1500.00"),
+                    "trade_type": "SELL",
+                },
             ]
 
             created_trades = []
             for trade_data in trades_data:
-                trade = MockTrade(
-                    user_id=user.id,
-                    **trade_data
-                )
+                trade = MockTrade(user_id=user.id, **trade_data)
                 db_session.add(trade)
                 created_trades.append(trade)
 
@@ -366,18 +387,25 @@ class TestDatabaseOperations:
 
             # Step 2: Read (SELECT) operations
             # Read user by id
-            retrieved_user = db_session.query(MockUser).filter(MockUser.id == user.id).first()
+            retrieved_user = (
+                db_session.query(MockUser).filter(MockUser.id == user.id).first()
+            )
             assert retrieved_user is not None
             assert retrieved_user.username == "testuser"
 
             # Read trades by user
-            user_trades = db_session.query(MockTrade).filter(MockTrade.user_id == user.id).all()
+            user_trades = (
+                db_session.query(MockTrade).filter(MockTrade.user_id == user.id).all()
+            )
             assert len(user_trades) == 3
 
             # Read with joins
-            portfolio_with_user = db_session.query(MockPortfolio).join(MockUser).filter(
-                MockUser.username == "testuser"
-            ).first()
+            portfolio_with_user = (
+                db_session.query(MockPortfolio)
+                .join(MockUser)
+                .filter(MockUser.username == "testuser")
+                .first()
+            )
             assert portfolio_with_user is not None
             assert portfolio_with_user.name == "Test Portfolio"
 
@@ -387,7 +415,9 @@ class TestDatabaseOperations:
             db_session.commit()
 
             # Verify update
-            updated_user = db_session.query(MockUser).filter(MockUser.id == user.id).first()
+            updated_user = (
+                db_session.query(MockUser).filter(MockUser.id == user.id).first()
+            )
             assert updated_user.email == "updated@example.com"
 
             # Update portfolio
@@ -396,7 +426,11 @@ class TestDatabaseOperations:
             db_session.commit()
 
             # Verify update
-            updated_portfolio = db_session.query(MockPortfolio).filter(MockPortfolio.id == portfolio.id).first()
+            updated_portfolio = (
+                db_session.query(MockPortfolio)
+                .filter(MockPortfolio.id == portfolio.id)
+                .first()
+            )
             assert updated_portfolio.total_value == Decimal("120000.00")
 
             # Step 4: Delete operations
@@ -406,7 +440,9 @@ class TestDatabaseOperations:
             db_session.commit()
 
             # Verify deletion
-            remaining_trades = db_session.query(MockTrade).filter(MockTrade.user_id == user.id).all()
+            remaining_trades = (
+                db_session.query(MockTrade).filter(MockTrade.user_id == user.id).all()
+            )
             assert len(remaining_trades) == 2
 
             # Step 5: Bulk operations
@@ -418,7 +454,7 @@ class TestDatabaseOperations:
                     symbol=f"STOCK_{i:02d}",
                     quantity=100 + i,
                     avg_price=Decimal(f"{1000 + i}.00"),
-                    current_price=Decimal(f"{1005 + i}.00")
+                    current_price=Decimal(f"{1005 + i}.00"),
                 )
                 bulk_positions.append(position)
 
@@ -426,9 +462,11 @@ class TestDatabaseOperations:
             db_session.commit()
 
             # Verify bulk insert
-            total_positions = db_session.query(MockPosition).filter(
-                MockPosition.portfolio_id == portfolio.id
-            ).count()
+            total_positions = (
+                db_session.query(MockPosition)
+                .filter(MockPosition.portfolio_id == portfolio.id)
+                .count()
+            )
             assert total_positions == 10
 
             print("✅ Comprehensive CRUD operations working correctly")
@@ -437,9 +475,7 @@ class TestDatabaseOperations:
             pytest.fail(f"CRUD operations failed: {str(e)}")
 
     def test_transaction_handling_and_rollback(
-        self,
-        test_db_manager,
-        transaction_manager
+        self, test_db_manager, transaction_manager
     ):
         """Test transaction handling, commit, and rollback mechanisms"""
 
@@ -453,7 +489,7 @@ class TestDatabaseOperations:
             user = MockUser(
                 username="transaction_user",
                 email="transaction@example.com",
-                password_hash="hashed_password"
+                password_hash="hashed_password",
             )
             session.add(user)
 
@@ -473,7 +509,7 @@ class TestDatabaseOperations:
                 duplicate_user = MockUser(
                     username="transaction_user",  # Same username
                     email="duplicate@example.com",
-                    password_hash="hashed_password"
+                    password_hash="hashed_password",
                 )
                 session.add(duplicate_user)
                 session.commit()  # This should fail due to unique constraint
@@ -491,7 +527,7 @@ class TestDatabaseOperations:
                 new_user = MockUser(
                     username="nested_user",
                     email="nested@example.com",
-                    password_hash="hashed_password"
+                    password_hash="hashed_password",
                 )
                 session.add(new_user)
 
@@ -503,7 +539,7 @@ class TestDatabaseOperations:
                     nested_portfolio = MockPortfolio(
                         user_id=new_user.id,
                         name="Nested Portfolio",
-                        total_value=Decimal("75000.00")
+                        total_value=Decimal("75000.00"),
                     )
                     session.add(nested_portfolio)
                     savepoint.commit()
@@ -523,10 +559,7 @@ class TestDatabaseOperations:
         except Exception as e:
             pytest.fail(f"Transaction handling failed: {str(e)}")
 
-    def test_data_integrity_constraints_validation(
-        self,
-        test_db_manager
-    ):
+    def test_data_integrity_constraints_validation(self, test_db_manager):
         """Test data integrity constraints and validation"""
 
         session = test_db_manager.get_session()
@@ -537,7 +570,7 @@ class TestDatabaseOperations:
             user1 = MockUser(
                 username="unique_user",
                 email="unique@example.com",
-                password_hash="hashed_password"
+                password_hash="hashed_password",
             )
             session.add(user1)
             session.commit()
@@ -547,7 +580,7 @@ class TestDatabaseOperations:
                 user2 = MockUser(
                     username="unique_user",  # Duplicate username
                     email="different@example.com",
-                    password_hash="hashed_password"
+                    password_hash="hashed_password",
                 )
                 session.add(user2)
                 session.commit()
@@ -563,7 +596,7 @@ class TestDatabaseOperations:
                 invalid_portfolio = MockPortfolio(
                     user_id=99999,  # Non-existent user
                     name="Invalid Portfolio",
-                    total_value=Decimal("10000.00")
+                    total_value=Decimal("10000.00"),
                 )
                 session.add(invalid_portfolio)
                 session.commit()
@@ -579,7 +612,7 @@ class TestDatabaseOperations:
                 invalid_user = MockUser(
                     username="test",
                     # Missing email (nullable=False)
-                    password_hash="hashed_password"
+                    password_hash="hashed_password",
                 )
                 session.add(invalid_user)
                 session.commit()
@@ -593,7 +626,7 @@ class TestDatabaseOperations:
             valid_user = MockUser(
                 username="valid_user",
                 email="valid@example.com",
-                password_hash="hashed_password"
+                password_hash="hashed_password",
             )
             session.add(valid_user)
             session.commit()
@@ -603,15 +636,17 @@ class TestDatabaseOperations:
                 user_id=valid_user.id,
                 name="Precision Test Portfolio",
                 total_value=Decimal("123456789.99"),  # Test precision
-                cash_balance=Decimal("98765.43")
+                cash_balance=Decimal("98765.43"),
             )
             session.add(portfolio)
             session.commit()
 
             # Verify decimal precision is maintained
-            retrieved_portfolio = session.query(MockPortfolio).filter(
-                MockPortfolio.id == portfolio.id
-            ).first()
+            retrieved_portfolio = (
+                session.query(MockPortfolio)
+                .filter(MockPortfolio.id == portfolio.id)
+                .first()
+            )
 
             assert retrieved_portfolio.total_value == Decimal("123456789.99")
             assert retrieved_portfolio.cash_balance == Decimal("98765.43")
@@ -625,19 +660,12 @@ class TestDatabaseOperations:
 
     @pytest.mark.asyncio
     async def test_connection_pooling_and_performance(
-        self,
-        test_db_manager,
-        connection_pool_manager
+        self, test_db_manager, connection_pool_manager
     ):
         """Test database connection pooling and performance optimization"""
 
         # Mock connection pool status
-        pool_status = {
-            "size": 10,
-            "checked_out": 3,
-            "overflow": 2,
-            "invalid": 0
-        }
+        pool_status = {"size": 10, "checked_out": 3, "overflow": 2, "invalid": 0}
 
         connection_pool_manager.get_pool_status.return_value = pool_status
 
@@ -684,16 +712,16 @@ class TestDatabaseOperations:
             # Step 5: Test pool resizing
             await connection_pool_manager.resize_pool(new_size=20)
 
-            print("✅ Connection pooling and performance optimization working correctly")
+            print(
+                "✅ Connection pooling and performance optimization working correctly"
+            )
 
         except Exception as e:
             pytest.fail(f"Connection pooling/performance test failed: {str(e)}")
 
     @pytest.mark.asyncio
     async def test_backup_and_recovery_operations(
-        self,
-        test_db_manager,
-        backup_manager
+        self, test_db_manager, backup_manager
     ):
         """Test database backup and recovery operations"""
 
@@ -703,19 +731,22 @@ class TestDatabaseOperations:
             "file_path": "/backups/backup_20241219_120000.db",
             "size_bytes": 1024000,
             "status": BackupStatus.COMPLETED,
-            "created_at": datetime.now()
+            "created_at": datetime.now(),
         }
 
         backup_manager.create_backup.return_value = backup_info
         backup_manager.verify_backup.return_value = True
-        backup_manager.restore_backup.return_value = {"success": True, "restored_records": 1000}
+        backup_manager.restore_backup.return_value = {
+            "success": True,
+            "restored_records": 1000,
+        }
 
         try:
             # Step 1: Create database backup
             backup_result = await backup_manager.create_backup(
                 database_url=test_db_manager.database_url,
                 backup_location="/backups/",
-                compression=True
+                compression=True,
             )
 
             assert backup_result["backup_id"] is not None
@@ -731,8 +762,7 @@ class TestDatabaseOperations:
 
             # Step 3: Test backup restoration
             restore_result = await backup_manager.restore_backup(
-                backup_id=backup_result["backup_id"],
-                target_database="test_restore_db"
+                backup_id=backup_result["backup_id"], target_database="test_restore_db"
             )
 
             assert restore_result["success"] is True
@@ -743,7 +773,7 @@ class TestDatabaseOperations:
                 "backup_id": "incremental_backup_001",
                 "parent_backup_id": backup_result["backup_id"],
                 "backup_type": "incremental",
-                "status": BackupStatus.COMPLETED
+                "status": BackupStatus.COMPLETED,
             }
 
             backup_manager.create_backup.return_value = incremental_backup
@@ -751,7 +781,7 @@ class TestDatabaseOperations:
             incremental_result = await backup_manager.create_backup(
                 database_url=test_db_manager.database_url,
                 backup_type="incremental",
-                parent_backup=backup_result["backup_id"]
+                parent_backup=backup_result["backup_id"],
             )
 
             assert incremental_result["backup_type"] == "incremental"
@@ -759,8 +789,7 @@ class TestDatabaseOperations:
 
             # Step 5: Test backup cleanup
             cleanup_result = await backup_manager.cleanup_old_backups(
-                retention_days=30,
-                keep_minimum=5
+                retention_days=30, keep_minimum=5
             )
 
             assert cleanup_result is not None
@@ -770,10 +799,7 @@ class TestDatabaseOperations:
         except Exception as e:
             pytest.fail(f"Backup and recovery operations failed: {str(e)}")
 
-    def test_concurrent_access_and_locking(
-        self,
-        test_db_manager
-    ):
+    def test_concurrent_access_and_locking(self, test_db_manager):
         """Test concurrent database access and locking mechanisms"""
 
         # Create test data
@@ -781,7 +807,7 @@ class TestDatabaseOperations:
         user = MockUser(
             username="concurrent_user",
             email="concurrent@example.com",
-            password_hash="hashed_password"
+            password_hash="hashed_password",
         )
         session.add(user)
         session.commit()
@@ -790,7 +816,7 @@ class TestDatabaseOperations:
             user_id=user.id,
             name="Concurrent Portfolio",
             total_value=Decimal("100000.00"),
-            cash_balance=Decimal("50000.00")
+            cash_balance=Decimal("50000.00"),
         )
         session.add(portfolio)
         session.commit()
@@ -806,29 +832,31 @@ class TestDatabaseOperations:
 
                 # Simulate concurrent update with locking
                 with lock:
-                    portfolio_to_update = thread_session.query(MockPortfolio).filter(
-                        MockPortfolio.id == portfolio.id
-                    ).first()
+                    portfolio_to_update = (
+                        thread_session.query(MockPortfolio)
+                        .filter(MockPortfolio.id == portfolio.id)
+                        .first()
+                    )
 
                     if portfolio_to_update:
                         portfolio_to_update.total_value = new_value
                         portfolio_to_update.updated_at = datetime.now()
                         thread_session.commit()
 
-                        update_results.append({
-                            "thread_id": thread_id,
-                            "success": True,
-                            "final_value": new_value
-                        })
+                        update_results.append(
+                            {
+                                "thread_id": thread_id,
+                                "success": True,
+                                "final_value": new_value,
+                            }
+                        )
 
                 thread_session.close()
 
             except Exception as e:
-                update_results.append({
-                    "thread_id": thread_id,
-                    "success": False,
-                    "error": str(e)
-                })
+                update_results.append(
+                    {"thread_id": thread_id, "success": False, "error": str(e)}
+                )
 
         try:
             # Step 1: Launch concurrent threads
@@ -836,7 +864,7 @@ class TestDatabaseOperations:
             for i in range(5):
                 thread = threading.Thread(
                     target=update_portfolio_value,
-                    args=(i, Decimal(f"{110000 + (i * 1000)}.00"))
+                    args=(i, Decimal(f"{110000 + (i * 1000)}.00")),
                 )
                 threads.append(thread)
 
@@ -854,12 +882,16 @@ class TestDatabaseOperations:
 
             # Step 3: Verify final state
             final_session = test_db_manager.get_session()
-            final_portfolio = final_session.query(MockPortfolio).filter(
-                MockPortfolio.id == portfolio.id
-            ).first()
+            final_portfolio = (
+                final_session.query(MockPortfolio)
+                .filter(MockPortfolio.id == portfolio.id)
+                .first()
+            )
 
             assert final_portfolio is not None
-            assert final_portfolio.total_value != Decimal("100000.00")  # Should be updated
+            assert final_portfolio.total_value != Decimal(
+                "100000.00"
+            )  # Should be updated
             final_session.close()
 
             # Step 4: Test deadlock prevention
@@ -870,28 +902,25 @@ class TestDatabaseOperations:
         except Exception as e:
             pytest.fail(f"Concurrent access and locking test failed: {str(e)}")
 
-    def test_database_error_handling_and_recovery(
-        self,
-        test_db_manager
-    ):
+    def test_database_error_handling_and_recovery(self, test_db_manager):
         """Test comprehensive database error handling and recovery"""
 
         error_scenarios = [
             {
                 "error_type": IntegrityError,
                 "description": "Unique constraint violation",
-                "recovery_action": "rollback_and_retry"
+                "recovery_action": "rollback_and_retry",
             },
             {
                 "error_type": OperationalError,
                 "description": "Database connection lost",
-                "recovery_action": "reconnect_and_retry"
+                "recovery_action": "reconnect_and_retry",
             },
             {
                 "error_type": DataIntegrityError,
                 "description": "Data corruption detected",
-                "recovery_action": "restore_from_backup"
-            }
+                "recovery_action": "restore_from_backup",
+            },
         ]
 
         try:
@@ -904,12 +933,20 @@ class TestDatabaseOperations:
                 try:
                     if scenario["error_type"] == IntegrityError:
                         # Simulate integrity error
-                        user1 = MockUser(username="error_test", email="error1@test.com", password_hash="hash")
+                        user1 = MockUser(
+                            username="error_test",
+                            email="error1@test.com",
+                            password_hash="hash",
+                        )
                         session.add(user1)
                         session.commit()
 
                         # Try duplicate
-                        user2 = MockUser(username="error_test", email="error2@test.com", password_hash="hash")
+                        user2 = MockUser(
+                            username="error_test",
+                            email="error2@test.com",
+                            password_hash="hash",
+                        )
                         session.add(user2)
                         session.commit()  # Should fail
 
@@ -936,10 +973,16 @@ class TestDatabaseOperations:
                     if session:
                         session.close()
 
-                assert error_handled, f"Error {scenario['error_type'].__name__} not handled"
-                assert recovery_successful, f"Recovery failed for {scenario['error_type'].__name__}"
+                assert (
+                    error_handled
+                ), f"Error {scenario['error_type'].__name__} not handled"
+                assert (
+                    recovery_successful
+                ), f"Recovery failed for {scenario['error_type'].__name__}"
 
-                print(f"✅ {scenario['error_type'].__name__} handled and recovered correctly")
+                print(
+                    f"✅ {scenario['error_type'].__name__} handled and recovered correctly"
+                )
 
             print("✅ Comprehensive database error handling working correctly")
 
@@ -948,9 +991,7 @@ class TestDatabaseOperations:
 
     @pytest.mark.asyncio
     async def test_database_migration_and_schema_updates(
-        self,
-        test_db_manager,
-        migration_manager
+        self, test_db_manager, migration_manager
     ):
         """Test database migration and schema update operations"""
 
@@ -959,14 +1000,14 @@ class TestDatabaseOperations:
             "current_version": "1.0.0",
             "target_version": "1.1.0",
             "pending_migrations": ["add_user_preferences", "add_portfolio_indexes"],
-            "completed_migrations": ["initial_schema", "add_user_table"]
+            "completed_migrations": ["initial_schema", "add_user_table"],
         }
 
         migration_result = {
             "success": True,
             "migrations_applied": 2,
             "new_version": "1.1.0",
-            "duration_seconds": 15.5
+            "duration_seconds": 15.5,
         }
 
         # Configure mock responses
@@ -983,8 +1024,7 @@ class TestDatabaseOperations:
 
             # Step 2: Run pending migrations
             migration_result = await migration_manager.run_migrations(
-                target_version="1.1.0",
-                dry_run=False
+                target_version="1.1.0", dry_run=False
             )
 
             assert migration_result["success"] is True
@@ -993,8 +1033,7 @@ class TestDatabaseOperations:
 
             # Step 3: Test rollback capability
             rollback_result = await migration_manager.rollback_migration(
-                target_version="1.0.0",
-                steps_back=1
+                target_version="1.0.0", steps_back=1
             )
 
             assert rollback_result is not None
@@ -1010,10 +1049,7 @@ class TestDatabaseOperations:
         except Exception as e:
             pytest.fail(f"Database migration test failed: {str(e)}")
 
-    def test_database_performance_optimization(
-        self,
-        test_db_manager
-    ):
+    def test_database_performance_optimization(self, test_db_manager):
         """Test database performance optimization features"""
 
         session = test_db_manager.get_session()
@@ -1029,7 +1065,7 @@ class TestDatabaseOperations:
                 user = MockUser(
                     username=f"perf_user_{i:03d}",
                     email=f"perf{i:03d}@example.com",
-                    password_hash=f"hash_{i}"
+                    password_hash=f"hash_{i}",
                 )
                 users.append(user)
 
@@ -1037,9 +1073,12 @@ class TestDatabaseOperations:
             session.commit()
 
             # Get user IDs after commit
-            user_ids = [user.id for user in session.query(MockUser).filter(
-                MockUser.username.like("perf_user_%")
-            ).all()]
+            user_ids = [
+                user.id
+                for user in session.query(MockUser)
+                .filter(MockUser.username.like("perf_user_%"))
+                .all()
+            ]
 
             # Create portfolios
             for user_id in user_ids:
@@ -1047,7 +1086,7 @@ class TestDatabaseOperations:
                     user_id=user_id,
                     name=f"Portfolio_{user_id}",
                     total_value=Decimal(f"{100000 + user_id}.00"),
-                    cash_balance=Decimal(f"{20000 + user_id}.00")
+                    cash_balance=Decimal(f"{20000 + user_id}.00"),
                 )
                 portfolios.append(portfolio)
 
@@ -1062,7 +1101,7 @@ class TestDatabaseOperations:
                         symbol=f"STOCK_{j:02d}",
                         quantity=100 + j,
                         price=Decimal(f"{1000 + j}.00"),
-                        trade_type="BUY" if j % 2 == 0 else "SELL"
+                        trade_type="BUY" if j % 2 == 0 else "SELL",
                     )
                     trades.append(trade)
 
@@ -1073,9 +1112,11 @@ class TestDatabaseOperations:
             start_time = time.time()
 
             # Query using indexed columns
-            user_trades = session.query(MockTrade).filter(
-                MockTrade.user_id.in_(user_ids[:10])
-            ).all()
+            user_trades = (
+                session.query(MockTrade)
+                .filter(MockTrade.user_id.in_(user_ids[:10]))
+                .all()
+            )
 
             index_query_time = time.time() - start_time
 
@@ -1086,9 +1127,12 @@ class TestDatabaseOperations:
             start_time = time.time()
 
             # Complex join query
-            portfolio_trades = session.query(MockTrade, MockPortfolio).join(
-                MockPortfolio, MockTrade.user_id == MockPortfolio.user_id
-            ).limit(100).all()
+            portfolio_trades = (
+                session.query(MockTrade, MockPortfolio)
+                .join(MockPortfolio, MockTrade.user_id == MockPortfolio.user_id)
+                .limit(100)
+                .all()
+            )
 
             join_query_time = time.time() - start_time
 
@@ -1103,7 +1147,7 @@ class TestDatabaseOperations:
                 MockPortfolio.user_id.in_(user_ids[:25])
             ).update(
                 {MockPortfolio.total_value: MockPortfolio.total_value * Decimal("1.1")},
-                synchronize_session=False
+                synchronize_session=False,
             )
             session.commit()
 
@@ -1131,29 +1175,26 @@ def create_database_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "connection_available": True,
             "data_integrity": True,
             "concurrent_users": 5,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "high_concurrency": {
             "connection_available": True,
             "data_integrity": True,
             "concurrent_users": 50,
-            "expected_outcome": "performance_test"
+            "expected_outcome": "performance_test",
         },
-
         "connection_failure": {
             "connection_available": False,
             "data_integrity": True,
             "concurrent_users": 1,
-            "expected_outcome": "connection_error"
+            "expected_outcome": "connection_error",
         },
-
         "data_corruption": {
             "connection_available": True,
             "data_integrity": False,
             "concurrent_users": 1,
-            "expected_outcome": "integrity_error"
-        }
+            "expected_outcome": "integrity_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -1174,11 +1215,11 @@ def validate_database_state(session: Session) -> bool:
         assert trade_count >= 0
 
         # Check referential integrity
-        orphaned_portfolios = session.query(MockPortfolio).filter(
-            ~MockPortfolio.user_id.in_(
-                session.query(MockUser.id)
-            )
-        ).count()
+        orphaned_portfolios = (
+            session.query(MockPortfolio)
+            .filter(~MockPortfolio.user_id.in_(session.query(MockUser.id)))
+            .count()
+        )
 
         assert orphaned_portfolios == 0
 
@@ -1204,8 +1245,8 @@ def measure_query_performance(session: Session, query_func, *args) -> Dict[str, 
         return {
             "execution_time": end_time - start_time,
             "memory_used": end_memory - start_memory,
-            "result_count": len(result) if hasattr(result, '__len__') else 1,
-            "success": True
+            "result_count": len(result) if hasattr(result, "__len__") else 1,
+            "success": True,
         }
 
     except Exception as e:
@@ -1214,7 +1255,7 @@ def measure_query_performance(session: Session, query_func, *args) -> Dict[str, 
             "memory_used": 0,
             "result_count": 0,
             "success": False,
-            "error": str(e)
+            "error": str(e),
         }
 
 
@@ -1225,12 +1266,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

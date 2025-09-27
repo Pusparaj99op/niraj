@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -22,6 +23,7 @@ class TestTradesGetContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -45,9 +47,9 @@ class TestTradesGetContract:
 
         # Assert - Status Code (might be 200 if trade exists, 404 if not)
         acceptable_codes = [200, 404]
-        assert response.status_code in acceptable_codes, (
-            f"Expected {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Expected {acceptable_codes}, got {response.status_code}"
 
         # If trade exists, validate response structure
         if response.status_code == 200:
@@ -73,9 +75,9 @@ class TestTradesGetContract:
         response = client.get(f"/api/v1/trades/{invalid_id}")
 
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid trade ID should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid trade ID should return {expected_codes}, got {response.status_code}"
 
     def test_get_trade_nonexistent_id_contract(self, client: TestClient) -> None:
         """
@@ -90,9 +92,9 @@ class TestTradesGetContract:
         response = client.get(f"/api/v1/trades/{nonexistent_id}")
 
         expected_status = 404
-        assert response.status_code == expected_status, (
-            f"Non-existent trade should return {expected_status}, got {response.status_code}"
-        )
+        assert (
+            response.status_code == expected_status
+        ), f"Non-existent trade should return {expected_status}, got {response.status_code}"
 
         # Assert - 404 response format
         if response.status_code == 404:
@@ -100,10 +102,12 @@ class TestTradesGetContract:
             response_json = response.json()
             # Common error response fields
             possible_error_fields = ["detail", "error", "message"]
-            has_error_field = any(field in response_json for field in possible_error_fields)
-            assert has_error_field or len(response_json) == 0, (
-                "404 response should contain error details or be empty"
+            has_error_field = any(
+                field in response_json for field in possible_error_fields
             )
+            assert (
+                has_error_field or len(response_json) == 0
+            ), "404 response should contain error details or be empty"
 
     def test_get_trade_empty_id_contract(self, client: TestClient) -> None:
         """
@@ -117,15 +121,13 @@ class TestTradesGetContract:
         response = client.get("/api/v1/trades/")
 
         # Assert - Should not succeed with 200
-        assert response.status_code != 200, (
-            "Empty trade ID should not return success"
-        )
+        assert response.status_code != 200, "Empty trade ID should not return success"
 
         # Common responses for empty/missing path parameters
         acceptable_codes = [400, 404, 405, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Empty trade ID should return {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Empty trade ID should return {acceptable_codes}, got {response.status_code}"
 
     def test_get_trade_malformed_uuid_contract(self, client: TestClient) -> None:
         """
@@ -145,7 +147,7 @@ class TestTradesGetContract:
 
         for malformed_uuid in malformed_uuids:
             response = client.get(f"/api/v1/trades/{malformed_uuid}")
-            
+
             expected_codes = [400, 422]
             assert response.status_code in expected_codes, (
                 f"Malformed UUID '{malformed_uuid}' should return {expected_codes}, "
@@ -167,25 +169,27 @@ class TestTradesGetContract:
         # Test uppercase UUID
         response_upper = client.get(f"/api/v1/trades/{uppercase_uuid}")
         acceptable_codes = [200, 404, 400, 422]
-        assert response_upper.status_code in acceptable_codes, (
-            f"Uppercase UUID returned {response_upper.status_code}"
-        )
+        assert (
+            response_upper.status_code in acceptable_codes
+        ), f"Uppercase UUID returned {response_upper.status_code}"
 
         # Test lowercase UUID
         response_lower = client.get(f"/api/v1/trades/{lowercase_uuid}")
-        assert response_lower.status_code in acceptable_codes, (
-            f"Lowercase UUID returned {response_lower.status_code}"
-        )
+        assert (
+            response_lower.status_code in acceptable_codes
+        ), f"Lowercase UUID returned {response_lower.status_code}"
 
         # Both should return the same status code (standard UUID behavior)
         if response_upper.status_code != response_lower.status_code:
             # Some systems might handle case differently, but both should be valid
-            assert response_upper.status_code in [200, 404], (
-                "Uppercase UUID should be handled properly"
-            )
-            assert response_lower.status_code in [200, 404], (
-                "Lowercase UUID should be handled properly"
-            )
+            assert response_upper.status_code in [
+                200,
+                404,
+            ], "Uppercase UUID should be handled properly"
+            assert response_lower.status_code in [
+                200,
+                404,
+            ], "Lowercase UUID should be handled properly"
 
     def test_get_trade_with_query_parameters_contract(self, client: TestClient) -> None:
         """
@@ -202,11 +206,13 @@ class TestTradesGetContract:
 
         # Assert - Should handle the same as without query params
         acceptable_codes = [200, 404]
-        assert response.status_code in acceptable_codes, (
-            f"Query parameters should not affect response, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Query parameters should not affect response, got {response.status_code}"
 
-    def test_get_trade_special_characters_in_id_contract(self, client: TestClient) -> None:
+    def test_get_trade_special_characters_in_id_contract(
+        self, client: TestClient
+    ) -> None:
         """
         Test trade retrieval with special characters in ID.
 
@@ -225,12 +231,12 @@ class TestTradesGetContract:
 
         for special_id in special_char_ids:
             response = client.get(f"/api/v1/trades/{special_id}")
-            
+
             # Should not succeed
-            assert response.status_code != 200, (
-                f"Special character ID '{special_id}' should not succeed"
-            )
-            
+            assert (
+                response.status_code != 200
+            ), f"Special character ID '{special_id}' should not succeed"
+
             # Common error codes for invalid formats
             acceptable_codes = [400, 404, 422]
             assert response.status_code in acceptable_codes, (
@@ -249,12 +255,12 @@ class TestTradesGetContract:
 
         for null_value in null_like_values:
             response = client.get(f"/api/v1/trades/{null_value}")
-            
+
             # Should not return valid trade
-            assert response.status_code != 200, (
-                f"Null-like value '{null_value}' should not return success"
-            )
-            
+            assert (
+                response.status_code != 200
+            ), f"Null-like value '{null_value}' should not return success"
+
             # Should return appropriate error
             acceptable_codes = [400, 404, 422]
             assert response.status_code in acceptable_codes, (
@@ -276,15 +282,15 @@ class TestTradesGetContract:
         response = client.get(f"/api/v1/trades/{very_long_id}")
 
         # Should not cause server error
-        assert response.status_code < 500, (
-            f"Very long ID should not cause server error, got {response.status_code}"
-        )
+        assert (
+            response.status_code < 500
+        ), f"Very long ID should not cause server error, got {response.status_code}"
 
         # Should return appropriate error
         acceptable_codes = [400, 404, 414, 422]  # 414 = URI Too Long
-        assert response.status_code in acceptable_codes, (
-            f"Very long ID should return {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Very long ID should return {acceptable_codes}, got {response.status_code}"
 
     def test_get_trade_response_headers_contract(self, client: TestClient) -> None:
         """
@@ -301,9 +307,9 @@ class TestTradesGetContract:
         # Assert - Content-Type header for JSON responses
         if response.status_code in [200, 404]:
             content_type = response.headers.get("content-type", "")
-            assert "application/json" in content_type.lower(), (
-                f"Response should have JSON content-type, got {content_type}"
-            )
+            assert (
+                "application/json" in content_type.lower()
+            ), f"Response should have JSON content-type, got {content_type}"
 
     def test_get_trade_performance_contract(self, client: TestClient) -> None:
         """
@@ -325,14 +331,14 @@ class TestTradesGetContract:
         response_time = end_time - start_time
 
         # Assert - Response time should be reasonable (less than 10 seconds)
-        assert response_time < 10.0, (
-            f"Response time {response_time:.2f}s should be under 10 seconds"
-        )
+        assert (
+            response_time < 10.0
+        ), f"Response time {response_time:.2f}s should be under 10 seconds"
 
         # Assert - Should get a valid HTTP response
-        assert 200 <= response.status_code < 600, (
-            f"Should return valid HTTP status code, got {response.status_code}"
-        )
+        assert (
+            200 <= response.status_code < 600
+        ), f"Should return valid HTTP status code, got {response.status_code}"
 
     def _validate_trade_structure(self, trade: dict) -> None:
         """
@@ -342,8 +348,14 @@ class TestTradesGetContract:
         """
         # Required fields for Trade schema
         required_fields = [
-            "trade_id", "symbol", "trade_type", "quantity", 
-            "entry_price", "entry_timestamp", "status", "created_at"
+            "trade_id",
+            "symbol",
+            "trade_type",
+            "quantity",
+            "entry_price",
+            "entry_timestamp",
+            "status",
+            "created_at",
         ]
 
         for field in required_fields:
@@ -364,9 +376,10 @@ class TestTradesGetContract:
 
         # Validate trade_type
         trade_type = trade["trade_type"]
-        assert trade_type in ["BUY", "SELL"], (
-            f"trade_type must be BUY or SELL, got {trade_type}"
-        )
+        assert trade_type in [
+            "BUY",
+            "SELL",
+        ], f"trade_type must be BUY or SELL, got {trade_type}"
 
         # Validate quantity
         quantity = trade["quantity"]
@@ -384,9 +397,11 @@ class TestTradesGetContract:
 
         # Validate status
         status = trade["status"]
-        assert status in ["OPEN", "CLOSED", "CANCELLED"], (
-            f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
-        )
+        assert status in [
+            "OPEN",
+            "CLOSED",
+            "CANCELLED",
+        ], f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
 
         # Validate created_at
         created_at = trade["created_at"]
@@ -412,9 +427,12 @@ class TestTradesGetContract:
 
         if "exit_reason" in trade and trade["exit_reason"] is not None:
             exit_reason = trade["exit_reason"]
-            assert exit_reason in ["STOP_LOSS", "TAKE_PROFIT", "MANUAL", "STRATEGY"], (
-                f"exit_reason must be valid enum value, got {exit_reason}"
-            )
+            assert exit_reason in [
+                "STOP_LOSS",
+                "TAKE_PROFIT",
+                "MANUAL",
+                "STRATEGY",
+            ], f"exit_reason must be valid enum value, got {exit_reason}"
 
         if "gross_pnl" in trade and trade["gross_pnl"] is not None:
             gross_pnl = trade["gross_pnl"]
@@ -422,7 +440,9 @@ class TestTradesGetContract:
 
         if "transaction_cost" in trade:
             transaction_cost = trade["transaction_cost"]
-            assert isinstance(transaction_cost, (int, float)), "transaction_cost must be number"
+            assert isinstance(
+                transaction_cost, (int, float)
+            ), "transaction_cost must be number"
             assert transaction_cost >= 0, "transaction_cost cannot be negative"
 
         if "net_pnl" in trade and trade["net_pnl"] is not None:

@@ -38,6 +38,7 @@ import redis
 
 class ServiceStatus(Enum):
     """Service status enumeration"""
+
     STARTING = "starting"
     HEALTHY = "healthy"
     DEGRADED = "degraded"
@@ -48,6 +49,7 @@ class ServiceStatus(Enum):
 
 class ServiceType(Enum):
     """Service type enumeration"""
+
     DATABASE = "database"
     CACHE = "cache"
     WEBSOCKET = "websocket"
@@ -62,6 +64,7 @@ class ServiceType(Enum):
 
 class SystemPhase(Enum):
     """System startup phase enumeration"""
+
     INITIALIZATION = "initialization"
     DEPENDENCY_LOADING = "dependency_loading"
     SERVICE_STARTUP = "service_startup"
@@ -72,31 +75,37 @@ class SystemPhase(Enum):
 
 class SystemError(Exception):
     """Base exception for system-related errors"""
+
     pass
 
 
 class InitializationError(SystemError):
     """Raised when system initialization fails"""
+
     pass
 
 
 class DependencyError(SystemError):
     """Raised when dependency loading fails"""
+
     pass
 
 
 class ServiceError(SystemError):
     """Raised when service startup/health check fails"""
+
     pass
 
 
 class ConfigurationError(SystemError):
     """Raised when configuration loading fails"""
+
     pass
 
 
 class HealthCheckError(SystemError):
     """Raised when health check fails"""
+
     pass
 
 
@@ -119,7 +128,7 @@ class MockSystemService:
             "requests_handled": 0,
             "errors": 0,
             "memory_usage": 0,
-            "cpu_usage": 0
+            "cpu_usage": 0,
         }
 
     async def start(self, timeout: int = 30):
@@ -139,7 +148,7 @@ class MockSystemService:
                 ServiceType.PORTFOLIO: 2.0,
                 ServiceType.STRATEGY: 3.5,
                 ServiceType.RISK_MANAGEMENT: 2.5,
-                ServiceType.AUDIT: 1.5
+                ServiceType.AUDIT: 1.5,
             }
 
             delay = startup_delays.get(self.service_type, 1.0)
@@ -176,19 +185,19 @@ class MockSystemService:
                 health_status = {
                     "status": "unhealthy",
                     "score": 0.0,
-                    "message": f"{self.name} is not running"
+                    "message": f"{self.name} is not running",
                 }
             elif self.error_count > 5:
                 health_status = {
                     "status": "degraded",
                     "score": 0.3,
-                    "message": f"{self.name} has high error count"
+                    "message": f"{self.name} has high error count",
                 }
             else:
                 health_status = {
                     "status": "healthy",
                     "score": 1.0,
-                    "message": f"{self.name} is operating normally"
+                    "message": f"{self.name} is operating normally",
                 }
 
             # Update service status based on health check
@@ -207,12 +216,15 @@ class MockSystemService:
                 "status": health_status["status"],
                 "score": health_status["score"],
                 "message": health_status["message"],
-                "uptime": (datetime.now() - self.startup_time).total_seconds()
-                          if self.startup_time else 0,
+                "uptime": (
+                    (datetime.now() - self.startup_time).total_seconds()
+                    if self.startup_time
+                    else 0
+                ),
                 "error_count": self.error_count,
                 "restart_count": self.restart_count,
                 "last_check": self.last_health_check.isoformat(),
-                "metrics": self.metrics
+                "metrics": self.metrics,
             }
 
         except Exception as e:
@@ -252,7 +264,7 @@ class MockSystemManager:
             "cpu_usage_percent": 0,
             "active_connections": 0,
             "total_requests": 0,
-            "error_rate": 0.0
+            "error_rate": 0.0,
         }
 
     def register_service(self, service: MockSystemService):
@@ -283,16 +295,20 @@ class MockSystemManager:
             startup_duration = (datetime.now() - self.startup_time).total_seconds()
             self.performance_metrics["startup_duration"] = startup_duration
 
-            print(f"✅ NIRAJ Trading System started successfully in {startup_duration:.2f}s")
+            print(
+                f"✅ NIRAJ Trading System started successfully in {startup_duration:.2f}s"
+            )
 
         except Exception as e:
             self.current_phase = SystemPhase.INITIALIZATION
-            self.error_log.append({
-                "timestamp": datetime.now().isoformat(),
-                "phase": self.current_phase.value,
-                "error": str(e),
-                "type": type(e).__name__
-            })
+            self.error_log.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "phase": self.current_phase.value,
+                    "error": str(e),
+                    "type": type(e).__name__,
+                }
+            )
             raise InitializationError(f"System startup failed: {str(e)}")
 
     async def _initialization_phase(self):
@@ -325,7 +341,7 @@ class MockSystemManager:
             "pandas",
             "numpy",
             "ollama",
-            "asyncio"
+            "asyncio",
         ]
 
         for dependency in dependencies:
@@ -347,11 +363,11 @@ class MockSystemManager:
         # Define service startup order based on dependencies
         startup_order = [
             [ServiceType.DATABASE, ServiceType.CACHE],  # Core infrastructure
-            [ServiceType.AI_ENGINE],                    # AI engine (independent)
-            [ServiceType.MARKET_DATA, ServiceType.PORTFOLIO], # Data services
-            [ServiceType.STRATEGY, ServiceType.RISK_MANAGEMENT], # Trading logic
-            [ServiceType.API_GATEWAY, ServiceType.WEBSOCKET], # Communication
-            [ServiceType.AUDIT]                         # Monitoring
+            [ServiceType.AI_ENGINE],  # AI engine (independent)
+            [ServiceType.MARKET_DATA, ServiceType.PORTFOLIO],  # Data services
+            [ServiceType.STRATEGY, ServiceType.RISK_MANAGEMENT],  # Trading logic
+            [ServiceType.API_GATEWAY, ServiceType.WEBSOCKET],  # Communication
+            [ServiceType.AUDIT],  # Monitoring
         ]
 
         for phase_services in startup_order:
@@ -360,7 +376,9 @@ class MockSystemManager:
             for service_type in phase_services:
                 service_name = f"{service_type.value}_service"
                 if service_name in self.services:
-                    tasks.append(self.services[service_name].start(timeout // len(startup_order)))
+                    tasks.append(
+                        self.services[service_name].start(timeout // len(startup_order))
+                    )
 
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -376,12 +394,18 @@ class MockSystemManager:
 
         # Calculate system health score
         total_score = sum(result["score"] for result in health_results.values())
-        self.system_health_score = total_score / len(health_results) if health_results else 0
+        self.system_health_score = (
+            total_score / len(health_results) if health_results else 0
+        )
 
         if self.system_health_score < 0.7:
-            raise HealthCheckError(f"System health score too low: {self.system_health_score}")
+            raise HealthCheckError(
+                f"System health score too low: {self.system_health_score}"
+            )
 
-        print(f"✅ System health validation completed (score: {self.system_health_score:.2f})")
+        print(
+            f"✅ System health validation completed (score: {self.system_health_score:.2f})"
+        )
 
     async def _system_ready_phase(self):
         """Phase 5: System ready"""
@@ -402,43 +426,29 @@ class MockSystemManager:
                 "database": {
                     "url": "sqlite:///./trading_system.db",
                     "pool_size": 5,
-                    "echo": False
+                    "echo": False,
                 },
-                "redis": {
-                    "host": "localhost",
-                    "port": 6379,
-                    "db": 0
-                },
-                "api": {
-                    "host": "0.0.0.0",
-                    "port": 8000,
-                    "cors_enabled": True
-                },
-                "websocket": {
-                    "host": "0.0.0.0",
-                    "port": 8765
-                },
+                "redis": {"host": "localhost", "port": 6379, "db": 0},
+                "api": {"host": "0.0.0.0", "port": 8000, "cors_enabled": True},
+                "websocket": {"host": "0.0.0.0", "port": 8765},
                 "ai": {
                     "model": "gemma3:4b-it-q4_K_M",
-                    "base_url": "http://localhost:11434"
+                    "base_url": "http://localhost:11434",
                 },
                 "external_apis": {
                     "angel_one": {
                         "base_url": "https://apiconnect.angelbroking.com",
-                        "timeout": 10
+                        "timeout": 10,
                     },
-                    "dhan": {
-                        "base_url": "https://api.dhan.co",
-                        "timeout": 10
-                    }
+                    "dhan": {"base_url": "https://api.dhan.co", "timeout": 10},
                 },
                 "trading": {
                     "paper_mode": True,
                     "risk_limits": {
                         "max_position_size": 100000,
-                        "daily_loss_limit": 50000
-                    }
-                }
+                        "daily_loss_limit": 50000,
+                    },
+                },
             }
 
             print("✅ Configuration loaded successfully")
@@ -464,7 +474,7 @@ class MockSystemManager:
                 raise SystemError("Insufficient memory available")
 
             # Check disk space
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage("/")
             if disk.free < 10 * 1024 * 1024 * 1024:  # Less than 10GB
                 raise SystemError("Insufficient disk space available")
 
@@ -489,16 +499,23 @@ class MockSystemManager:
             self.performance_metrics["cpu_usage_percent"] = psutil.cpu_percent()
 
             # Active services count
-            healthy_services = sum(1 for service in self.services.values()
-                                 if service.status == ServiceStatus.HEALTHY)
+            healthy_services = sum(
+                1
+                for service in self.services.values()
+                if service.status == ServiceStatus.HEALTHY
+            )
             self.performance_metrics["active_connections"] = healthy_services
 
             # Error rate
-            total_errors = sum(service.error_count for service in self.services.values())
-            total_requests = sum(service.metrics["requests_handled"]
-                               for service in self.services.values())
-            self.performance_metrics["error_rate"] = (
-                total_errors / max(total_requests, 1)
+            total_errors = sum(
+                service.error_count for service in self.services.values()
+            )
+            total_requests = sum(
+                service.metrics["requests_handled"]
+                for service in self.services.values()
+            )
+            self.performance_metrics["error_rate"] = total_errors / max(
+                total_requests, 1
             )
 
         except Exception as e:
@@ -523,7 +540,7 @@ class MockSystemManager:
                         "status": "error",
                         "score": 0.0,
                         "message": str(result),
-                        "error": True
+                        "error": True,
                     }
                 else:
                     health_results[name] = result
@@ -547,7 +564,7 @@ class MockSystemManager:
                 [ServiceType.STRATEGY, ServiceType.RISK_MANAGEMENT],
                 [ServiceType.MARKET_DATA, ServiceType.PORTFOLIO],
                 [ServiceType.AI_ENGINE],
-                [ServiceType.DATABASE, ServiceType.CACHE]
+                [ServiceType.DATABASE, ServiceType.CACHE],
             ]
 
             for phase_services in shutdown_order:
@@ -555,7 +572,11 @@ class MockSystemManager:
                 for service_type in phase_services:
                     service_name = f"{service_type.value}_service"
                     if service_name in self.services:
-                        tasks.append(self.services[service_name].stop(timeout // len(shutdown_order)))
+                        tasks.append(
+                            self.services[service_name].stop(
+                                timeout // len(shutdown_order)
+                            )
+                        )
 
                 if tasks:
                     await asyncio.gather(*tasks, return_exceptions=True)
@@ -570,14 +591,18 @@ class MockSystemManager:
         return {
             "phase": self.current_phase.value,
             "health_score": self.system_health_score,
-            "uptime": (datetime.now() - self.startup_time).total_seconds()
-                     if self.startup_time else 0,
+            "uptime": (
+                (datetime.now() - self.startup_time).total_seconds()
+                if self.startup_time
+                else 0
+            ),
             "services_count": len(self.services),
-            "healthy_services": len([s for s in self.services.values()
-                                   if s.status == ServiceStatus.HEALTHY]),
+            "healthy_services": len(
+                [s for s in self.services.values() if s.status == ServiceStatus.HEALTHY]
+            ),
             "error_count": len(self.error_log),
             "performance": self.performance_metrics,
-            "ready": self.current_phase == SystemPhase.READY
+            "ready": self.current_phase == SystemPhase.READY,
         }
 
 
@@ -607,7 +632,7 @@ def system_manager():
         MockSystemService(ServiceType.RISK_MANAGEMENT, "risk_management_service"),
         MockSystemService(ServiceType.API_GATEWAY, "api_gateway_service"),
         MockSystemService(ServiceType.WEBSOCKET, "websocket_service"),
-        MockSystemService(ServiceType.AUDIT, "audit_service")
+        MockSystemService(ServiceType.AUDIT, "audit_service"),
     ]
 
     for service in services:
@@ -624,7 +649,7 @@ def mock_external_services():
         "dhan_hq": Mock(),
         "news_api": Mock(),
         "weather_api": Mock(),
-        "ollama": Mock()
+        "ollama": Mock(),
     }
 
     # Configure mock responses
@@ -642,10 +667,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_complete_system_startup_workflow(
-        self,
-        mock_db_session,
-        system_manager,
-        mock_external_services
+        self, mock_db_session, system_manager, mock_external_services
     ):
         """Test complete system startup workflow"""
 
@@ -674,7 +696,9 @@ class TestSystemStartup:
             health_results = await system_manager.comprehensive_health_check()
 
             for service_name, health_info in health_results.items():
-                assert health_info["score"] >= 0.7, f"Service {service_name} unhealthy: {health_info}"
+                assert (
+                    health_info["score"] >= 0.7
+                ), f"Service {service_name} unhealthy: {health_info}"
                 assert health_info["status"] in ["healthy", "degraded"]
                 assert "uptime" in health_info
 
@@ -693,7 +717,9 @@ class TestSystemStartup:
             print("✅ Complete system startup workflow executed successfully")
             print(f"   Startup time: {perf_metrics['startup_duration']:.2f}s")
             print(f"   System health: {final_status['health_score']:.2f}")
-            print(f"   Services: {final_status['healthy_services']}/{final_status['services_count']}")
+            print(
+                f"   Services: {final_status['healthy_services']}/{final_status['services_count']}"
+            )
 
         except Exception as e:
             pytest.fail(f"System startup workflow failed: {str(e)}")
@@ -703,9 +729,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_system_startup_dependency_failure_handling(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test handling of dependency failures during startup"""
 
@@ -715,8 +739,10 @@ class TestSystemStartup:
 
             # Make database service fail on startup
             original_start = db_service.start
+
             async def failing_start(timeout=30):
                 raise ServiceError("Database connection failed: Connection refused")
+
             db_service.start = failing_start
 
             # Step 2: Attempt system startup (should fail gracefully)
@@ -754,10 +780,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_external_api_connectivity_validation(
-        self,
-        mock_db_session,
-        system_manager,
-        mock_external_services
+        self, mock_db_session, system_manager, mock_external_services
     ):
         """Test external API connectivity validation during startup"""
 
@@ -766,12 +789,20 @@ class TestSystemStartup:
             await system_manager.start_system()
 
             # Step 2: Test external API health checks
-            external_apis = ["angel_one", "dhan_hq", "news_api", "weather_api", "ollama"]
+            external_apis = [
+                "angel_one",
+                "dhan_hq",
+                "news_api",
+                "weather_api",
+                "ollama",
+            ]
 
             for api_name in external_apis:
                 try:
                     if api_name in mock_external_services:
-                        health_result = await mock_external_services[api_name].health_check()
+                        health_result = await mock_external_services[
+                            api_name
+                        ].health_check()
                         assert health_result["status"] == "healthy"
                         print(f"   ✅ {api_name} API connectivity verified")
                 except Exception as e:
@@ -779,8 +810,9 @@ class TestSystemStartup:
 
             # Step 3: Test API failure scenarios
             # Simulate Angel One API failure
-            mock_external_services["angel_one"].health_check.side_effect = \
+            mock_external_services["angel_one"].health_check.side_effect = (
                 ConnectionError("API connection timeout")
+            )
 
             try:
                 await mock_external_services["angel_one"].health_check()
@@ -800,7 +832,9 @@ class TestSystemStartup:
             # Step 5: Test API recovery
             # Restore Angel One API
             mock_external_services["angel_one"].health_check.side_effect = None
-            mock_external_services["angel_one"].health_check.return_value = {"status": "healthy"}
+            mock_external_services["angel_one"].health_check.return_value = {
+                "status": "healthy"
+            }
 
             recovery_result = await mock_external_services["angel_one"].health_check()
             assert recovery_result["status"] == "healthy"
@@ -815,9 +849,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_system_health_monitoring_and_alerts(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test system health monitoring and alerting"""
 
@@ -857,8 +889,8 @@ class TestSystemStartup:
             # Step 6: Test health threshold alerts
             health_thresholds = {
                 "critical": 0.3,  # Below 30% = critical
-                "warning": 0.7,   # Below 70% = warning
-                "healthy": 0.9    # Above 90% = healthy
+                "warning": 0.7,  # Below 70% = warning
+                "healthy": 0.9,  # Above 90% = healthy
             }
 
             current_health = system_manager.system_health_score
@@ -870,7 +902,9 @@ class TestSystemStartup:
             else:
                 alert_level = "HEALTHY"
 
-            print(f"   ✅ Health alert level: {alert_level} (score: {current_health:.2f})")
+            print(
+                f"   ✅ Health alert level: {alert_level} (score: {current_health:.2f})"
+            )
 
             # Step 7: Test recovery monitoring
             # Reset error counts to simulate recovery
@@ -879,7 +913,9 @@ class TestSystemStartup:
                 service.status = ServiceStatus.HEALTHY
 
             recovery_health = await system_manager.comprehensive_health_check()
-            recovery_score = sum(h["score"] for h in recovery_health.values()) / len(recovery_health)
+            recovery_score = sum(h["score"] for h in recovery_health.values()) / len(
+                recovery_health
+            )
 
             assert recovery_score >= 0.9  # Should be back to healthy
             print(f"   ✅ System recovery verified (score: {recovery_score:.2f})")
@@ -893,9 +929,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_system_resource_monitoring_and_limits(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test system resource monitoring and limits"""
 
@@ -911,9 +945,9 @@ class TestSystemStartup:
 
             # Step 2: Test resource limit monitoring
             resource_limits = {
-                "max_memory_mb": 4096,    # 4GB memory limit
-                "max_cpu_percent": 80,     # 80% CPU limit
-                "max_error_rate": 0.05    # 5% error rate limit
+                "max_memory_mb": 4096,  # 4GB memory limit
+                "max_cpu_percent": 80,  # 80% CPU limit
+                "max_error_rate": 0.05,  # 5% error rate limit
             }
 
             # Check current resource usage against limits
@@ -942,7 +976,9 @@ class TestSystemStartup:
             # Step 3: Test resource exhaustion scenarios
             # Simulate high memory usage
             simulated_high_memory = resource_limits["max_memory_mb"] + 500
-            system_manager.performance_metrics["memory_usage_mb"] = simulated_high_memory
+            system_manager.performance_metrics["memory_usage_mb"] = (
+                simulated_high_memory
+            )
 
             # Check if system would trigger resource alerts
             if simulated_high_memory > resource_limits["max_memory_mb"]:
@@ -950,7 +986,9 @@ class TestSystemStartup:
 
             # Step 4: Test resource cleanup and optimization
             # Simulate garbage collection/cleanup
-            system_manager.performance_metrics["memory_usage_mb"] = baseline_perf["memory_usage_mb"]
+            system_manager.performance_metrics["memory_usage_mb"] = baseline_perf[
+                "memory_usage_mb"
+            ]
             print("   ✅ Resource cleanup simulation completed")
 
             # Step 5: Test service resource isolation
@@ -965,12 +1003,16 @@ class TestSystemStartup:
             # If a service uses too many resources, it should be throttled
             high_resource_service = system_manager.services["ai_engine_service"]
             high_resource_service.metrics["memory_usage"] = 1000  # High usage
-            high_resource_service.metrics["cpu_usage"] = 85      # High CPU
+            high_resource_service.metrics["cpu_usage"] = 85  # High CPU
 
             # In real implementation, this would trigger throttling
-            if (high_resource_service.metrics["memory_usage"] > 500 or
-                high_resource_service.metrics["cpu_usage"] > 80):
-                print("   ✅ Service throttling would be triggered for ai_engine_service")
+            if (
+                high_resource_service.metrics["memory_usage"] > 500
+                or high_resource_service.metrics["cpu_usage"] > 80
+            ):
+                print(
+                    "   ✅ Service throttling would be triggered for ai_engine_service"
+                )
 
             print("✅ System resource monitoring and limits working correctly")
 
@@ -981,9 +1023,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_configuration_loading_and_validation(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test configuration loading and validation"""
 
@@ -997,8 +1037,13 @@ class TestSystemStartup:
 
             # Step 2: Validate required configuration sections
             required_sections = [
-                "database", "redis", "api", "websocket",
-                "ai", "external_apis", "trading"
+                "database",
+                "redis",
+                "api",
+                "websocket",
+                "ai",
+                "external_apis",
+                "trading",
             ]
 
             for section in required_sections:
@@ -1052,7 +1097,7 @@ class TestSystemStartup:
             test_env_overrides = {
                 "NIRAJ_API_PORT": "8080",
                 "NIRAJ_PAPER_MODE": "false",
-                "NIRAJ_DB_URL": "postgresql://test:test@localhost/test"
+                "NIRAJ_DB_URL": "postgresql://test:test@localhost/test",
             }
 
             for env_var, value in test_env_overrides.items():
@@ -1075,9 +1120,7 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_graceful_system_shutdown_and_cleanup(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test graceful system shutdown and cleanup procedures"""
 
@@ -1153,17 +1196,15 @@ class TestSystemStartup:
 
     @pytest.mark.asyncio
     async def test_system_startup_performance_benchmarks(
-        self,
-        mock_db_session,
-        system_manager
+        self, mock_db_session, system_manager
     ):
         """Test system startup performance benchmarks"""
 
         performance_requirements = {
-            "max_startup_time": 60,        # 60 seconds max startup
-            "max_memory_usage": 2048,      # 2GB max memory
-            "max_cpu_usage": 70,           # 70% max CPU during startup
-            "min_health_score": 0.8        # 80% minimum health score
+            "max_startup_time": 60,  # 60 seconds max startup
+            "max_memory_usage": 2048,  # 2GB max memory
+            "max_cpu_usage": 70,  # 70% max CPU during startup
+            "min_health_score": 0.8,  # 80% minimum health score
         }
 
         try:
@@ -1178,27 +1219,39 @@ class TestSystemStartup:
             memory_used = (memory_after - memory_before) // (1024 * 1024)  # MB
 
             # Step 2: Validate startup time benchmark
-            assert startup_duration < performance_requirements["max_startup_time"], \
-                f"Startup time {startup_duration:.2f}s exceeds limit {performance_requirements['max_startup_time']}s"
-            print(f"   ✅ Startup time: {startup_duration:.2f}s (limit: {performance_requirements['max_startup_time']}s)")
+            assert (
+                startup_duration < performance_requirements["max_startup_time"]
+            ), f"Startup time {startup_duration:.2f}s exceeds limit {performance_requirements['max_startup_time']}s"
+            print(
+                f"   ✅ Startup time: {startup_duration:.2f}s (limit: {performance_requirements['max_startup_time']}s)"
+            )
 
             # Step 3: Validate memory usage benchmark
             current_memory = system_manager.performance_metrics["memory_usage_mb"]
-            assert current_memory < performance_requirements["max_memory_usage"], \
-                f"Memory usage {current_memory}MB exceeds limit {performance_requirements['max_memory_usage']}MB"
-            print(f"   ✅ Memory usage: {current_memory}MB (limit: {performance_requirements['max_memory_usage']}MB)")
+            assert (
+                current_memory < performance_requirements["max_memory_usage"]
+            ), f"Memory usage {current_memory}MB exceeds limit {performance_requirements['max_memory_usage']}MB"
+            print(
+                f"   ✅ Memory usage: {current_memory}MB (limit: {performance_requirements['max_memory_usage']}MB)"
+            )
 
             # Step 4: Validate CPU usage benchmark
             current_cpu = system_manager.performance_metrics["cpu_usage_percent"]
-            assert current_cpu < performance_requirements["max_cpu_usage"], \
-                f"CPU usage {current_cpu}% exceeds limit {performance_requirements['max_cpu_usage']}%"
-            print(f"   ✅ CPU usage: {current_cpu}% (limit: {performance_requirements['max_cpu_usage']}%)")
+            assert (
+                current_cpu < performance_requirements["max_cpu_usage"]
+            ), f"CPU usage {current_cpu}% exceeds limit {performance_requirements['max_cpu_usage']}%"
+            print(
+                f"   ✅ CPU usage: {current_cpu}% (limit: {performance_requirements['max_cpu_usage']}%)"
+            )
 
             # Step 5: Validate health score benchmark
             current_health = system_manager.system_health_score
-            assert current_health >= performance_requirements["min_health_score"], \
-                f"Health score {current_health} below minimum {performance_requirements['min_health_score']}"
-            print(f"   ✅ Health score: {current_health:.2f} (minimum: {performance_requirements['min_health_score']})")
+            assert (
+                current_health >= performance_requirements["min_health_score"]
+            ), f"Health score {current_health} below minimum {performance_requirements['min_health_score']}"
+            print(
+                f"   ✅ Health score: {current_health:.2f} (minimum: {performance_requirements['min_health_score']})"
+            )
 
             # Step 6: Test concurrent startup performance
             # Simulate multiple startup attempts (should handle gracefully)
@@ -1221,7 +1274,9 @@ class TestSystemStartup:
             if concurrent_results:
                 avg_concurrent_time = sum(concurrent_results) / len(concurrent_results)
                 assert avg_concurrent_time < 10  # Should handle concurrent load quickly
-                print(f"   ✅ Concurrent performance: {avg_concurrent_time:.2f}s average")
+                print(
+                    f"   ✅ Concurrent performance: {avg_concurrent_time:.2f}s average"
+                )
 
             # Step 7: Generate performance report
             performance_report = {
@@ -1231,7 +1286,7 @@ class TestSystemStartup:
                 "health_score": current_health,
                 "concurrent_avg_time": avg_concurrent_time if concurrent_results else 0,
                 "benchmarks_passed": True,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             print("✅ System startup performance benchmarks passed")
@@ -1252,30 +1307,27 @@ def create_system_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "all_services_available": True,
             "configuration_valid": True,
             "resources_sufficient": True,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "database_failure": {
             "all_services_available": False,
             "failed_service": "database",
             "configuration_valid": True,
             "resources_sufficient": True,
-            "expected_outcome": "startup_failure"
+            "expected_outcome": "startup_failure",
         },
-
         "insufficient_resources": {
             "all_services_available": True,
             "configuration_valid": True,
             "resources_sufficient": False,
-            "expected_outcome": "resource_error"
+            "expected_outcome": "resource_error",
         },
-
         "configuration_error": {
             "all_services_available": True,
             "configuration_valid": False,
             "resources_sufficient": True,
-            "expected_outcome": "config_error"
-        }
+            "expected_outcome": "config_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -1287,10 +1339,16 @@ def validate_system_health(health_results: Dict[str, Any]) -> bool:
     try:
         # Check if all required services are present
         required_services = [
-            "database_service", "cache_service", "ai_engine_service",
-            "market_data_service", "portfolio_service", "strategy_service",
-            "risk_management_service", "api_gateway_service",
-            "websocket_service", "audit_service"
+            "database_service",
+            "cache_service",
+            "ai_engine_service",
+            "market_data_service",
+            "portfolio_service",
+            "strategy_service",
+            "risk_management_service",
+            "api_gateway_service",
+            "websocket_service",
+            "audit_service",
         ]
 
         for service in required_services:
@@ -1307,8 +1365,9 @@ def validate_system_health(health_results: Dict[str, Any]) -> bool:
         critical_services = ["database_service", "cache_service", "websocket_service"]
         for service in critical_services:
             service_health = health_results.get(service, {})
-            assert service_health.get("score", 0) >= 0.8, \
-                f"Critical service {service} unhealthy: {service_health}"
+            assert (
+                service_health.get("score", 0) >= 0.8
+            ), f"Critical service {service} unhealthy: {service_health}"
 
         return True
 
@@ -1324,12 +1383,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

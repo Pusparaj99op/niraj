@@ -138,25 +138,76 @@ NIRAJ follows a microservices-inspired architecture with clear separation of con
 - 16GB+ RAM (recommended)
 - Linux/macOS (Windows via WSL2)
 
-### 1-Minute Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/Pusparaj99op/NIRAJ.git
-cd NIRAJ
-
-# Run the automated setup script
-./scripts/setup_dev.sh
-
-# Start both servers
-./scripts/run_dev.sh
-```
-
 That's it! 🎉
 
-- Frontend: http://localhost:3005
+- Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
+
+### Interactive Menu System (Recommended)
+
+NIRAJ now features a comprehensive interactive menu system for easy management:
+
+```bash
+# Start interactive menu (default when no arguments provided)
+python niraj.py
+
+# Or explicitly request menu mode
+python niraj.py --menu
+python niraj.py menu
+```
+
+**Menu Features:**
+- 🎯 **Main Menu**: Central hub with 9 categories of operations
+- 🚀 **Start Services**: Pre-configured setups (Development, Production, Testing, Custom)
+- 🛑 **Stop Services**: Individual or bulk service termination
+- 📊 **Service Status**: Real-time status monitoring with URLs
+- 📦 **Dependencies**: Automated installation management
+- ⚙️ **Configuration**: View, edit, and manage configurations
+- 🔧 **Service Management**: Restart, logs, health checks, metrics
+- 📚 **Help System**: Complete documentation and troubleshooting
+- 🌍 **Environment**: Switch between development/production/testing modes
+- 📋 **Monitoring**: Logs and performance tracking
+
+### Command Line Interface
+
+For direct operations without the menu:
+
+```bash
+# Development mode with all services
+python niraj.py --enable-api --enable-frontend --enable-redis --enable-ollama
+
+# Production mode with API only
+python niraj.py --mode production --enable-api --enable-redis
+
+# Testing mode
+python niraj.py --mode testing --enable-api
+
+# Service management commands
+python niraj.py status          # Show current service status
+python niraj.py stop            # Stop all running services
+python niraj.py install         # Install project dependencies
+
+# Custom configuration
+python niraj.py --config custom.json --enable-api
+
+# View help
+python niraj.py --help
+```
+
+**Enhanced Features:**
+- 🎮 **Interactive Menu System**: User-friendly graphical interface
+- 🚀 **Quick Setup Presets**: One-click development/production/testing setups
+- 🔄 **Service Management**: Start, stop, restart, monitor individual services
+- 📊 **Real-time Monitoring**: Live status updates and health checks
+- 🎨 **Beautiful Interface**: Colored output with emojis and professional styling
+- ⚙️ **Configuration Management**: Visual config editing and validation
+- 📚 **Built-in Help System**: Comprehensive guides and troubleshooting
+- 🛠️ **Advanced Tooling**: Log viewing, performance metrics, diagnostics
+- 🌍 **Multi-Environment**: Easy switching between development/production/testing
+- 🔧 **Custom Configurations**: JSON-based config files with inheritance
+- 📱 **Responsive Design**: Works beautifully in any terminal size
+- 🚨 **Error Handling**: Graceful error recovery and user guidance
 
 ---
 

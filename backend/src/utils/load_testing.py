@@ -44,6 +44,7 @@ logger = get_structured_logger(__name__)
 @dataclass
 class LoadTestConfig:
     """Load test configuration"""
+
     name: str
     duration_seconds: int = 60
     concurrent_users: int = 10
@@ -63,6 +64,7 @@ class LoadTestConfig:
 @dataclass
 class RequestResult:
     """Individual request result"""
+
     timestamp: datetime
     endpoint: str
     method: str
@@ -77,6 +79,7 @@ class RequestResult:
 @dataclass
 class LoadTestResults:
     """Load test results summary"""
+
     config: LoadTestConfig
     start_time: datetime
     end_time: datetime
@@ -88,7 +91,11 @@ class LoadTestResults:
 
     @property
     def success_rate(self) -> float:
-        return self.successful_requests / self.total_requests if self.total_requests > 0 else 0.0
+        return (
+            self.successful_requests / self.total_requests
+            if self.total_requests > 0
+            else 0.0
+        )
 
     @property
     def duration_seconds(self) -> float:
@@ -96,13 +103,19 @@ class LoadTestResults:
 
     @property
     def requests_per_second(self) -> float:
-        return self.total_requests / self.duration_seconds if self.duration_seconds > 0 else 0.0
+        return (
+            self.total_requests / self.duration_seconds
+            if self.duration_seconds > 0
+            else 0.0
+        )
 
 
 class VirtualUser:
     """Virtual user for load testing"""
 
-    def __init__(self, user_id: str, config: LoadTestConfig, session: aiohttp.ClientSession):
+    def __init__(
+        self, user_id: str, config: LoadTestConfig, session: aiohttp.ClientSession
+    ):
         self.user_id = user_id
         self.config = config
         self.session = session
@@ -125,8 +138,7 @@ class VirtualUser:
 
                     # Think time between requests
                     think_time = random.uniform(
-                        self.config.think_time_min,
-                        self.config.think_time_max
+                        self.config.think_time_min, self.config.think_time_max
                     )
                     await asyncio.sleep(think_time)
 
@@ -144,17 +156,17 @@ class VirtualUser:
 
     async def _execute_http_request(self, endpoint_config: Dict[str, Any]):
         """Execute HTTP request"""
-        method = endpoint_config.get('method', 'GET')
-        url = endpoint_config['url']
-        data = endpoint_config.get('data')
-        params = endpoint_config.get('params')
+        method = endpoint_config.get("method", "GET")
+        url = endpoint_config["url"]
+        data = endpoint_config.get("data")
+        params = endpoint_config.get("params")
 
         start_time = time.time()
         timestamp = datetime.now(timezone.utc)
 
         headers = self.config.headers.copy()
         if self.config.auth_token:
-            headers['Authorization'] = f'Bearer {self.config.auth_token}'
+            headers["Authorization"] = f"Bearer {self.config.auth_token}"
 
         try:
             async with self.session.request(
@@ -163,7 +175,7 @@ class VirtualUser:
                 json=data,
                 params=params,
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds)
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds),
             ) as response:
                 content = await response.read()
                 response_time_ms = (time.time() - start_time) * 1000
@@ -176,7 +188,7 @@ class VirtualUser:
                     response_time_ms=response_time_ms,
                     size_bytes=len(content),
                     success=200 <= response.status < 400,
-                    user_id=self.user_id
+                    user_id=self.user_id,
                 )
 
                 self.results.append(result)
@@ -193,7 +205,7 @@ class VirtualUser:
                 size_bytes=0,
                 success=False,
                 error_message=str(e),
-                user_id=self.user_id
+                user_id=self.user_id,
             )
 
             self.results.append(result)
@@ -207,19 +219,18 @@ class VirtualUser:
             # Add auth token if available
             extra_headers = {}
             if self.config.auth_token:
-                extra_headers['Authorization'] = f'Bearer {self.config.auth_token}'
+                extra_headers["Authorization"] = f"Bearer {self.config.auth_token}"
 
             async with websockets.connect(
                 ws_endpoint,
                 extra_headers=extra_headers,
-                timeout=self.config.timeout_seconds
+                timeout=self.config.timeout_seconds,
             ) as websocket:
-
                 # Send test message
                 test_message = {
-                    'type': 'test',
-                    'user_id': self.user_id,
-                    'timestamp': timestamp.isoformat()
+                    "type": "test",
+                    "user_id": self.user_id,
+                    "timestamp": timestamp.isoformat(),
                 }
 
                 await websocket.send(json.dumps(test_message))
@@ -231,12 +242,12 @@ class VirtualUser:
                 result = RequestResult(
                     timestamp=timestamp,
                     endpoint=ws_endpoint,
-                    method='WS',
+                    method="WS",
                     status_code=200,  # WebSocket doesn't have status codes
                     response_time_ms=response_time_ms,
-                    size_bytes=len(response.encode('utf-8')),
+                    size_bytes=len(response.encode("utf-8")),
                     success=True,
-                    user_id=self.user_id
+                    user_id=self.user_id,
                 )
 
                 self.results.append(result)
@@ -247,13 +258,13 @@ class VirtualUser:
             result = RequestResult(
                 timestamp=timestamp,
                 endpoint=ws_endpoint,
-                method='WS',
+                method="WS",
                 status_code=0,
                 response_time_ms=response_time_ms,
                 size_bytes=0,
                 success=False,
                 error_message=str(e),
-                user_id=self.user_id
+                user_id=self.user_id,
             )
 
             self.results.append(result)
@@ -272,17 +283,19 @@ class LoadTestEngine:
 
     async def run_load_test(self, config: LoadTestConfig) -> LoadTestResults:
         """Run a complete load test"""
-        logger.info("Starting load test", name=config.name, users=config.concurrent_users)
+        logger.info(
+            "Starting load test", name=config.name, users=config.concurrent_users
+        )
 
         start_time = datetime.now(timezone.utc)
 
         # Track active test
         test_id = f"{config.name}_{start_time.strftime('%Y%m%d_%H%M%S')}"
         self._active_tests[test_id] = {
-            'config': config,
-            'start_time': start_time,
-            'users': [],
-            'status': 'running'
+            "config": config,
+            "start_time": start_time,
+            "users": [],
+            "status": "running",
         }
 
         try:
@@ -291,10 +304,8 @@ class LoadTestEngine:
             timeout = aiohttp.ClientTimeout(total=config.timeout_seconds)
 
             async with aiohttp.ClientSession(
-                connector=connector,
-                timeout=timeout
+                connector=connector, timeout=timeout
             ) as session:
-
                 # Create virtual users
                 users = []
                 for i in range(config.concurrent_users):
@@ -302,7 +313,7 @@ class LoadTestEngine:
                     user = VirtualUser(user_id, config, session)
                     users.append(user)
 
-                self._active_tests[test_id]['users'] = users
+                self._active_tests[test_id]["users"] = users
 
                 # Start users with ramp-up
                 user_tasks = []
@@ -354,24 +365,26 @@ class LoadTestEngine:
                     successful_requests=successful_requests,
                     failed_requests=failed_requests,
                     total_bytes=total_bytes,
-                    results=all_results
+                    results=all_results,
                 )
 
-                self._active_tests[test_id]['status'] = 'completed'
-                self._active_tests[test_id]['results'] = results
+                self._active_tests[test_id]["status"] = "completed"
+                self._active_tests[test_id]["results"] = results
 
-                logger.info("Load test completed",
-                           name=config.name,
-                           total_requests=len(all_results),
-                           success_rate=results.success_rate,
-                           avg_rps=results.requests_per_second)
+                logger.info(
+                    "Load test completed",
+                    name=config.name,
+                    total_requests=len(all_results),
+                    success_rate=results.success_rate,
+                    avg_rps=results.requests_per_second,
+                )
 
                 return results
 
         except Exception as e:
             logger.error("Load test failed", name=config.name, error=str(e))
-            self._active_tests[test_id]['status'] = 'failed'
-            self._active_tests[test_id]['error'] = str(e)
+            self._active_tests[test_id]["status"] = "failed"
+            self._active_tests[test_id]["error"] = str(e)
             raise
         finally:
             # Clean up old test records
@@ -383,7 +396,7 @@ class LoadTestEngine:
 
         tests_to_remove = []
         for test_id, test_data in self._active_tests.items():
-            if test_data['start_time'] < cutoff_time:
+            if test_data["start_time"] < cutoff_time:
                 tests_to_remove.append(test_id)
 
         for test_id in tests_to_remove:
@@ -401,7 +414,7 @@ class LoadTestAnalyzer:
     def analyze_results(results: LoadTestResults) -> Dict[str, Any]:
         """Analyze load test results"""
         if not results.results:
-            return {'error': 'No results to analyze'}
+            return {"error": "No results to analyze"}
 
         # Response time statistics
         response_times = [r.response_time_ms for r in results.results if r.success]
@@ -409,14 +422,16 @@ class LoadTestAnalyzer:
         response_stats = {}
         if response_times:
             response_stats = {
-                'min_ms': min(response_times),
-                'max_ms': max(response_times),
-                'mean_ms': statistics.mean(response_times),
-                'median_ms': statistics.median(response_times),
-                'p90_ms': LoadTestAnalyzer._percentile(response_times, 90),
-                'p95_ms': LoadTestAnalyzer._percentile(response_times, 95),
-                'p99_ms': LoadTestAnalyzer._percentile(response_times, 99),
-                'stdev_ms': statistics.stdev(response_times) if len(response_times) > 1 else 0
+                "min_ms": min(response_times),
+                "max_ms": max(response_times),
+                "mean_ms": statistics.mean(response_times),
+                "median_ms": statistics.median(response_times),
+                "p90_ms": LoadTestAnalyzer._percentile(response_times, 90),
+                "p95_ms": LoadTestAnalyzer._percentile(response_times, 95),
+                "p99_ms": LoadTestAnalyzer._percentile(response_times, 99),
+                "stdev_ms": (
+                    statistics.stdev(response_times) if len(response_times) > 1 else 0
+                ),
             }
 
         # Status code distribution
@@ -431,36 +446,50 @@ class LoadTestAnalyzer:
                 errors[result.error_message] += 1
 
         # Endpoint performance
-        endpoint_stats = defaultdict(lambda: {
-            'count': 0,
-            'success_count': 0,
-            'total_time_ms': 0,
-            'min_time_ms': float('inf'),
-            'max_time_ms': 0
-        })
+        endpoint_stats = defaultdict(
+            lambda: {
+                "count": 0,
+                "success_count": 0,
+                "total_time_ms": 0,
+                "min_time_ms": float("inf"),
+                "max_time_ms": 0,
+            }
+        )
 
         for result in results.results:
             key = f"{result.method} {result.endpoint}"
             stats = endpoint_stats[key]
-            stats['count'] += 1
+            stats["count"] += 1
             if result.success:
-                stats['success_count'] += 1
-                stats['total_time_ms'] += result.response_time_ms
-                stats['min_time_ms'] = min(stats['min_time_ms'], result.response_time_ms)
-                stats['max_time_ms'] = max(stats['max_time_ms'], result.response_time_ms)
+                stats["success_count"] += 1
+                stats["total_time_ms"] += result.response_time_ms
+                stats["min_time_ms"] = min(
+                    stats["min_time_ms"], result.response_time_ms
+                )
+                stats["max_time_ms"] = max(
+                    stats["max_time_ms"], result.response_time_ms
+                )
 
         # Calculate averages for endpoints
         endpoint_performance = {}
         for endpoint, stats in endpoint_stats.items():
-            success_rate = stats['success_count'] / stats['count'] if stats['count'] > 0 else 0
-            avg_time = stats['total_time_ms'] / stats['success_count'] if stats['success_count'] > 0 else 0
+            success_rate = (
+                stats["success_count"] / stats["count"] if stats["count"] > 0 else 0
+            )
+            avg_time = (
+                stats["total_time_ms"] / stats["success_count"]
+                if stats["success_count"] > 0
+                else 0
+            )
 
             endpoint_performance[endpoint] = {
-                'requests': stats['count'],
-                'success_rate': success_rate,
-                'avg_response_time_ms': avg_time,
-                'min_response_time_ms': stats['min_time_ms'] if stats['min_time_ms'] != float('inf') else 0,
-                'max_response_time_ms': stats['max_time_ms']
+                "requests": stats["count"],
+                "success_rate": success_rate,
+                "avg_response_time_ms": avg_time,
+                "min_response_time_ms": (
+                    stats["min_time_ms"] if stats["min_time_ms"] != float("inf") else 0
+                ),
+                "max_response_time_ms": stats["max_time_ms"],
             }
 
         # Throughput over time (per second buckets)
@@ -470,23 +499,27 @@ class LoadTestAnalyzer:
         assessment = LoadTestAnalyzer._assess_performance(results, response_stats)
 
         return {
-            'summary': {
-                'test_name': results.config.name,
-                'duration_seconds': results.duration_seconds,
-                'total_requests': results.total_requests,
-                'successful_requests': results.successful_requests,
-                'failed_requests': results.failed_requests,
-                'success_rate': results.success_rate,
-                'requests_per_second': results.requests_per_second,
-                'total_bytes': results.total_bytes,
-                'avg_bytes_per_request': results.total_bytes / results.total_requests if results.total_requests > 0 else 0
+            "summary": {
+                "test_name": results.config.name,
+                "duration_seconds": results.duration_seconds,
+                "total_requests": results.total_requests,
+                "successful_requests": results.successful_requests,
+                "failed_requests": results.failed_requests,
+                "success_rate": results.success_rate,
+                "requests_per_second": results.requests_per_second,
+                "total_bytes": results.total_bytes,
+                "avg_bytes_per_request": (
+                    results.total_bytes / results.total_requests
+                    if results.total_requests > 0
+                    else 0
+                ),
             },
-            'response_time_stats': response_stats,
-            'status_code_distribution': dict(status_codes),
-            'error_summary': dict(errors),
-            'endpoint_performance': endpoint_performance,
-            'throughput_timeline': throughput_timeline,
-            'performance_assessment': assessment
+            "response_time_stats": response_stats,
+            "status_code_distribution": dict(status_codes),
+            "error_summary": dict(errors),
+            "endpoint_performance": endpoint_performance,
+            "throughput_timeline": throughput_timeline,
+            "performance_assessment": assessment,
         }
 
     @staticmethod
@@ -503,70 +536,92 @@ class LoadTestAnalyzer:
             return sorted_data[f]
 
     @staticmethod
-    def _calculate_throughput_timeline(results: LoadTestResults) -> List[Dict[str, Any]]:
+    def _calculate_throughput_timeline(
+        results: LoadTestResults,
+    ) -> List[Dict[str, Any]]:
         """Calculate throughput over time"""
         if not results.results:
             return []
 
         # Group results by second
-        timeline = defaultdict(lambda: {'requests': 0, 'errors': 0})
+        timeline = defaultdict(lambda: {"requests": 0, "errors": 0})
 
         start_time = results.start_time
         for result in results.results:
             seconds_from_start = int((result.timestamp - start_time).total_seconds())
-            timeline[seconds_from_start]['requests'] += 1
+            timeline[seconds_from_start]["requests"] += 1
             if not result.success:
-                timeline[seconds_from_start]['errors'] += 1
+                timeline[seconds_from_start]["errors"] += 1
 
         # Convert to list
         timeline_list = []
         for second in sorted(timeline.keys()):
             data = timeline[second]
-            timeline_list.append({
-                'second': second,
-                'requests': data['requests'],
-                'errors': data['errors'],
-                'rps': data['requests'],
-                'error_rate': data['errors'] / data['requests'] if data['requests'] > 0 else 0
-            })
+            timeline_list.append(
+                {
+                    "second": second,
+                    "requests": data["requests"],
+                    "errors": data["errors"],
+                    "rps": data["requests"],
+                    "error_rate": (
+                        data["errors"] / data["requests"] if data["requests"] > 0 else 0
+                    ),
+                }
+            )
 
         return timeline_list
 
     @staticmethod
-    def _assess_performance(results: LoadTestResults, response_stats: Dict[str, Any]) -> Dict[str, Any]:
+    def _assess_performance(
+        results: LoadTestResults, response_stats: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Assess overall performance"""
-        assessment = {
-            'overall_grade': 'A',
-            'issues': [],
-            'recommendations': []
-        }
+        assessment = {"overall_grade": "A", "issues": [], "recommendations": []}
 
         # Check success rate
         if results.success_rate < 0.95:
-            assessment['overall_grade'] = 'C' if results.success_rate < 0.8 else 'B'
-            assessment['issues'].append(f"Low success rate: {results.success_rate:.2%}")
-            assessment['recommendations'].append("Investigate and fix errors causing request failures")
+            assessment["overall_grade"] = "C" if results.success_rate < 0.8 else "B"
+            assessment["issues"].append(f"Low success rate: {results.success_rate:.2%}")
+            assessment["recommendations"].append(
+                "Investigate and fix errors causing request failures"
+            )
 
         # Check response times
-        if response_stats and response_stats.get('p95_ms', 0) > 2000:
-            assessment['overall_grade'] = 'C' if assessment['overall_grade'] == 'A' else assessment['overall_grade']
-            assessment['issues'].append(f"High P95 response time: {response_stats['p95_ms']:.1f}ms")
-            assessment['recommendations'].append("Optimize slow endpoints and database queries")
+        if response_stats and response_stats.get("p95_ms", 0) > 2000:
+            assessment["overall_grade"] = (
+                "C"
+                if assessment["overall_grade"] == "A"
+                else assessment["overall_grade"]
+            )
+            assessment["issues"].append(
+                f"High P95 response time: {response_stats['p95_ms']:.1f}ms"
+            )
+            assessment["recommendations"].append(
+                "Optimize slow endpoints and database queries"
+            )
 
         # Check throughput
         target_rps = results.config.target_rps
         if target_rps and results.requests_per_second < target_rps * 0.8:
-            assessment['overall_grade'] = 'B' if assessment['overall_grade'] == 'A' else assessment['overall_grade']
-            assessment['issues'].append(f"Low throughput: {results.requests_per_second:.1f} RPS (target: {target_rps})")
-            assessment['recommendations'].append("Investigate performance bottlenecks and scale resources")
+            assessment["overall_grade"] = (
+                "B"
+                if assessment["overall_grade"] == "A"
+                else assessment["overall_grade"]
+            )
+            assessment["issues"].append(
+                f"Low throughput: {results.requests_per_second:.1f} RPS (target: {target_rps})"
+            )
+            assessment["recommendations"].append(
+                "Investigate performance bottlenecks and scale resources"
+            )
 
         # Performance grade mapping
-        if assessment['overall_grade'] == 'A':
-            assessment['description'] = "Excellent performance"
-        elif assessment['overall_grade'] == 'B':
-            assessment['description'] = "Good performance with minor issues"
+        if assessment["overall_grade"] == "A":
+            assessment["description"] = "Excellent performance"
+        elif assessment["overall_grade"] == "B":
+            assessment["description"] = "Good performance with minor issues"
         else:
-            assessment['description'] = "Poor performance requiring attention"
+            assessment["description"] = "Poor performance requiring attention"
 
         return assessment
 
@@ -577,7 +632,7 @@ class LoadTestReporter:
     @staticmethod
     def generate_html_report(analysis: Dict[str, Any], output_file: str):
         """Generate HTML report"""
-        html_template = '''
+        html_template = """
         <!DOCTYPE html>
         <html>
         <head>
@@ -653,74 +708,76 @@ class LoadTestReporter:
             {recommendations_section}
         </body>
         </html>
-        '''
+        """
 
         # Extract data for template
-        summary = analysis['summary']
-        response_stats = analysis.get('response_time_stats', {})
-        assessment = analysis.get('performance_assessment', {})
+        summary = analysis["summary"]
+        response_stats = analysis.get("response_time_stats", {})
+        assessment = analysis.get("performance_assessment", {})
 
         # Build endpoint performance table
         endpoint_table = ""
-        if analysis.get('endpoint_performance'):
-            endpoint_table = '''
+        if analysis.get("endpoint_performance"):
+            endpoint_table = """
             <div class="section">
                 <h2>Endpoint Performance</h2>
                 <table>
                     <tr><th>Endpoint</th><th>Requests</th><th>Success Rate</th><th>Avg Time (ms)</th></tr>
-            '''
-            for endpoint, stats in analysis['endpoint_performance'].items():
-                endpoint_table += f'''
+            """
+            for endpoint, stats in analysis["endpoint_performance"].items():
+                endpoint_table += f"""
                     <tr>
                         <td>{endpoint}</td>
                         <td>{stats['requests']:,}</td>
                         <td>{stats['success_rate']:.1%}</td>
                         <td>{stats['avg_response_time_ms']:.1f}</td>
                     </tr>
-                '''
-            endpoint_table += '</table></div>'
+                """
+            endpoint_table += "</table></div>"
 
         # Build issues section
         issues_section = ""
-        if assessment.get('issues'):
+        if assessment.get("issues"):
             issues_section = '<div class="section"><h2>Issues Found</h2><ul>'
-            for issue in assessment['issues']:
-                issues_section += f'<li>{issue}</li>'
-            issues_section += '</ul></div>'
+            for issue in assessment["issues"]:
+                issues_section += f"<li>{issue}</li>"
+            issues_section += "</ul></div>"
 
         # Build recommendations section
         recommendations_section = ""
-        if assessment.get('recommendations'):
-            recommendations_section = '<div class="section"><h2>Recommendations</h2><ul>'
-            for rec in assessment['recommendations']:
-                recommendations_section += f'<li>{rec}</li>'
-            recommendations_section += '</ul></div>'
+        if assessment.get("recommendations"):
+            recommendations_section = (
+                '<div class="section"><h2>Recommendations</h2><ul>'
+            )
+            for rec in assessment["recommendations"]:
+                recommendations_section += f"<li>{rec}</li>"
+            recommendations_section += "</ul></div>"
 
         # Fill template
         html_content = html_template.format(
-            test_name=summary.get('test_name', 'Unknown'),
-            duration=summary.get('duration_seconds', 0),
-            grade=assessment.get('overall_grade', 'N/A'),
-            grade_description=assessment.get('description', 'No assessment'),
-            total_requests=summary.get('total_requests', 0),
-            success_rate=summary.get('success_rate', 0),
-            rps=summary.get('requests_per_second', 0),
-            avg_response_time=response_stats.get('mean_ms', 0),
-            p95_response_time=response_stats.get('p95_ms', 0),
-            min_time=response_stats.get('min_ms', 0),
-            avg_time=response_stats.get('mean_ms', 0),
-            median_time=response_stats.get('median_ms', 0),
-            p90_time=response_stats.get('p90_ms', 0),
-            p95_time=response_stats.get('p95_ms', 0),
-            p99_time=response_stats.get('p99_ms', 0),
-            max_time=response_stats.get('max_ms', 0),
+            test_name=summary.get("test_name", "Unknown"),
+            duration=summary.get("duration_seconds", 0),
+            grade=assessment.get("overall_grade", "N/A"),
+            grade_description=assessment.get("description", "No assessment"),
+            total_requests=summary.get("total_requests", 0),
+            success_rate=summary.get("success_rate", 0),
+            rps=summary.get("requests_per_second", 0),
+            avg_response_time=response_stats.get("mean_ms", 0),
+            p95_response_time=response_stats.get("p95_ms", 0),
+            min_time=response_stats.get("min_ms", 0),
+            avg_time=response_stats.get("mean_ms", 0),
+            median_time=response_stats.get("median_ms", 0),
+            p90_time=response_stats.get("p90_ms", 0),
+            p95_time=response_stats.get("p95_ms", 0),
+            p99_time=response_stats.get("p99_ms", 0),
+            max_time=response_stats.get("max_ms", 0),
             endpoint_table=endpoint_table,
             issues_section=issues_section,
-            recommendations_section=recommendations_section
+            recommendations_section=recommendations_section,
         )
 
         # Write to file
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(html_content)
 
         logger.info("HTML report generated", output_file=output_file)
@@ -734,7 +791,9 @@ class LoadTestFramework:
         self.analyzer = LoadTestAnalyzer()
         self.reporter = LoadTestReporter()
 
-    async def run_comprehensive_test(self, base_url: str, auth_token: Optional[str] = None) -> Dict[str, Any]:
+    async def run_comprehensive_test(
+        self, base_url: str, auth_token: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Run comprehensive load test suite"""
         logger.info("Starting comprehensive load test suite", base_url=base_url)
 
@@ -746,13 +805,12 @@ class LoadTestFramework:
                 duration_seconds=60,
                 concurrent_users=5,
                 endpoints=[
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/system/status'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/portfolio'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/strategies'},
+                    {"method": "GET", "url": f"{base_url}/api/v1/system/status"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/portfolio"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/strategies"},
                 ],
-                auth_token=auth_token
+                auth_token=auth_token,
             ),
-
             # Medium load test
             LoadTestConfig(
                 name="medium_load",
@@ -760,15 +818,14 @@ class LoadTestFramework:
                 concurrent_users=20,
                 target_rps=50,
                 endpoints=[
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/system/status'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/portfolio'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/strategies'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/trades'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/ai/predictions'},
+                    {"method": "GET", "url": f"{base_url}/api/v1/system/status"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/portfolio"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/strategies"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/trades"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/ai/predictions"},
                 ],
-                auth_token=auth_token
+                auth_token=auth_token,
             ),
-
             # Heavy load test
             LoadTestConfig(
                 name="heavy_load",
@@ -778,18 +835,19 @@ class LoadTestFramework:
                 ramp_up_seconds=30,
                 ramp_down_seconds=30,
                 endpoints=[
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/system/status'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/portfolio'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/strategies'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/trades'},
-                    {'method': 'GET', 'url': f'{base_url}/api/v1/ai/predictions'},
-                    {'method': 'POST', 'url': f'{base_url}/api/v1/strategies',
-                     'data': {'name': 'test_strategy', 'type': 'test'}},
+                    {"method": "GET", "url": f"{base_url}/api/v1/system/status"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/portfolio"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/strategies"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/trades"},
+                    {"method": "GET", "url": f"{base_url}/api/v1/ai/predictions"},
+                    {
+                        "method": "POST",
+                        "url": f"{base_url}/api/v1/strategies",
+                        "data": {"name": "test_strategy", "type": "test"},
+                    },
                 ],
-                websocket_endpoints=[
-                    f'{base_url.replace("http", "ws")}/ws'
-                ],
-                auth_token=auth_token
+                websocket_endpoints=[f'{base_url.replace("http", "ws")}/ws'],
+                auth_token=auth_token,
             ),
         ]
 
@@ -800,22 +858,23 @@ class LoadTestFramework:
             try:
                 results = await self.engine.run_load_test(scenario)
                 analysis = self.analyzer.analyze_results(results)
-                all_results[scenario.name] = {
-                    'results': results,
-                    'analysis': analysis
-                }
+                all_results[scenario.name] = {"results": results, "analysis": analysis}
 
                 # Generate individual report
-                report_file = f'load_test_report_{scenario.name}.html'
+                report_file = f"load_test_report_{scenario.name}.html"
                 self.reporter.generate_html_report(analysis, report_file)
 
             except Exception as e:
-                logger.error("Load test scenario failed", scenario=scenario.name, error=str(e))
-                all_results[scenario.name] = {'error': str(e)}
+                logger.error(
+                    "Load test scenario failed", scenario=scenario.name, error=str(e)
+                )
+                all_results[scenario.name] = {"error": str(e)}
 
         # Generate summary report
         summary_analysis = self._generate_summary_analysis(all_results)
-        self.reporter.generate_html_report(summary_analysis, 'load_test_summary_report.html')
+        self.reporter.generate_html_report(
+            summary_analysis, "load_test_summary_report.html"
+        )
 
         logger.info("Comprehensive load test suite completed")
         return all_results
@@ -823,23 +882,23 @@ class LoadTestFramework:
     def _generate_summary_analysis(self, all_results: Dict[str, Any]) -> Dict[str, Any]:
         """Generate summary analysis across all test scenarios"""
         summary = {
-            'summary': {
-                'test_name': 'Comprehensive Load Test Suite',
-                'total_scenarios': len(all_results),
-                'successful_scenarios': 0,
-                'failed_scenarios': 0,
-                'total_requests': 0,
-                'total_duration_seconds': 0,
-                'overall_success_rate': 0,
-                'avg_requests_per_second': 0
+            "summary": {
+                "test_name": "Comprehensive Load Test Suite",
+                "total_scenarios": len(all_results),
+                "successful_scenarios": 0,
+                "failed_scenarios": 0,
+                "total_requests": 0,
+                "total_duration_seconds": 0,
+                "overall_success_rate": 0,
+                "avg_requests_per_second": 0,
             },
-            'scenario_results': [],
-            'performance_assessment': {
-                'overall_grade': 'A',
-                'issues': [],
-                'recommendations': [],
-                'description': 'All scenarios completed successfully'
-            }
+            "scenario_results": [],
+            "performance_assessment": {
+                "overall_grade": "A",
+                "issues": [],
+                "recommendations": [],
+                "description": "All scenarios completed successfully",
+            },
         }
 
         total_requests = 0
@@ -848,50 +907,68 @@ class LoadTestFramework:
         total_rps = 0
 
         for scenario_name, scenario_data in all_results.items():
-            if 'error' in scenario_data:
-                summary['summary']['failed_scenarios'] += 1
-                summary['scenario_results'].append({
-                    'name': scenario_name,
-                    'status': 'failed',
-                    'error': scenario_data['error']
-                })
+            if "error" in scenario_data:
+                summary["summary"]["failed_scenarios"] += 1
+                summary["scenario_results"].append(
+                    {
+                        "name": scenario_name,
+                        "status": "failed",
+                        "error": scenario_data["error"],
+                    }
+                )
                 continue
 
-            summary['summary']['successful_scenarios'] += 1
+            summary["summary"]["successful_scenarios"] += 1
 
-            analysis = scenario_data['analysis']
-            scenario_summary = analysis['summary']
+            analysis = scenario_data["analysis"]
+            scenario_summary = analysis["summary"]
 
-            total_requests += scenario_summary['total_requests']
-            total_successful += scenario_summary['successful_requests']
-            total_duration += scenario_summary['duration_seconds']
-            total_rps += scenario_summary['requests_per_second']
+            total_requests += scenario_summary["total_requests"]
+            total_successful += scenario_summary["successful_requests"]
+            total_duration += scenario_summary["duration_seconds"]
+            total_rps += scenario_summary["requests_per_second"]
 
-            summary['scenario_results'].append({
-                'name': scenario_name,
-                'status': 'success',
-                'requests': scenario_summary['total_requests'],
-                'success_rate': scenario_summary['success_rate'],
-                'rps': scenario_summary['requests_per_second'],
-                'grade': analysis['performance_assessment']['overall_grade']
-            })
+            summary["scenario_results"].append(
+                {
+                    "name": scenario_name,
+                    "status": "success",
+                    "requests": scenario_summary["total_requests"],
+                    "success_rate": scenario_summary["success_rate"],
+                    "rps": scenario_summary["requests_per_second"],
+                    "grade": analysis["performance_assessment"]["overall_grade"],
+                }
+            )
 
         # Calculate overall metrics
         if total_requests > 0:
-            summary['summary']['total_requests'] = total_requests
-            summary['summary']['overall_success_rate'] = total_successful / total_requests
-            summary['summary']['total_duration_seconds'] = total_duration
-            summary['summary']['avg_requests_per_second'] = total_rps / len(summary['scenario_results']) if summary['scenario_results'] else 0
+            summary["summary"]["total_requests"] = total_requests
+            summary["summary"]["overall_success_rate"] = (
+                total_successful / total_requests
+            )
+            summary["summary"]["total_duration_seconds"] = total_duration
+            summary["summary"]["avg_requests_per_second"] = (
+                total_rps / len(summary["scenario_results"])
+                if summary["scenario_results"]
+                else 0
+            )
 
         # Assess overall performance
-        if summary['summary']['failed_scenarios'] > 0:
-            summary['performance_assessment']['overall_grade'] = 'C'
-            summary['performance_assessment']['description'] = 'Some scenarios failed'
-            summary['performance_assessment']['issues'].append(f"{summary['summary']['failed_scenarios']} scenarios failed")
+        if summary["summary"]["failed_scenarios"] > 0:
+            summary["performance_assessment"]["overall_grade"] = "C"
+            summary["performance_assessment"]["description"] = "Some scenarios failed"
+            summary["performance_assessment"]["issues"].append(
+                f"{summary['summary']['failed_scenarios']} scenarios failed"
+            )
 
-        if summary['summary']['overall_success_rate'] < 0.95:
-            summary['performance_assessment']['overall_grade'] = 'B' if summary['performance_assessment']['overall_grade'] == 'A' else summary['performance_assessment']['overall_grade']
-            summary['performance_assessment']['issues'].append(f"Low overall success rate: {summary['summary']['overall_success_rate']:.2%}")
+        if summary["summary"]["overall_success_rate"] < 0.95:
+            summary["performance_assessment"]["overall_grade"] = (
+                "B"
+                if summary["performance_assessment"]["overall_grade"] == "A"
+                else summary["performance_assessment"]["overall_grade"]
+            )
+            summary["performance_assessment"]["issues"].append(
+                f"Low overall success rate: {summary['summary']['overall_success_rate']:.2%}"
+            )
 
         return summary
 
@@ -909,7 +986,9 @@ def get_load_test_framework() -> LoadTestFramework:
 
 
 # Utility functions for quick testing
-async def quick_load_test(base_url: str, concurrent_users: int = 10, duration_seconds: int = 60) -> Dict[str, Any]:
+async def quick_load_test(
+    base_url: str, concurrent_users: int = 10, duration_seconds: int = 60
+) -> Dict[str, Any]:
     """Run a quick load test"""
     framework = get_load_test_framework()
 
@@ -918,29 +997,26 @@ async def quick_load_test(base_url: str, concurrent_users: int = 10, duration_se
         duration_seconds=duration_seconds,
         concurrent_users=concurrent_users,
         endpoints=[
-            {'method': 'GET', 'url': f'{base_url}/api/v1/system/status'},
-        ]
+            {"method": "GET", "url": f"{base_url}/api/v1/system/status"},
+        ],
     )
 
     results = await framework.engine.run_load_test(config)
     analysis = framework.analyzer.analyze_results(results)
 
-    return {
-        'results': results,
-        'analysis': analysis
-    }
+    return {"results": results, "analysis": analysis}
 
 
 # Export all public classes and functions
 __all__ = [
-    'LoadTestFramework',
-    'LoadTestEngine',
-    'LoadTestAnalyzer',
-    'LoadTestReporter',
-    'LoadTestConfig',
-    'LoadTestResults',
-    'RequestResult',
-    'VirtualUser',
-    'get_load_test_framework',
-    'quick_load_test'
+    "LoadTestFramework",
+    "LoadTestEngine",
+    "LoadTestAnalyzer",
+    "LoadTestReporter",
+    "LoadTestConfig",
+    "LoadTestResults",
+    "RequestResult",
+    "VirtualUser",
+    "get_load_test_framework",
+    "quick_load_test",
 ]

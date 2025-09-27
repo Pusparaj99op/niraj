@@ -8,11 +8,8 @@ import asyncio
 import sys
 import os
 
-# Add the backend src directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-
 # Import after path setup to avoid import errors
-from api.dhan_client import DhanClient, DhanConfig
+from src.api.dhan_client import DhanClient, DhanConfig
 
 
 async def test_dhan_client():
@@ -25,15 +22,15 @@ async def test_dhan_client():
         # Initialize with dummy credentials for structure validation
         config = DhanConfig()
         client = DhanClient(
-            client_id="test_client_id",
-            access_token="test_access_token",
-            config=config
+            client_id="test_client_id", access_token="test_access_token", config=config
         )
 
         print("✅ Client initialized successfully")
         print(f"  - Base URL: {client.config.base_url}")
         print(f"  - Client ID: {client.client_id}")
-        print(f"  - Rate limits: {client.config.rate_limit_per_second}/sec, {client.config.rate_limit_per_minute}/min")
+        print(
+            f"  - Rate limits: {client.config.rate_limit_per_second}/sec, {client.config.rate_limit_per_minute}/min"
+        )
 
         # Test client stats
         stats = client.get_client_stats()
@@ -60,7 +57,9 @@ async def test_dhan_client():
         await client.close()
         print("✅ Client closed successfully")
 
-        print("\n🎉 All basic tests passed! Dhan client structure is working correctly.")
+        print(
+            "\n🎉 All basic tests passed! Dhan client structure is working correctly."
+        )
         return True
 
     except ImportError as e:
@@ -77,7 +76,7 @@ async def test_error_classes():
     print("\nTesting custom exception classes...")
 
     try:
-        from api.dhan_client import DhanError, AuthenticationError, OrderError
+        from src.api.dhan_client import DhanError, AuthenticationError, OrderError
 
         # Test base exception
         base_error = DhanError("Test error", "TEST001", 400, {"test": "data"})

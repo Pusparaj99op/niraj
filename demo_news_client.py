@@ -8,10 +8,7 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-# Add the backend src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend', 'src'))
-
-from api.news_client import NewsClient, NewsConfig, NewsFilter
+from backend.src.api.news_client import NewsClient, NewsConfig, NewsFilter
 
 
 async def demo_news_client():
@@ -50,7 +47,9 @@ async def demo_news_client():
                 print(f"  {i}. {article.title}")
                 print(f"     Source: {article.source} ({article.provider})")
                 print(f"     Relevance: {article.relevance_score:.2f}")
-                print(f"     Published: {article.published_at.strftime('%Y-%m-%d %H:%M')}")
+                print(
+                    f"     Published: {article.published_at.strftime('%Y-%m-%d %H:%M')}"
+                )
                 print()
 
         except Exception as e:
@@ -62,8 +61,7 @@ async def demo_news_client():
             print("-" * 40)
 
             market_articles = await client.get_market_news(
-                symbols=["RELIANCE", "TCS", "INFY"],
-                limit=3
+                symbols=["RELIANCE", "TCS", "INFY"], limit=3
             )
 
             print(f"✓ Found {len(market_articles)} market-relevant articles")
@@ -84,7 +82,7 @@ async def demo_news_client():
             search_results = await client.search_news(
                 "investment portfolio",
                 NewsFilter(min_relevance_score=0.2, page_size=3),
-                providers=["rss"]
+                providers=["rss"],
             )
             print(f"✓ Found {len(search_results)} articles matching search")
             for article in search_results:
@@ -119,7 +117,7 @@ async def demo_news_client():
             health = await client.health_check()
             print(f"✓ Health Status: {health['overall_status'].upper()}")
 
-            for provider, status in health.get('providers', {}).items():
+            for provider, status in health.get("providers", {}).items():
                 print(f"  • {provider}: {status}")
             print()
 
@@ -183,13 +181,12 @@ def run_demo():
     except Exception as e:
         print(f"\n❌ Demo failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 if __name__ == "__main__":
     run_demo()
-
-
 
 
 """Hello! How can I assist you further?"""

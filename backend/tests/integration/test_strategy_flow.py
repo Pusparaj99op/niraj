@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 class StrategyType(Enum):
     """Strategy type enumeration"""
+
     QUANTITATIVE = "quantitative"
     PREDATORY = "predatory"
     PSYCHOLOGICAL = "psychological"
@@ -33,6 +34,7 @@ class StrategyType(Enum):
 
 class StrategyStatus(Enum):
     """Strategy status enumeration"""
+
     INACTIVE = "inactive"
     ACTIVE = "active"
     PAUSED = "paused"
@@ -41,6 +43,7 @@ class StrategyStatus(Enum):
 
 class SignalType(Enum):
     """Signal type enumeration"""
+
     BUY = "BUY"
     SELL = "SELL"
     HOLD = "HOLD"
@@ -48,33 +51,38 @@ class SignalType(Enum):
 
 class StrategyError(Exception):
     """Base exception for strategy errors"""
+
     pass
 
 
 class StrategyActivationError(StrategyError):
     """Raised when strategy activation fails"""
+
     pass
 
 
 class SignalGenerationError(StrategyError):
     """Raised when signal generation fails"""
+
     pass
 
 
 class MarketDataError(StrategyError):
     """Raised when market data is unavailable"""
+
     pass
 
 
 class StrategyValidationError(StrategyError):
     """Raised when strategy validation fails"""
+
     pass
 
 
 class MockStrategy:
     """Mock Strategy model for testing"""
-    def __init__(self, strategy_id: str = "strategy_001",
-                 name: str = "Test Strategy"):
+
+    def __init__(self, strategy_id: str = "strategy_001", name: str = "Test Strategy"):
         self.id = strategy_id
         self.name = name
         self.type = StrategyType.QUANTITATIVE
@@ -83,13 +91,13 @@ class MockStrategy:
             "risk_tolerance": 0.05,
             "max_position_size": 0.10,
             "stop_loss": 0.05,
-            "take_profit": 0.15
+            "take_profit": 0.15,
         }
         self.performance_metrics = {
             "total_return": Decimal("0.00"),
             "win_rate": Decimal("0.00"),
             "sharpe_ratio": Decimal("0.00"),
-            "max_drawdown": Decimal("0.00")
+            "max_drawdown": Decimal("0.00"),
         }
         self.created_at = datetime.now()
         self.last_signal = None
@@ -98,8 +106,15 @@ class MockStrategy:
 
 class MockSignal:
     """Mock Strategy Signal model"""
-    def __init__(self, signal_id: str, strategy_id: str, symbol: str,
-                 signal_type: SignalType, confidence: Decimal):
+
+    def __init__(
+        self,
+        signal_id: str,
+        strategy_id: str,
+        symbol: str,
+        signal_type: SignalType,
+        confidence: Decimal,
+    ):
         self.id = signal_id
         self.strategy_id = strategy_id
         self.symbol = symbol
@@ -113,6 +128,7 @@ class MockSignal:
 
 class MockMarketData:
     """Mock Market Data model"""
+
     def __init__(self, symbol: str):
         self.symbol = symbol
         self.current_price = Decimal("0.00")
@@ -122,7 +138,7 @@ class MockMarketData:
             "open": Decimal("0.00"),
             "high": Decimal("0.00"),
             "low": Decimal("0.00"),
-            "close": Decimal("0.00")
+            "close": Decimal("0.00"),
         }
         self.technical_indicators = {}
 
@@ -198,15 +214,14 @@ class TestStrategyFlow:
         strategy_service,
         signal_service,
         market_data_service,
-        technical_analysis_service
+        technical_analysis_service,
     ):
         """Test complete strategy workflow from activation to signals"""
 
         # Setup test data
         symbol = "RELIANCE"
         expected_signal = MockSignal(
-            "signal_001", mock_strategy.id, symbol,
-            SignalType.BUY, Decimal("0.85")
+            "signal_001", mock_strategy.id, symbol, SignalType.BUY, Decimal("0.85")
         )
 
         market_data = MockMarketData(symbol)
@@ -215,7 +230,7 @@ class TestStrategyFlow:
             "open": Decimal("2480.00"),
             "high": Decimal("2520.00"),
             "low": Decimal("2475.00"),
-            "close": Decimal("2500.00")
+            "close": Decimal("2500.00"),
         }
 
         # Mock service responses
@@ -225,15 +240,13 @@ class TestStrategyFlow:
         technical_analysis_service.calculate_indicators.return_value = {
             "rsi": 45.5,
             "macd": {"signal": "bullish"},
-            "moving_averages": {"sma_20": 2485.0, "ema_12": 2490.0}
+            "moving_averages": {"sma_20": 2485.0, "ema_12": 2490.0},
         }
         signal_service.generate_signal.return_value = expected_signal
 
         try:
             # Step 1: Validate strategy configuration
-            is_valid = await strategy_service.validate_strategy(
-                mock_strategy.id
-            )
+            is_valid = await strategy_service.validate_strategy(mock_strategy.id)
             assert is_valid is True
             mock_strategy.is_validated = True
 
@@ -246,10 +259,9 @@ class TestStrategyFlow:
             assert mock_strategy.status == StrategyStatus.ACTIVE
 
             # Step 3: Subscribe to market data
-            subscription_success = \
-                await market_data_service.subscribe_to_symbol(
-                    symbol, mock_strategy.id
-                )
+            subscription_success = await market_data_service.subscribe_to_symbol(
+                symbol, mock_strategy.id
+            )
             assert subscription_success is True
 
             # Step 4: Get market data
@@ -266,23 +278,23 @@ class TestStrategyFlow:
 
             # Step 6: Generate trading signal
             signal = await signal_service.generate_signal(
-                mock_strategy.id,
-                symbol,
-                current_data,
-                indicators
+                mock_strategy.id, symbol, current_data, indicators
             )
 
             assert signal.strategy_id == mock_strategy.id
             assert signal.symbol == symbol
-            assert signal.signal_type in [SignalType.BUY, SignalType.SELL,
-                                          SignalType.HOLD]
+            assert signal.signal_type in [
+                SignalType.BUY,
+                SignalType.SELL,
+                SignalType.HOLD,
+            ]
             assert signal.confidence >= 0 and signal.confidence <= 1
 
             # Step 7: Update strategy performance
             mock_strategy.last_signal = signal.timestamp
             await strategy_service.update_performance(
                 mock_strategy.id,
-                {"signals_generated": 1, "last_activity": datetime.now()}
+                {"signals_generated": 1, "last_activity": datetime.now()},
             )
 
             print("✅ Complete strategy workflow executed successfully")
@@ -292,18 +304,14 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_strategy_activation_validation_error(
-        self,
-        mock_db_session,
-        mock_strategy,
-        strategy_service
+        self, mock_db_session, mock_strategy, strategy_service
     ):
         """Test handling of strategy validation errors during activation"""
 
         # Configure strategy service to fail validation
-        strategy_service.validate_strategy.side_effect = \
-            StrategyValidationError(
-                "Strategy parameters are invalid: risk_tolerance out of range"
-            )
+        strategy_service.validate_strategy.side_effect = StrategyValidationError(
+            "Strategy parameters are invalid: risk_tolerance out of range"
+        )
 
         try:
             with pytest.raises(StrategyValidationError) as exc_info:
@@ -322,11 +330,7 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_market_data_subscription_failure(
-        self,
-        mock_db_session,
-        mock_strategy,
-        market_data_service,
-        strategy_service
+        self, mock_db_session, mock_strategy, market_data_service, strategy_service
     ):
         """Test handling of market data subscription failures"""
 
@@ -339,9 +343,7 @@ class TestStrategyFlow:
 
         try:
             with pytest.raises(MarketDataError) as exc_info:
-                await market_data_service.subscribe_to_symbol(
-                    symbol, mock_strategy.id
-                )
+                await market_data_service.subscribe_to_symbol(symbol, mock_strategy.id)
 
             assert "Failed to subscribe" in str(exc_info.value)
 
@@ -360,11 +362,7 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_signal_generation_failure_recovery(
-        self,
-        mock_db_session,
-        mock_strategy,
-        signal_service,
-        strategy_service
+        self, mock_db_session, mock_strategy, signal_service, strategy_service
     ):
         """Test recovery from signal generation failures"""
 
@@ -383,8 +381,11 @@ class TestStrategyFlow:
             else:
                 # Recovery after max failures
                 return MockSignal(
-                    "signal_recovery", mock_strategy.id,
-                    symbol, SignalType.HOLD, Decimal("0.50")
+                    "signal_recovery",
+                    mock_strategy.id,
+                    symbol,
+                    SignalType.HOLD,
+                    Decimal("0.50"),
                 )
 
         signal_service.generate_signal.side_effect = mock_generate_signal
@@ -413,11 +414,7 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_multi_strategy_coordination(
-        self,
-        mock_db_session,
-        strategy_service,
-        signal_service,
-        market_data_service
+        self, mock_db_session, strategy_service, signal_service, market_data_service
     ):
         """Test coordination of multiple active strategies"""
 
@@ -425,7 +422,7 @@ class TestStrategyFlow:
         strategies = [
             MockStrategy("strategy_001", "Quantitative Strategy"),
             MockStrategy("strategy_002", "Predatory Strategy"),
-            MockStrategy("strategy_003", "Psychological Strategy")
+            MockStrategy("strategy_003", "Psychological Strategy"),
         ]
 
         strategies[0].type = StrategyType.QUANTITATIVE
@@ -436,12 +433,15 @@ class TestStrategyFlow:
 
         # Mock signals from different strategies
         signals = [
-            MockSignal("signal_q", "strategy_001", symbol,
-                       SignalType.BUY, Decimal("0.80")),
-            MockSignal("signal_p", "strategy_002", symbol,
-                       SignalType.SELL, Decimal("0.70")),
-            MockSignal("signal_ps", "strategy_003", symbol,
-                       SignalType.HOLD, Decimal("0.60"))
+            MockSignal(
+                "signal_q", "strategy_001", symbol, SignalType.BUY, Decimal("0.80")
+            ),
+            MockSignal(
+                "signal_p", "strategy_002", symbol, SignalType.SELL, Decimal("0.70")
+            ),
+            MockSignal(
+                "signal_ps", "strategy_003", symbol, SignalType.HOLD, Decimal("0.60")
+            ),
         ]
 
         # Configure services
@@ -451,7 +451,7 @@ class TestStrategyFlow:
         signal_service.evaluate_signals.return_value = {
             "primary_signal": SignalType.BUY,
             "confidence": Decimal("0.75"),
-            "consensus": "weak_buy"
+            "consensus": "weak_buy",
         }
 
         try:
@@ -477,12 +477,12 @@ class TestStrategyFlow:
                 generated_signals.append(signal)
 
             # Evaluate signal consensus
-            evaluation = await signal_service.evaluate_signals(
-                generated_signals
-            )
+            evaluation = await signal_service.evaluate_signals(generated_signals)
 
             assert evaluation["primary_signal"] in [
-                SignalType.BUY, SignalType.SELL, SignalType.HOLD
+                SignalType.BUY,
+                SignalType.SELL,
+                SignalType.HOLD,
             ]
             assert "confidence" in evaluation
             assert "consensus" in evaluation
@@ -494,11 +494,7 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_strategy_performance_tracking(
-        self,
-        mock_db_session,
-        mock_strategy,
-        strategy_service,
-        signal_service
+        self, mock_db_session, mock_strategy, strategy_service, signal_service
     ):
         """Test strategy performance tracking and metrics calculation"""
 
@@ -513,7 +509,7 @@ class TestStrategyFlow:
             "win_rate": successful_signals / signals_generated,
             "total_return": total_return,
             "sharpe_ratio": Decimal("1.25"),
-            "max_drawdown": Decimal("0.08")
+            "max_drawdown": Decimal("0.08"),
         }
 
         strategy_service.update_performance.return_value = performance_data
@@ -546,7 +542,7 @@ class TestStrategyFlow:
         mock_strategy,
         strategy_service,
         market_data_service,
-        signal_service
+        signal_service,
     ):
         """Test proper cleanup during strategy deactivation"""
 
@@ -563,9 +559,7 @@ class TestStrategyFlow:
             mock_strategy.status = StrategyStatus.INACTIVE
 
             # Step 2: Unsubscribe from market data
-            await market_data_service.unsubscribe_from_symbol(
-                symbol, mock_strategy.id
-            )
+            await market_data_service.unsubscribe_from_symbol(symbol, mock_strategy.id)
 
             # Step 3: Stop signal generation
             # This would typically involve canceling scheduled tasks
@@ -574,12 +568,10 @@ class TestStrategyFlow:
             final_metrics = {
                 "deactivated_at": datetime.now(),
                 "final_status": "manual_deactivation",
-                "uptime": timedelta(hours=2).total_seconds()
+                "uptime": timedelta(hours=2).total_seconds(),
             }
 
-            await strategy_service.update_performance(
-                mock_strategy.id, final_metrics
-            )
+            await strategy_service.update_performance(mock_strategy.id, final_metrics)
 
             # Verify cleanup completed
             assert mock_strategy.status == StrategyStatus.INACTIVE
@@ -591,9 +583,7 @@ class TestStrategyFlow:
 
     @pytest.mark.asyncio
     async def test_strategy_parameter_validation(
-        self,
-        mock_db_session,
-        strategy_service
+        self, mock_db_session, strategy_service
     ):
         """Test validation of strategy parameters"""
 
@@ -604,7 +594,7 @@ class TestStrategyFlow:
             "stop_loss": 0.05,
             "take_profit": 0.15,
             "lookback_period": 20,
-            "signal_threshold": 0.70
+            "signal_threshold": 0.70,
         }
 
         # Test invalid parameters
@@ -634,33 +624,26 @@ class TestStrategyFlow:
             pytest.fail(f"Strategy parameter validation failed: {str(e)}")
 
     @pytest.mark.asyncio
-    async def test_signal_confidence_evaluation(
-        self,
-        mock_db_session,
-        signal_service
-    ):
+    async def test_signal_confidence_evaluation(self, mock_db_session, signal_service):
         """Test evaluation of signal confidence levels"""
 
         # Create signals with different confidence levels
         high_confidence_signal = MockSignal(
-            "signal_high", "strategy_001", "RELIANCE",
-            SignalType.BUY, Decimal("0.90")
+            "signal_high", "strategy_001", "RELIANCE", SignalType.BUY, Decimal("0.90")
         )
 
         medium_confidence_signal = MockSignal(
-            "signal_medium", "strategy_001", "TCS",
-            SignalType.SELL, Decimal("0.70")
+            "signal_medium", "strategy_001", "TCS", SignalType.SELL, Decimal("0.70")
         )
 
         low_confidence_signal = MockSignal(
-            "signal_low", "strategy_001", "INFY",
-            SignalType.HOLD, Decimal("0.40")
+            "signal_low", "strategy_001", "INFY", SignalType.HOLD, Decimal("0.40")
         )
 
         signals = [
             high_confidence_signal,
             medium_confidence_signal,
-            low_confidence_signal
+            low_confidence_signal,
         ]
 
         try:
@@ -693,31 +676,23 @@ def create_strategy_test_scenario(scenario_name: str) -> Dict[str, Any]:
 
     scenarios = {
         "successful_activation": {
-            "parameters": {
-                "risk_tolerance": 0.05,
-                "max_position_size": 0.10
-            },
+            "parameters": {"risk_tolerance": 0.05, "max_position_size": 0.10},
             "market_data_available": True,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "invalid_parameters": {
             "parameters": {
                 "risk_tolerance": 1.50,  # Invalid
-                "max_position_size": -0.05  # Invalid
+                "max_position_size": -0.05,  # Invalid
             },
             "market_data_available": True,
-            "expected_outcome": "validation_error"
+            "expected_outcome": "validation_error",
         },
-
         "market_data_unavailable": {
-            "parameters": {
-                "risk_tolerance": 0.05,
-                "max_position_size": 0.10
-            },
+            "parameters": {"risk_tolerance": 0.05, "max_position_size": 0.10},
             "market_data_available": False,
-            "expected_outcome": "market_data_error"
-        }
+            "expected_outcome": "market_data_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -729,8 +704,7 @@ def validate_signal_quality(signal: MockSignal) -> bool:
     try:
         # Basic signal validation
         assert signal.confidence >= 0 and signal.confidence <= 1
-        assert signal.signal_type in [SignalType.BUY, SignalType.SELL,
-                                      SignalType.HOLD]
+        assert signal.signal_type in [SignalType.BUY, SignalType.SELL, SignalType.HOLD]
         assert signal.timestamp is not None
         assert signal.symbol is not None and len(signal.symbol) > 0
 
@@ -752,12 +726,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

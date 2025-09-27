@@ -29,7 +29,9 @@ except ImportError:
         logger = logging.getLogger(name)
         if not logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.setLevel(logging.DEBUG)
@@ -37,12 +39,15 @@ except ImportError:
 
     def log_performance(name: str = None):
         """Simple performance logging decorator fallback"""
+
         def decorator(func):
             return func
+
         return decorator
 
     class LogContext:
         """Simple context manager fallback"""
+
         def __init__(self, **kwargs):
             pass
 
@@ -97,13 +102,30 @@ class RSSFeedConfig(BaseModel):
     """RSS Feed configuration"""
 
     enabled: bool = Field(default=True)
-    feeds: List[Dict[str, str]] = Field(default_factory=lambda: [
-        {"name": "Economic Times Markets", "url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"},
-        {"name": "Moneycontrol Markets", "url": "https://www.moneycontrol.com/rss/markets.xml"},
-        {"name": "Business Standard Markets", "url": "https://www.business-standard.com/rss/markets-106.rss"},
-        {"name": "Reuters Business", "url": "https://feeds.reuters.com/reuters/businessNews"},
-        {"name": "Yahoo Finance", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline"}
-    ])
+    feeds: List[Dict[str, str]] = Field(
+        default_factory=lambda: [
+            {
+                "name": "Economic Times Markets",
+                "url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+            },
+            {
+                "name": "Moneycontrol Markets",
+                "url": "https://www.moneycontrol.com/rss/markets.xml",
+            },
+            {
+                "name": "Business Standard Markets",
+                "url": "https://www.business-standard.com/rss/markets-106.rss",
+            },
+            {
+                "name": "Reuters Business",
+                "url": "https://feeds.reuters.com/reuters/businessNews",
+            },
+            {
+                "name": "Yahoo Finance",
+                "url": "https://feeds.finance.yahoo.com/rss/2.0/headline",
+            },
+        ]
+    )
     timeout: int = Field(default=20)
     max_retries: int = Field(default=3)
     retry_delay: float = Field(default=2.0)
@@ -117,12 +139,16 @@ class NewsConfig(BaseModel):
     default_country: str = Field(default="in")  # India focus
     default_category: str = Field(default="business")
     max_articles_per_request: int = Field(default=100)
-    enable_sentiment_analysis: bool = Field(default=False)  # Can be enabled with AI integration
+    enable_sentiment_analysis: bool = Field(
+        default=False
+    )  # Can be enabled with AI integration
     enable_content_filtering: bool = Field(default=True)
 
     # Source configurations
     newsapi: NewsAPIConfig = Field(default_factory=NewsAPIConfig)
-    fmp: FinancialModelingPrepConfig = Field(default_factory=FinancialModelingPrepConfig)
+    fmp: FinancialModelingPrepConfig = Field(
+        default_factory=FinancialModelingPrepConfig
+    )
     alphavantage: AlphaVantageConfig = Field(default_factory=AlphaVantageConfig)
     rss: RSSFeedConfig = Field(default_factory=RSSFeedConfig)
 
@@ -144,7 +170,7 @@ class Article(BaseModel):
     sentiment_score: Optional[float] = None  # -1 to 1, if sentiment analysis enabled
     relevance_score: Optional[float] = None  # 0 to 1, calculated relevance to trading
 
-    @field_validator('published_at', mode='before')
+    @field_validator("published_at", mode="before")
     @classmethod
     def parse_published_at(cls, v):
         if isinstance(v, str):
@@ -154,7 +180,7 @@ class Article(BaseModel):
                 "%Y-%m-%dT%H:%M:%S.%fZ",
                 "%Y-%m-%d %H:%M:%S",
                 "%a, %d %b %Y %H:%M:%S %Z",
-                "%a, %d %b %Y %H:%M:%S %z"
+                "%a, %d %b %Y %H:%M:%S %z",
             ]
             for fmt in formats:
                 try:
@@ -200,8 +226,11 @@ class RateLimiter:
         now = time.time()
 
         # Clean old requests
-        self.requests = [req_time for req_time in self.requests
-                         if now - req_time < self.window_seconds]
+        self.requests = [
+            req_time
+            for req_time in self.requests
+            if now - req_time < self.window_seconds
+        ]
 
         if len(self.requests) >= self.max_requests:
             # Calculate wait time
@@ -211,8 +240,11 @@ class RateLimiter:
                 await asyncio.sleep(wait_time)
                 # Clean again after waiting
                 now = time.time()
-                self.requests = [req_time for req_time in self.requests
-                                 if now - req_time < self.window_seconds]
+                self.requests = [
+                    req_time
+                    for req_time in self.requests
+                    if now - req_time < self.window_seconds
+                ]
 
         # Record this request
         self.requests.append(now)
@@ -225,12 +257,18 @@ class NewsCache:
         self.cache: Dict[str, Dict[str, Any]] = {}
         self.expiry: Dict[str, datetime] = {}
 
-    def _generate_key(self, provider: str, endpoint: str, params: Dict[str, Any]) -> str:
+    def _generate_key(
+        self, provider: str, endpoint: str, params: Dict[str, Any]
+    ) -> str:
         """Generate cache key from request parameters"""
         sorted_params = json.dumps(params, sort_keys=True, default=str)
-        return hashlib.md5(f"{provider}:{endpoint}:{sorted_params}".encode()).hexdigest()
+        return hashlib.md5(
+            f"{provider}:{endpoint}:{sorted_params}".encode()
+        ).hexdigest()
 
-    def get(self, provider: str, endpoint: str, params: Dict[str, Any]) -> Optional[Any]:
+    def get(
+        self, provider: str, endpoint: str, params: Dict[str, Any]
+    ) -> Optional[Any]:
         """Get cached data if not expired"""
         key = self._generate_key(provider, endpoint, params)
 
@@ -245,8 +283,14 @@ class NewsCache:
 
         return self.cache[key]
 
-    def set(self, provider: str, endpoint: str, params: Dict[str, Any],
-            data: Any, ttl_minutes: int) -> None:
+    def set(
+        self,
+        provider: str,
+        endpoint: str,
+        params: Dict[str, Any],
+        data: Any,
+        ttl_minutes: int,
+    ) -> None:
         """Cache data with TTL"""
         key = self._generate_key(provider, endpoint, params)
         self.cache[key] = data
@@ -287,26 +331,31 @@ class NewsError(Exception):
 
 class AuthenticationError(NewsError):
     """API authentication errors"""
+
     pass
 
 
 class RateLimitError(NewsError):
     """Rate limit exceeded errors"""
+
     pass
 
 
 class ValidationError(NewsError):
     """Request validation errors"""
+
     pass
 
 
 class NetworkError(NewsError):
     """Network related errors"""
+
     pass
 
 
 class ParsingError(NewsError):
     """Data parsing errors"""
+
     pass
 
 
@@ -315,16 +364,8 @@ class NewsClient:
     Comprehensive Multi-Provider News Client
 
     Features:
-    - Support for multiple news providers (NewsAPI, FMP, Alpha Vantage, RSS)
-    - Advanced error handling with provider-specific exceptions
-    - Multi-level rate limiting per provider
-    - Intelligent caching with per-provider TTL
-    - Article standardization and deduplication
-    - Trading-focused content filtering and relevance scoring
-    - Async operations with proper connection pooling
-    - Comprehensive logging and monitoring
-    - Content sentiment analysis (when AI is enabled)
-    - RSS feed parsing and normalization
+    - Support for multiple news providers (NewsAPI, FMP, Alpha Vantage, RSS) - Advanced error handling with provider-specific exceptions - Multi-level rate limiting per provider - Intelligent caching with per-provider TTL - Article standardization and deduplication - Trading-focused content filtering and relevance scoring - Async operations with proper connection pooling - Comprehensive logging and monitoring - Content sentiment analysis (when AI is enabled) -
+    RSS feed parsing and normalization
     """
 
     def __init__(self, config: Optional[NewsConfig] = None):
@@ -346,22 +387,21 @@ class NewsClient:
             "newsapi": RateLimiter(
                 max_requests=min(
                     self.config.newsapi.rate_limit_requests_per_hour,
-                    self.config.newsapi.rate_limit_requests_per_day // 24
+                    self.config.newsapi.rate_limit_requests_per_day // 24,
                 ),
-                window_seconds=3600
+                window_seconds=3600,
             ),
             "fmp": RateLimiter(
                 max_requests=self.config.fmp.rate_limit_requests_per_minute,
-                window_seconds=60
+                window_seconds=60,
             ),
             "alphavantage": RateLimiter(
                 max_requests=self.config.alphavantage.rate_limit_requests_per_minute,
-                window_seconds=60
+                window_seconds=60,
             ),
             "rss": RateLimiter(
-                max_requests=60,  # Conservative for RSS feeds
-                window_seconds=60
-            )
+                max_requests=60, window_seconds=60  # Conservative for RSS feeds
+            ),
         }
 
         # Caching
@@ -377,7 +417,7 @@ class NewsClient:
             "cache_hits": 0,
             "cache_misses": 0,
             "errors": 0,
-            "providers_used": set()
+            "providers_used": set(),
         }
 
     async def _get_client(self, provider: str, timeout: int = 15) -> httpx.AsyncClient:
@@ -394,8 +434,8 @@ class NewsClient:
                 headers={
                     "User-Agent": "NIRAJ-Trading-System/1.0 (News Aggregator)",
                     "Accept": "application/json",
-                    "Accept-Encoding": "gzip, deflate"
-                }
+                    "Accept-Encoding": "gzip, deflate",
+                },
             )
 
         return self.clients[provider]
@@ -409,7 +449,7 @@ class NewsClient:
         headers: Optional[Dict] = None,
         timeout: int = 15,
         retries: int = 3,
-        cache_ttl: int = 15
+        cache_ttl: int = 15,
     ) -> Dict[str, Any]:
         """
         Make HTTP request with error handling, retries, and caching
@@ -450,9 +490,11 @@ class NewsClient:
             provider=provider,
             method=method,
             url=urlparse(url).path,
-            request_id=secrets.token_hex(8)
+            request_id=secrets.token_hex(8),
         ):
-            self.logger.debug(f"Making {method} request to {provider}: {urlparse(url).path}")
+            self.logger.debug(
+                f"Making {method} request to {provider}: {urlparse(url).path}"
+            )
 
             for attempt in range(retries + 1):
                 try:
@@ -462,7 +504,9 @@ class NewsClient:
                     elif method.upper() == "POST":
                         response = await client.post(url, json=params, headers=headers)
                     else:
-                        raise ValidationError(f"Unsupported HTTP method: {method}", provider)
+                        raise ValidationError(
+                            f"Unsupported HTTP method: {method}", provider
+                        )
 
                     self.stats["requests_made"] += 1
                     self.stats["providers_used"].add(provider)
@@ -472,70 +516,94 @@ class NewsClient:
                         try:
                             data = response.json()
                             # Cache successful response
-                            self.cache.set(provider, cache_key, params or {}, data, cache_ttl)
+                            self.cache.set(
+                                provider, cache_key, params or {}, data, cache_ttl
+                            )
                             return data
                         except json.JSONDecodeError:
                             # Some providers return non-JSON data
                             text_data = response.text
-                            result = {"content": text_data, "content_type": response.headers.get("content-type")}
-                            self.cache.set(provider, cache_key, params or {}, result, cache_ttl)
+                            result = {
+                                "content": text_data,
+                                "content_type": response.headers.get("content-type"),
+                            }
+                            self.cache.set(
+                                provider, cache_key, params or {}, result, cache_ttl
+                            )
                             return result
 
                     elif response.status_code == 401:
                         raise AuthenticationError(
                             f"Authentication failed for {provider}",
-                            provider, status_code=response.status_code
+                            provider,
+                            status_code=response.status_code,
                         )
 
                     elif response.status_code == 403:
                         raise AuthenticationError(
                             f"API key invalid or insufficient permissions for {provider}",
-                            provider, status_code=response.status_code
+                            provider,
+                            status_code=response.status_code,
                         )
 
                     elif response.status_code == 429:
                         if attempt < retries:
-                            wait_time = (2 ** attempt) * 2  # Exponential backoff for rate limits
-                            self.logger.warning(f"{provider} rate limit hit, waiting {wait_time}s")
+                            wait_time = (
+                                2**attempt
+                            ) * 2  # Exponential backoff for rate limits
+                            self.logger.warning(
+                                f"{provider} rate limit hit, waiting {wait_time}s"
+                            )
                             await asyncio.sleep(wait_time)
                             continue
                         raise RateLimitError(
                             f"Rate limit exceeded for {provider}",
-                            provider, status_code=response.status_code
+                            provider,
+                            status_code=response.status_code,
                         )
 
                     elif response.status_code >= 500:
                         if attempt < retries:
-                            wait_time = (2 ** attempt) * 1.5
-                            self.logger.warning(f"{provider} server error, retrying in {wait_time}s")
+                            wait_time = (2**attempt) * 1.5
+                            self.logger.warning(
+                                f"{provider} server error, retrying in {wait_time}s"
+                            )
                             await asyncio.sleep(wait_time)
                             continue
                         raise NewsError(
                             f"Server error from {provider}: {response.status_code}",
-                            provider, status_code=response.status_code
+                            provider,
+                            status_code=response.status_code,
                         )
 
                     else:
                         raise NewsError(
                             f"HTTP {response.status_code} from {provider}: {response.text[:100]}",
-                            provider, status_code=response.status_code
+                            provider,
+                            status_code=response.status_code,
                         )
 
                 except httpx.TimeoutException:
                     if attempt < retries:
-                        wait_time = (2 ** attempt)
-                        self.logger.warning(f"{provider} timeout, retrying in {wait_time}s")
+                        wait_time = 2**attempt
+                        self.logger.warning(
+                            f"{provider} timeout, retrying in {wait_time}s"
+                        )
                         await asyncio.sleep(wait_time)
                         continue
                     raise NetworkError(f"Timeout connecting to {provider}", provider)
 
                 except httpx.NetworkError as e:
                     if attempt < retries:
-                        wait_time = (2 ** attempt)
-                        self.logger.warning(f"{provider} network error: {e}, retrying in {wait_time}s")
+                        wait_time = 2**attempt
+                        self.logger.warning(
+                            f"{provider} network error: {e}, retrying in {wait_time}s"
+                        )
                         await asyncio.sleep(wait_time)
                         continue
-                    raise NetworkError(f"Network error connecting to {provider}: {e}", provider)
+                    raise NetworkError(
+                        f"Network error connecting to {provider}: {e}", provider
+                    )
 
             raise NewsError(f"All retry attempts failed for {provider}", provider)
 
@@ -552,20 +620,46 @@ class NewsClient:
         # Trading/finance related keywords with weights
         finance_keywords = {
             # High relevance
-            "stock": 1.0, "market": 1.0, "trading": 1.0, "shares": 1.0,
-            "equity": 1.0, "bond": 1.0, "commodity": 1.0, "currency": 1.0,
-            "nse": 1.0, "bse": 1.0, "sensex": 1.0, "nifty": 1.0,
-            "investment": 0.9, "investor": 0.9, "portfolio": 0.9,
-            "dividend": 0.9, "earnings": 0.9, "revenue": 0.9, "profit": 0.9,
-
+            "stock": 1.0,
+            "market": 1.0,
+            "trading": 1.0,
+            "shares": 1.0,
+            "equity": 1.0,
+            "bond": 1.0,
+            "commodity": 1.0,
+            "currency": 1.0,
+            "nse": 1.0,
+            "bse": 1.0,
+            "sensex": 1.0,
+            "nifty": 1.0,
+            "investment": 0.9,
+            "investor": 0.9,
+            "portfolio": 0.9,
+            "dividend": 0.9,
+            "earnings": 0.9,
+            "revenue": 0.9,
+            "profit": 0.9,
             # Medium relevance
-            "financial": 0.8, "economy": 0.8, "economic": 0.8, "fiscal": 0.8,
-            "banking": 0.8, "insurance": 0.8, "mutual fund": 0.8,
-            "rbi": 0.8, "sebi": 0.8, "fed": 0.8, "central bank": 0.8,
-
+            "financial": 0.8,
+            "economy": 0.8,
+            "economic": 0.8,
+            "fiscal": 0.8,
+            "banking": 0.8,
+            "insurance": 0.8,
+            "mutual fund": 0.8,
+            "rbi": 0.8,
+            "sebi": 0.8,
+            "fed": 0.8,
+            "central bank": 0.8,
             # Lower relevance
-            "business": 0.6, "company": 0.6, "corporate": 0.6, "industry": 0.6,
-            "growth": 0.5, "development": 0.5, "inflation": 0.7, "gdp": 0.7,
+            "business": 0.6,
+            "company": 0.6,
+            "corporate": 0.6,
+            "industry": 0.6,
+            "growth": 0.5,
+            "development": 0.5,
+            "inflation": 0.7,
+            "gdp": 0.7,
         }
 
         # Get title and description
@@ -605,10 +699,10 @@ class NewsClient:
         """
         # Common patterns for Indian stock symbols
         patterns = [
-            r'\b[A-Z]{2,6}\b',  # Basic pattern for symbols
-            r'\$[A-Z]{1,5}\b',  # Symbols with $ prefix
-            r'\b[A-Z]+\.NS\b',  # NSE symbols
-            r'\b[A-Z]+\.BO\b'   # BSE symbols
+            r"\b[A-Z]{2,6}\b",  # Basic pattern for symbols
+            r"\$[A-Z]{1,5}\b",  # Symbols with $ prefix
+            r"\b[A-Z]+\.NS\b",  # NSE symbols
+            r"\b[A-Z]+\.BO\b",  # BSE symbols
         ]
 
         symbols = set()
@@ -620,12 +714,54 @@ class NewsClient:
 
         # Filter out common words that might match pattern
         common_words = {
-            "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE", "OUR",
-            "HAD", "BY", "TWO", "WHO", "OIL", "NEW", "MAY", "HAS", "HIS", "FROM", "THEY", "SHE", "OR",
-            "AN", "MY", "SO", "UP", "OUT", "IF", "ABOUT", "GET", "GO", "ME", "US", "AM", "ON", "NO", "TO"
+            "THE",
+            "AND",
+            "FOR",
+            "ARE",
+            "BUT",
+            "NOT",
+            "YOU",
+            "ALL",
+            "CAN",
+            "HER",
+            "WAS",
+            "ONE",
+            "OUR",
+            "HAD",
+            "BY",
+            "TWO",
+            "WHO",
+            "OIL",
+            "NEW",
+            "MAY",
+            "HAS",
+            "HIS",
+            "FROM",
+            "THEY",
+            "SHE",
+            "OR",
+            "AN",
+            "MY",
+            "SO",
+            "UP",
+            "OUT",
+            "IF",
+            "ABOUT",
+            "GET",
+            "GO",
+            "ME",
+            "US",
+            "AM",
+            "ON",
+            "NO",
+            "TO",
         }
 
-        return [symbol for symbol in symbols if symbol not in common_words and len(symbol) >= 2]
+        return [
+            symbol
+            for symbol in symbols
+            if symbol not in common_words and len(symbol) >= 2
+        ]
 
     def _standardize_newsapi_article(self, article: Dict[str, Any]) -> Article:
         """Convert NewsAPI article to standardized format"""
@@ -640,7 +776,7 @@ class NewsClient:
             author=article.get("author"),
             published_at=article.get("publishedAt", datetime.now().isoformat()),
             category="business",  # NewsAPI business category
-            relevance_score=self._calculate_relevance_score(article)
+            relevance_score=self._calculate_relevance_score(article),
         )
 
     def _standardize_fmp_article(self, article: Dict[str, Any]) -> Article:
@@ -649,14 +785,16 @@ class NewsClient:
             source=article.get("site", "Financial Modeling Prep"),
             provider="fmp",
             title=article.get("title", ""),
-            description=article.get("text", "")[:200] + "..." if article.get("text") else None,
+            description=(
+                article.get("text", "")[:200] + "..." if article.get("text") else None
+            ),
             content=article.get("text"),
             url=article.get("url", ""),
             image_url=article.get("image"),
             author=None,  # FMP doesn't provide author
             published_at=article.get("publishedDate", datetime.now().isoformat()),
             category="financial",
-            relevance_score=self._calculate_relevance_score(article)
+            relevance_score=self._calculate_relevance_score(article),
         )
 
     def _standardize_rss_article(self, entry: Any, feed_name: str) -> Article:
@@ -672,10 +810,12 @@ class NewsClient:
             author=getattr(entry, "author", None),
             published_at=getattr(entry, "published", datetime.now().isoformat()),
             category="business",
-            relevance_score=self._calculate_relevance_score({
-                "title": getattr(entry, "title", ""),
-                "description": getattr(entry, "summary", "")
-            })
+            relevance_score=self._calculate_relevance_score(
+                {
+                    "title": getattr(entry, "title", ""),
+                    "description": getattr(entry, "summary", ""),
+                }
+            ),
         )
 
     # Public API Methods
@@ -684,7 +824,7 @@ class NewsClient:
     async def get_headlines(
         self,
         news_filter: Optional[NewsFilter] = None,
-        providers: Optional[List[str]] = None
+        providers: Optional[List[str]] = None,
     ) -> List[Article]:
         """
         Get top headlines from multiple providers
@@ -705,7 +845,11 @@ class NewsClient:
         all_articles = []
 
         # NewsAPI Headlines
-        if "newsapi" in providers and self.config.newsapi.enabled and self.config.newsapi.api_key:
+        if (
+            "newsapi" in providers
+            and self.config.newsapi.enabled
+            and self.config.newsapi.api_key
+        ):
             try:
                 newsapi_articles = await self._get_newsapi_headlines(news_filter)
                 all_articles.extend(newsapi_articles)
@@ -739,7 +883,9 @@ class NewsClient:
         filtered_articles = self._apply_filters(sorted_articles, news_filter)
 
         self.stats["articles_fetched"] += len(filtered_articles)
-        self.logger.info(f"Fetched {len(filtered_articles)} unique articles from {len(providers)} providers")
+        self.logger.info(
+            f"Fetched {len(filtered_articles)} unique articles from {len(providers)} providers"
+        )
 
         return filtered_articles
 
@@ -749,7 +895,7 @@ class NewsClient:
             "apiKey": self.config.newsapi.api_key,
             "pageSize": min(news_filter.page_size, 100),
             "page": news_filter.page,
-            "sortBy": news_filter.sort_by
+            "sortBy": news_filter.sort_by,
         }
 
         # Add filters
@@ -777,10 +923,13 @@ class NewsClient:
         url = f"{self.config.newsapi.base_url}/top-headlines"
 
         response = await self._make_request(
-            "newsapi", "GET", url, params,
+            "newsapi",
+            "GET",
+            url,
+            params,
             timeout=self.config.newsapi.timeout,
             retries=self.config.newsapi.max_retries,
-            cache_ttl=self.config.newsapi.cache_duration_minutes
+            cache_ttl=self.config.newsapi.cache_duration_minutes,
         )
 
         articles = []
@@ -805,26 +954,32 @@ class NewsClient:
 
                 # Make request to RSS feed
                 response = await self._make_request(
-                    "rss", "GET", feed_url,
+                    "rss",
+                    "GET",
+                    feed_url,
                     timeout=self.config.rss.timeout,
                     retries=self.config.rss.max_retries,
-                    cache_ttl=self.config.rss.cache_duration_minutes
+                    cache_ttl=self.config.rss.cache_duration_minutes,
                 )
 
                 # Parse RSS content
                 if "content" in response:
                     feed = feedparser.parse(response["content"])
 
-                    for entry in feed.entries[:news_filter.page_size]:
+                    for entry in feed.entries[: news_filter.page_size]:
                         try:
                             article = self._standardize_rss_article(entry, feed_name)
                             articles.append(article)
                         except Exception as e:
-                            self.logger.warning(f"Failed to parse RSS entry from {feed_name}: {e}")
+                            self.logger.warning(
+                                f"Failed to parse RSS entry from {feed_name}: {e}"
+                            )
                             continue
 
             except Exception as e:
-                self.logger.error(f"Failed to fetch RSS feed {feed_config['name']}: {e}")
+                self.logger.error(
+                    f"Failed to fetch RSS feed {feed_config['name']}: {e}"
+                )
                 continue
 
         return articles
@@ -834,7 +989,7 @@ class NewsClient:
         params = {
             "apikey": self.config.fmp.api_key,
             "limit": min(news_filter.page_size, 100),
-            "page": news_filter.page - 1  # FMP uses 0-based pages
+            "page": news_filter.page - 1,  # FMP uses 0-based pages
         }
 
         # Add date filters if specified
@@ -846,10 +1001,13 @@ class NewsClient:
         url = f"{self.config.fmp.base_url}/fmp/articles"
 
         response = await self._make_request(
-            "fmp", "GET", url, params,
+            "fmp",
+            "GET",
+            url,
+            params,
             timeout=self.config.fmp.timeout,
             retries=self.config.fmp.max_retries,
-            cache_ttl=self.config.fmp.cache_duration_minutes
+            cache_ttl=self.config.fmp.cache_duration_minutes,
         )
 
         articles = []
@@ -875,7 +1033,7 @@ class NewsClient:
                 continue
 
             # Check for similar titles (simple approach)
-            title_key = re.sub(r'[^\w\s]', '', article.title.lower()).strip()
+            title_key = re.sub(r"[^\w\s]", "", article.title.lower()).strip()
             if title_key in seen_titles:
                 continue
 
@@ -897,13 +1055,19 @@ class NewsClient:
         else:
             return articles
 
-    def _apply_filters(self, articles: List[Article], news_filter: NewsFilter) -> List[Article]:
+    def _apply_filters(
+        self, articles: List[Article], news_filter: NewsFilter
+    ) -> List[Article]:
         """Apply additional filters to articles"""
         filtered = articles
 
         # Filter by minimum relevance score
         if news_filter.min_relevance_score is not None:
-            filtered = [a for a in filtered if (a.relevance_score or 0) >= news_filter.min_relevance_score]
+            filtered = [
+                a
+                for a in filtered
+                if (a.relevance_score or 0) >= news_filter.min_relevance_score
+            ]
 
         # Filter by stock symbols mentioned
         if news_filter.stock_symbols:
@@ -929,7 +1093,9 @@ class NewsClient:
             keyword_filtered = []
             for article in filtered:
                 content_text = f"{article.title} {article.description or ''}".lower()
-                if any(keyword.lower() in content_text for keyword in news_filter.keywords):
+                if any(
+                    keyword.lower() in content_text for keyword in news_filter.keywords
+                ):
                     keyword_filtered.append(article)
             filtered = keyword_filtered
 
@@ -938,7 +1104,10 @@ class NewsClient:
             exclude_filtered = []
             for article in filtered:
                 content_text = f"{article.title} {article.description or ''}".lower()
-                if not any(keyword.lower() in content_text for keyword in news_filter.exclude_keywords):
+                if not any(
+                    keyword.lower() in content_text
+                    for keyword in news_filter.exclude_keywords
+                ):
                     exclude_filtered.append(article)
             filtered = exclude_filtered
 
@@ -949,7 +1118,7 @@ class NewsClient:
         self,
         query: str,
         news_filter: Optional[NewsFilter] = None,
-        providers: Optional[List[str]] = None
+        providers: Optional[List[str]] = None,
     ) -> List[Article]:
         """
         Search for news articles by query
@@ -976,7 +1145,7 @@ class NewsClient:
         self,
         symbols: Optional[List[str]] = None,
         sectors: Optional[List[str]] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[Article]:
         """
         Get market-specific news articles
@@ -991,13 +1160,22 @@ class NewsClient:
         """
         # Create market-focused filter
         market_filter = NewsFilter(
-            keywords=["stock", "market", "trading", "shares", "nse", "bse", "sensex", "nifty"],
+            keywords=[
+                "stock",
+                "market",
+                "trading",
+                "shares",
+                "nse",
+                "bse",
+                "sensex",
+                "nifty",
+            ],
             category="business",
             min_relevance_score=0.3,
             stock_symbols=symbols,
             market_sectors=sectors,
             page_size=limit,
-            sort_by="relevancy"
+            sort_by="relevancy",
         )
 
         return await self.get_headlines(market_filter)
@@ -1014,8 +1192,7 @@ class NewsClient:
         """
         # Get recent articles
         recent_filter = NewsFilter(
-            from_date=datetime.now() - timedelta(hours=24),
-            page_size=100
+            from_date=datetime.now() - timedelta(hours=24), page_size=100
         )
 
         articles = await self.get_headlines(recent_filter)
@@ -1023,20 +1200,65 @@ class NewsClient:
         # Extract and count topics from titles
         word_counts = {}
         stop_words = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
-            "from", "up", "about", "into", "through", "during", "before", "after", "above", "below",
-            "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does",
-            "did", "will", "would", "could", "should", "may", "might", "must", "can", "this", "that"
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "up",
+            "about",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "this",
+            "that",
         }
 
         for article in articles:
-            words = re.findall(r'\b\w+\b', article.title.lower())
+            words = re.findall(r"\b\w+\b", article.title.lower())
             for word in words:
                 if len(word) > 3 and word not in stop_words:
                     word_counts[word] = word_counts.get(word, 0) + 1
 
         # Return top trending topics
-        trending = dict(sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:limit])
+        trending = dict(
+            sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:limit]
+        )
 
         self.logger.info(f"Identified {len(trending)} trending topics")
         return trending
@@ -1052,7 +1274,7 @@ class NewsClient:
             "overall_status": "healthy",
             "providers": {},
             "cache_status": {},
-            "statistics": self.stats.copy()
+            "statistics": self.stats.copy(),
         }
 
         # Check NewsAPI
@@ -1061,10 +1283,15 @@ class NewsClient:
                 if self.config.newsapi.api_key:
                     # Simple request to check API key validity
                     await self._make_request(
-                        "newsapi", "GET",
+                        "newsapi",
+                        "GET",
                         f"{self.config.newsapi.base_url}/top-headlines",
-                        {"apiKey": self.config.newsapi.api_key, "pageSize": 1, "country": "us"},
-                        cache_ttl=1  # Short cache for health check
+                        {
+                            "apiKey": self.config.newsapi.api_key,
+                            "pageSize": 1,
+                            "country": "us",
+                        },
+                        cache_ttl=1,  # Short cache for health check
                     )
                     health_status["providers"]["newsapi"] = "healthy"
                 else:
@@ -1077,10 +1304,7 @@ class NewsClient:
         if self.config.rss.enabled and self.config.rss.feeds:
             try:
                 test_feed = self.config.rss.feeds[0]
-                await self._make_request(
-                    "rss", "GET", test_feed["url"],
-                    cache_ttl=1
-                )
+                await self._make_request("rss", "GET", test_feed["url"], cache_ttl=1)
                 health_status["providers"]["rss"] = "healthy"
             except Exception as e:
                 health_status["providers"]["rss"] = f"error: {str(e)[:50]}"
@@ -1090,10 +1314,11 @@ class NewsClient:
         if self.config.fmp.enabled and self.config.fmp.api_key:
             try:
                 await self._make_request(
-                    "fmp", "GET",
+                    "fmp",
+                    "GET",
                     f"{self.config.fmp.base_url}/fmp/articles",
                     {"apikey": self.config.fmp.api_key, "limit": 1},
-                    cache_ttl=1
+                    cache_ttl=1,
                 )
                 health_status["providers"]["fmp"] = "healthy"
             except Exception as e:
@@ -1103,8 +1328,9 @@ class NewsClient:
         # Cache statistics
         health_status["cache_status"] = {
             "cached_entries": len(self.cache.cache),
-            "expired_entries": len([k for k, v in self.cache.expiry.items()
-                                    if datetime.now() > v])
+            "expired_entries": len(
+                [k for k, v in self.cache.expiry.items() if datetime.now() > v]
+            ),
         }
 
         self.logger.info(f"Health check completed: {health_status['overall_status']}")
@@ -1116,27 +1342,29 @@ class NewsClient:
             "session_id": self.session_id,
             "configuration": {
                 "enabled_providers": [
-                    provider for provider in ["newsapi", "fmp", "alphavantage", "rss"]
+                    provider
+                    for provider in ["newsapi", "fmp", "alphavantage", "rss"]
                     if getattr(self.config, provider).enabled
                 ],
                 "cache_enabled": True,
                 "default_language": self.config.default_language,
-                "default_country": self.config.default_country
+                "default_country": self.config.default_country,
             },
             "statistics": self.stats.copy(),
             "rate_limits": {
                 provider: {
                     "requests_in_window": len(limiter.requests),
                     "max_requests": limiter.max_requests,
-                    "window_seconds": limiter.window_seconds
+                    "window_seconds": limiter.window_seconds,
                 }
                 for provider, limiter in self.rate_limiters.items()
             },
             "cache_stats": {
                 "entries": len(self.cache.cache),
-                "expired_entries": len([k for k, v in self.cache.expiry.items()
-                                        if datetime.now() > v])
-            }
+                "expired_entries": len(
+                    [k for k, v in self.cache.expiry.items() if datetime.now() > v]
+                ),
+            },
         }
 
     async def clear_cache(self) -> None:
@@ -1168,6 +1396,7 @@ class NewsClient:
             for client in self.clients.values():
                 if not client.is_closed:
                     import warnings
+
                     warnings.warn(
                         "News client was not properly closed. Use async context manager or call close() explicitly."
                     )

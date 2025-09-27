@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 class OrderType(Enum):
     """Order type enumeration"""
+
     MARKET = "MARKET"
     LIMIT = "LIMIT"
     STOP_LOSS = "SL"
@@ -36,12 +37,14 @@ class OrderType(Enum):
 
 class OrderSide(Enum):
     """Order side enumeration"""
+
     BUY = "BUY"
     SELL = "SELL"
 
 
 class OrderStatus(Enum):
     """Order status enumeration"""
+
     PENDING = "pending"
     OPEN = "open"
     COMPLETE = "complete"
@@ -51,6 +54,7 @@ class OrderStatus(Enum):
 
 class APIConnectionState(Enum):
     """API connection state enumeration"""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -60,26 +64,31 @@ class APIConnectionState(Enum):
 
 class AngelOneError(Exception):
     """Base exception for Angel One API errors"""
+
     pass
 
 
 class AuthenticationError(AngelOneError):
     """Raised when API authentication fails"""
+
     pass
 
 
 class RateLimitError(AngelOneError):
     """Raised when API rate limit is exceeded"""
+
     pass
 
 
 class OrderExecutionError(AngelOneError):
     """Raised when order execution fails"""
+
     pass
 
 
 class DataFeedError(AngelOneError):
     """Raised when market data feed fails"""
+
     pass
 
 
@@ -149,11 +158,7 @@ def mock_db_session():
 @pytest.fixture
 def angel_one_client():
     """Mock Angel One API client"""
-    client = MockAngelOneClient(
-        api_key="test_api_key",
-        client_id="TEST123",
-        pin="1234"
-    )
+    client = MockAngelOneClient(api_key="test_api_key", client_id="TEST123", pin="1234")
     return client
 
 
@@ -217,11 +222,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_complete_api_authentication_workflow(
-        self,
-        mock_db_session,
-        angel_one_client,
-        auth_service,
-        connection_manager
+        self, mock_db_session, angel_one_client, auth_service, connection_manager
     ):
         """Test complete API authentication and session management workflow"""
 
@@ -233,8 +234,8 @@ class TestAngelOneAPI:
             "data": {
                 "jwtToken": "mock_jwt_token_12345",
                 "refreshToken": "mock_refresh_token_67890",
-                "feedToken": "mock_feed_token_abcde"
-            }
+                "feedToken": "mock_feed_token_abcde",
+            },
         }
 
         # Configure service responses
@@ -247,7 +248,7 @@ class TestAngelOneAPI:
             auth_result = await auth_service.authenticate(
                 client_id=angel_one_client.client_id,
                 password="test_password",
-                totp="123456"
+                totp="123456",
             )
 
             assert auth_result["status"] is True
@@ -284,10 +285,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_authentication_failure_retry_mechanism(
-        self,
-        mock_db_session,
-        angel_one_client,
-        auth_service
+        self, mock_db_session, angel_one_client, auth_service
     ):
         """Test authentication failure handling and retry mechanism"""
 
@@ -308,7 +306,7 @@ class TestAngelOneAPI:
                 return {
                     "status": True,
                     "message": "SUCCESS",
-                    "data": {"jwtToken": "success_token"}
+                    "data": {"jwtToken": "success_token"},
                 }
 
         auth_service.authenticate.side_effect = mock_authenticate
@@ -320,7 +318,7 @@ class TestAngelOneAPI:
                     auth_result = await auth_service.authenticate(
                         client_id=angel_one_client.client_id,
                         password="test_password",
-                        totp="123456"
+                        totp="123456",
                     )
 
                     # Success after retries
@@ -341,10 +339,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_market_data_retrieval_and_streaming(
-        self,
-        mock_db_session,
-        angel_one_client,
-        market_data_service
+        self, mock_db_session, angel_one_client, market_data_service
     ):
         """Test market data retrieval and real-time streaming"""
 
@@ -362,7 +357,7 @@ class TestAngelOneAPI:
             "symbol": symbol,
             "ltp": 2501.25,
             "volume": 1502000,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Configure service responses
@@ -377,10 +372,7 @@ class TestAngelOneAPI:
 
         try:
             # Step 1: Get current market quote
-            quote = await market_data_service.get_quote(
-                symbol=symbol,
-                exchange="NSE"
-            )
+            quote = await market_data_service.get_quote(symbol=symbol, exchange="NSE")
 
             assert quote.symbol == symbol
             assert quote.ltp > 0
@@ -388,8 +380,7 @@ class TestAngelOneAPI:
 
             # Step 2: Subscribe to live data feed
             subscription_success = await market_data_service.subscribe_live_feed(
-                symbols=[symbol],
-                callback=mock_stream_callback
+                symbols=[symbol], callback=mock_stream_callback
             )
 
             assert subscription_success is True
@@ -411,10 +402,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_order_placement_and_execution(
-        self,
-        mock_db_session,
-        angel_one_client,
-        order_service
+        self, mock_db_session, angel_one_client, order_service
     ):
         """Test order placement, modification, and execution"""
 
@@ -426,7 +414,7 @@ class TestAngelOneAPI:
             "order_type": OrderType.LIMIT,
             "quantity": 10,
             "price": Decimal("2500.00"),
-            "product": "MIS"  # Intraday
+            "product": "MIS",  # Intraday
         }
 
         # Mock order responses
@@ -443,22 +431,19 @@ class TestAngelOneAPI:
             "order_id": "AO001",
             "status": OrderStatus.COMPLETE,
             "avg_price": Decimal("2499.50"),
-            "filled_quantity": 10
+            "filled_quantity": 10,
         }
 
         try:
             # Step 1: Place order
-            order_result = await order_service.place_order(
-                **order_details
-            )
+            order_result = await order_service.place_order(**order_details)
 
             assert order_result.order_id is not None
             assert order_result.status in [OrderStatus.PENDING, OrderStatus.OPEN]
 
             # Step 2: Modify order price
             modify_result = await order_service.modify_order(
-                order_id=order_result.order_id,
-                price=Decimal("2505.00")
+                order_id=order_result.order_id, price=Decimal("2505.00")
             )
 
             assert modify_result.order_id == order_result.order_id
@@ -488,10 +473,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_portfolio_and_position_management(
-        self,
-        mock_db_session,
-        angel_one_client,
-        portfolio_service
+        self, mock_db_session, angel_one_client, portfolio_service
     ):
         """Test portfolio and position management operations"""
 
@@ -502,15 +484,15 @@ class TestAngelOneAPI:
                 "quantity": 100,
                 "avg_price": Decimal("2400.00"),
                 "current_price": Decimal("2500.00"),
-                "pnl": Decimal("10000.00")
+                "pnl": Decimal("10000.00"),
             },
             "TCS": {
                 "symbol": "TCS-EQ",
                 "quantity": 50,
                 "avg_price": Decimal("3200.00"),
                 "current_price": Decimal("3150.00"),
-                "pnl": Decimal("-2500.00")
-            }
+                "pnl": Decimal("-2500.00"),
+            },
         }
 
         mock_positions = {
@@ -520,14 +502,14 @@ class TestAngelOneAPI:
                 "avg_price": Decimal("1500.00"),
                 "current_price": Decimal("1520.00"),
                 "pnl": Decimal("500.00"),
-                "product": "MIS"
+                "product": "MIS",
             }
         }
 
         mock_funds = {
             "available_cash": Decimal("50000.00"),
             "utilized_margin": Decimal("30000.00"),
-            "available_margin": Decimal("20000.00")
+            "available_margin": Decimal("20000.00"),
         }
 
         # Configure service responses
@@ -569,8 +551,7 @@ class TestAngelOneAPI:
             )
 
             total_positions_pnl = sum(
-                position["pnl"]
-                for position in positions.values()
+                position["pnl"] for position in positions.values()
             )
 
             assert total_holdings_value > 0
@@ -583,10 +564,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_historical_data_fetching(
-        self,
-        mock_db_session,
-        angel_one_client,
-        market_data_service
+        self, mock_db_session, angel_one_client, market_data_service
     ):
         """Test historical data fetching with different intervals"""
 
@@ -603,7 +581,7 @@ class TestAngelOneAPI:
                 "high": Decimal(f"25{00 + (i % 15)}.00"),
                 "low": Decimal(f"24{00 + (i % 8)}.00"),
                 "close": Decimal(f"24{75 + (i % 12)}.00"),
-                "volume": 1000000 + (i * 10000)
+                "volume": 1000000 + (i * 10000),
             }
             historical_data.append(data_point)
 
@@ -617,7 +595,7 @@ class TestAngelOneAPI:
                 exchange="NSE",
                 interval="1DAY",
                 from_date=from_date,
-                to_date=to_date
+                to_date=to_date,
             )
 
             assert len(daily_data) > 0
@@ -648,7 +626,7 @@ class TestAngelOneAPI:
                     exchange="NSE",
                     interval=interval,
                     from_date=from_date,
-                    to_date=to_date
+                    to_date=to_date,
                 )
 
                 assert len(interval_data) >= 0  # Can be empty for some intervals
@@ -660,10 +638,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_rate_limiting_and_throttling(
-        self,
-        mock_db_session,
-        angel_one_client,
-        market_data_service
+        self, mock_db_session, angel_one_client, market_data_service
     ):
         """Test API rate limiting and throttling mechanisms"""
 
@@ -671,7 +646,7 @@ class TestAngelOneAPI:
         rate_limits = {
             "requests_per_second": 10,
             "requests_per_minute": 100,
-            "requests_per_hour": 1000
+            "requests_per_hour": 1000,
         }
 
         # Track request times
@@ -684,12 +659,12 @@ class TestAngelOneAPI:
 
             # Check requests in last second
             last_second = current_time - timedelta(seconds=1)
-            recent_requests = [
-                t for t in request_times if t >= last_second
-            ]
+            recent_requests = [t for t in request_times if t >= last_second]
 
             if len(recent_requests) > rate_limits["requests_per_second"]:
-                raise RateLimitError("Rate limit exceeded: too many requests per second")
+                raise RateLimitError(
+                    "Rate limit exceeded: too many requests per second"
+                )
 
             # Simulate successful request
             return {"status": "success", "timestamp": current_time}
@@ -737,11 +712,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_connection_recovery_and_failover(
-        self,
-        mock_db_session,
-        angel_one_client,
-        connection_manager,
-        auth_service
+        self, mock_db_session, angel_one_client, connection_manager, auth_service
     ):
         """Test connection recovery and failover mechanisms"""
 
@@ -755,7 +726,9 @@ class TestAngelOneAPI:
 
             if connection_failures <= max_failures:
                 angel_one_client.connection_state = APIConnectionState.ERROR
-                raise ConnectionError(f"Connection failed: attempt {connection_failures}")
+                raise ConnectionError(
+                    f"Connection failed: attempt {connection_failures}"
+                )
             else:
                 # Recovery after failures
                 angel_one_client.connection_state = APIConnectionState.CONNECTED
@@ -778,7 +751,7 @@ class TestAngelOneAPI:
                     angel_one_client.connection_state = APIConnectionState.RECONNECTING
 
                     # Implement exponential backoff
-                    backoff_delay = min(2 ** attempt, 30)  # Max 30 seconds
+                    backoff_delay = min(2**attempt, 30)  # Max 30 seconds
                     await asyncio.sleep(backoff_delay * 0.01)  # Speed up for testing
 
                     continue
@@ -796,7 +769,7 @@ class TestAngelOneAPI:
             # Step 3: Test session refresh during reconnection
             auth_service.refresh_token.return_value = {
                 "status": True,
-                "data": {"jwtToken": "new_refreshed_token"}
+                "data": {"jwtToken": "new_refreshed_token"},
             }
 
             refresh_result = await auth_service.refresh_token(
@@ -818,7 +791,7 @@ class TestAngelOneAPI:
         angel_one_client,
         auth_service,
         order_service,
-        market_data_service
+        market_data_service,
     ):
         """Test comprehensive error handling for various API scenarios"""
 
@@ -827,26 +800,26 @@ class TestAngelOneAPI:
                 "error_type": AuthenticationError,
                 "message": "Invalid credentials",
                 "service": auth_service,
-                "method": "authenticate"
+                "method": "authenticate",
             },
             {
                 "error_type": OrderExecutionError,
                 "message": "Insufficient funds",
                 "service": order_service,
-                "method": "place_order"
+                "method": "place_order",
             },
             {
                 "error_type": DataFeedError,
                 "message": "Market data unavailable",
                 "service": market_data_service,
-                "method": "get_quote"
+                "method": "get_quote",
             },
             {
                 "error_type": RateLimitError,
                 "message": "API rate limit exceeded",
                 "service": market_data_service,
-                "method": "get_quote"
-            }
+                "method": "get_quote",
+            },
         ]
 
         try:
@@ -905,10 +878,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_token_refresh_and_session_management(
-        self,
-        mock_db_session,
-        angel_one_client,
-        auth_service
+        self, mock_db_session, angel_one_client, auth_service
     ):
         """Test token refresh and session management"""
 
@@ -917,8 +887,8 @@ class TestAngelOneAPI:
             "status": True,
             "data": {
                 "jwtToken": "initial_token_12345",
-                "refreshToken": "refresh_token_67890"
-            }
+                "refreshToken": "refresh_token_67890",
+            },
         }
 
         # Mock token refresh response
@@ -926,14 +896,18 @@ class TestAngelOneAPI:
             "status": True,
             "data": {
                 "jwtToken": "refreshed_token_abcde",
-                "refreshToken": "new_refresh_token_fghij"
-            }
+                "refreshToken": "new_refresh_token_fghij",
+            },
         }
 
         # Configure service responses
         auth_service.authenticate.return_value = initial_auth
         auth_service.refresh_token.return_value = refresh_response
-        auth_service.validate_session.side_effect = [True, False, True]  # Expire after 2nd check
+        auth_service.validate_session.side_effect = [
+            True,
+            False,
+            True,
+        ]  # Expire after 2nd check
 
         try:
             # Step 1: Initial authentication
@@ -943,16 +917,22 @@ class TestAngelOneAPI:
             angel_one_client.session_expiry = datetime.now() + timedelta(hours=8)
 
             # Step 2: Validate initial session
-            session_valid = await auth_service.validate_session(angel_one_client.access_token)
+            session_valid = await auth_service.validate_session(
+                angel_one_client.access_token
+            )
             assert session_valid is True
 
             # Step 3: Simulate session expiry
             angel_one_client.session_expiry = datetime.now() - timedelta(minutes=1)
-            session_valid = await auth_service.validate_session(angel_one_client.access_token)
+            session_valid = await auth_service.validate_session(
+                angel_one_client.access_token
+            )
             assert session_valid is False
 
             # Step 4: Refresh token
-            refresh_result = await auth_service.refresh_token(angel_one_client.refresh_token)
+            refresh_result = await auth_service.refresh_token(
+                angel_one_client.refresh_token
+            )
 
             assert refresh_result["status"] is True
             assert "jwtToken" in refresh_result["data"]
@@ -963,7 +943,9 @@ class TestAngelOneAPI:
             angel_one_client.session_expiry = datetime.now() + timedelta(hours=8)
 
             # Step 5: Validate refreshed session
-            session_valid = await auth_service.validate_session(angel_one_client.access_token)
+            session_valid = await auth_service.validate_session(
+                angel_one_client.access_token
+            )
             assert session_valid is True
 
             print("✅ Token refresh and session management working correctly")
@@ -973,10 +955,7 @@ class TestAngelOneAPI:
 
     @pytest.mark.asyncio
     async def test_websocket_streaming_integration(
-        self,
-        mock_db_session,
-        angel_one_client,
-        market_data_service
+        self, mock_db_session, angel_one_client, market_data_service
     ):
         """Test WebSocket streaming integration for real-time data"""
 
@@ -1004,7 +983,7 @@ class TestAngelOneAPI:
                     "symbol": "RELIANCE-EQ",
                     "ltp": 2501.50,
                     "volume": 1504000,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
             async def close(self):
@@ -1019,10 +998,9 @@ class TestAngelOneAPI:
             assert websocket_connected is True
 
             # Step 2: Subscribe to symbols
-            subscription_message = json.dumps({
-                "action": "subscribe",
-                "symbols": ["RELIANCE-EQ", "TCS-EQ"]
-            })
+            subscription_message = json.dumps(
+                {"action": "subscribe", "symbols": ["RELIANCE-EQ", "TCS-EQ"]}
+            )
 
             subscription_result = await mock_ws.send(subscription_message)
             assert subscription_result["type"] == "subscription_success"
@@ -1068,30 +1046,27 @@ def create_angel_one_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "api_credentials_valid": True,
             "network_available": True,
             "api_server_up": True,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "authentication_failure": {
             "api_credentials_valid": False,
             "network_available": True,
             "api_server_up": True,
-            "expected_outcome": "auth_error"
+            "expected_outcome": "auth_error",
         },
-
         "network_failure": {
             "api_credentials_valid": True,
             "network_available": False,
             "api_server_up": True,
-            "expected_outcome": "connection_error"
+            "expected_outcome": "connection_error",
         },
-
         "rate_limit_exceeded": {
             "api_credentials_valid": True,
             "network_available": True,
             "api_server_up": True,
             "requests_per_second": 20,  # Exceeds limit
-            "expected_outcome": "rate_limit_error"
-        }
+            "expected_outcome": "rate_limit_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -1128,6 +1103,7 @@ def simulate_network_latency(delay_ms: int = 100):
         async def wrapper(*args, **kwargs):
             await asyncio.sleep(delay_ms / 1000.0)  # Convert ms to seconds
             return await func(*args, **kwargs)
+
         return wrapper
 
     return latency_decorator
@@ -1140,12 +1116,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

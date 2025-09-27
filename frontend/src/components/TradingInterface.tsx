@@ -745,6 +745,7 @@ const TradingInterface: React.FC = () => {
                 value={selectedSymbol}
                 onChange={(e) => handleSymbolChange(e.target.value)}
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                aria-label="Select trading symbol"
               >
                 <option value="NIFTY50">NIFTY 50</option>
                 <option value="BANKNIFTY">BANK NIFTY</option>
@@ -1000,6 +1001,7 @@ const TradingInterface: React.FC = () => {
                       value={orderForm.orderType}
                       onChange={(e) => setOrderForm(prev => ({ ...prev, orderType: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      aria-label="Select order type"
                     >
                       {ORDER_TYPES.map(type => (
                         <option key={type.id} value={type.id}>
@@ -1018,6 +1020,7 @@ const TradingInterface: React.FC = () => {
                       value={orderForm.timeInForce}
                       onChange={(e) => setOrderForm(prev => ({ ...prev, timeInForce: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      aria-label="Select time-in-force"
                     >
                       {TIME_IN_FORCE_OPTIONS.map(option => (
                         <option key={option.id} value={option.id}>
@@ -1037,6 +1040,7 @@ const TradingInterface: React.FC = () => {
                         type="button"
                         onClick={() => setOrderForm(prev => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
                         className="p-2 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                        aria-label="Decrease quantity"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
@@ -1046,11 +1050,13 @@ const TradingInterface: React.FC = () => {
                         onChange={(e) => setOrderForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
                         min="1"
                         className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center"
+                        placeholder="Enter quantity"
                       />
                       <button
                         type="button"
                         onClick={() => setOrderForm(prev => ({ ...prev, quantity: prev.quantity + 1 }))}
                         className="p-2 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                        aria-label="Increase quantity"
                       >
                         <Plus className="w-4 h-4" />
                       </button>

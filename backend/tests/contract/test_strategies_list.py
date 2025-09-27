@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -22,6 +23,7 @@ class TestStrategiesListContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     def test_list_strategies_success_contract(self, client: TestClient) -> None:
@@ -41,9 +43,9 @@ class TestStrategiesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -87,15 +89,13 @@ class TestStrategiesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
-        assert "strategies" in response_json, (
-            "Response must contain 'strategies'"
-        )
+        assert "strategies" in response_json, "Response must contain 'strategies'"
 
         strategies = response_json["strategies"]
         assert isinstance(strategies, list), "strategies must be an array"
@@ -129,15 +129,13 @@ class TestStrategiesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
-        assert "strategies" in response_json, (
-            "Response must contain 'strategies'"
-        )
+        assert "strategies" in response_json, "Response must contain 'strategies'"
 
         strategies = response_json["strategies"]
         assert isinstance(strategies, list), "strategies must be an array"
@@ -166,22 +164,19 @@ class TestStrategiesListContract:
 
         # Act
         response: Response = client.get(
-            "/api/v1/strategies",
-            params={"category": category, "is_active": is_active}
+            "/api/v1/strategies", params={"category": category, "is_active": is_active}
         )
 
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
-        assert "strategies" in response_json, (
-            "Response must contain 'strategies'"
-        )
+        assert "strategies" in response_json, "Response must contain 'strategies'"
 
         strategies = response_json["strategies"]
         assert isinstance(strategies, list), "strategies must be an array"
@@ -219,25 +214,19 @@ class TestStrategiesListContract:
         # Assert - Status Code (400 for validation error is acceptable)
         expected_codes = [200, 400, 422]
         actual_status = response.status_code
-        assert actual_status in expected_codes, (
-            f"Expected status {expected_codes}, got {actual_status}"
-        )
+        assert (
+            actual_status in expected_codes
+        ), f"Expected status {expected_codes}, got {actual_status}"
 
         # If status is 200, verify empty results
         if actual_status == 200:
             response_json = response.json()
-            assert "strategies" in response_json, (
-                "Response must contain 'strategies'"
-            )
+            assert "strategies" in response_json, "Response must contain 'strategies'"
             strategies = response_json["strategies"]
             assert isinstance(strategies, list), "strategies must be an array"
-            assert len(strategies) == 0, (
-                "Invalid category should return empty results"
-            )
+            assert len(strategies) == 0, "Invalid category should return empty results"
 
-    def test_list_strategies_empty_result_contract(
-        self, client: TestClient
-    ) -> None:
+    def test_list_strategies_empty_result_contract(self, client: TestClient) -> None:
         """
         Test strategies list when no strategies exist.
 
@@ -250,15 +239,13 @@ class TestStrategiesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure for empty results
         response_json = response.json()
-        assert "strategies" in response_json, (
-            "Response must contain 'strategies'"
-        )
+        assert "strategies" in response_json, "Response must contain 'strategies'"
         assert "total" in response_json, "Response must contain 'total'"
 
         strategies = response_json["strategies"]
@@ -285,9 +272,9 @@ class TestStrategiesListContract:
         # Assert - Status Code
         expected_status = 405
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
     def _validate_strategy_structure(self, strategy: dict) -> None:
         """
@@ -297,8 +284,14 @@ class TestStrategiesListContract:
         """
         # Required fields for Strategy schema
         required_fields = [
-            "strategy_id", "name", "category", "target_symbols",
-            "is_active", "is_paper_only", "created_at", "updated_at"
+            "strategy_id",
+            "name",
+            "category",
+            "target_symbols",
+            "is_active",
+            "is_paper_only",
+            "created_at",
+            "updated_at",
         ]
 
         for field in required_fields:
@@ -319,14 +312,15 @@ class TestStrategiesListContract:
 
         category = strategy["category"]
         assert category in [
-            "predatory", "quantitative", "psychological",
-            "mathematical", "extreme"
+            "predatory",
+            "quantitative",
+            "psychological",
+            "mathematical",
+            "extreme",
         ], f"category must be one of the valid values, got {category}"
 
         target_symbols = strategy["target_symbols"]
-        assert isinstance(target_symbols, list), (
-            "target_symbols must be an array"
-        )
+        assert isinstance(target_symbols, list), "target_symbols must be an array"
         assert len(target_symbols) > 0, "target_symbols cannot be empty"
         for symbol in target_symbols:
             assert isinstance(symbol, str), "each target_symbol must be string"
@@ -339,36 +333,32 @@ class TestStrategiesListContract:
 
         # Optional fields validation
         if "description" in strategy:
-            assert isinstance(strategy["description"], str), (
-                "description must be string"
-            )
+            assert isinstance(
+                strategy["description"], str
+            ), "description must be string"
 
         if "parameters" in strategy:
-            assert isinstance(strategy["parameters"], dict), (
-                "parameters must be object"
-            )
+            assert isinstance(strategy["parameters"], dict), "parameters must be object"
 
         if "min_confidence" in strategy:
             min_conf = strategy["min_confidence"]
-            assert isinstance(min_conf, (int, float)), (
-                "min_confidence must be number"
-            )
+            assert isinstance(min_conf, (int, float)), "min_confidence must be number"
             assert 0 <= min_conf <= 1, "min_confidence must be between 0 and 1"
 
         if "max_position_size" in strategy:
-            assert isinstance(strategy["max_position_size"], (int, float)), (
-                "max_position_size must be number"
-            )
+            assert isinstance(
+                strategy["max_position_size"], (int, float)
+            ), "max_position_size must be number"
 
         if "stop_loss_pct" in strategy:
-            assert isinstance(strategy["stop_loss_pct"], (int, float)), (
-                "stop_loss_pct must be number"
-            )
+            assert isinstance(
+                strategy["stop_loss_pct"], (int, float)
+            ), "stop_loss_pct must be number"
 
         if "take_profit_pct" in strategy:
-            assert isinstance(strategy["take_profit_pct"], (int, float)), (
-                "take_profit_pct must be number"
-            )
+            assert isinstance(
+                strategy["take_profit_pct"], (int, float)
+            ), "take_profit_pct must be number"
 
         # Performance object validation
         if "performance" in strategy:
@@ -376,16 +366,19 @@ class TestStrategiesListContract:
             assert isinstance(performance, dict), "performance must be object"
 
             perf_fields = [
-                "total_trades", "win_rate", "total_pnl",
-                "sharpe_ratio", "max_drawdown"
+                "total_trades",
+                "win_rate",
+                "total_pnl",
+                "sharpe_ratio",
+                "max_drawdown",
             ]
             for field in perf_fields:
                 if field in performance:
                     if field == "total_trades":
-                        assert isinstance(performance[field], int), (
-                            f"{field} must be integer"
-                        )
+                        assert isinstance(
+                            performance[field], int
+                        ), f"{field} must be integer"
                     else:
-                        assert isinstance(performance[field], (int, float)), (
-                            f"{field} must be number"
-                        )
+                        assert isinstance(
+                            performance[field], (int, float)
+                        ), f"{field} must be number"

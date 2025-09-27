@@ -1,6 +1,7 @@
 """
 Unit tests for performance optimization components
 """
+
 import asyncio
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,7 @@ from src.utils.performance_monitor import (
     PerformancePredictor,
     AnomalyDetector,
     PerformanceManager,
-    PERFORMANCE_THRESHOLDS
+    PERFORMANCE_THRESHOLDS,
 )
 
 
@@ -35,7 +36,7 @@ class TestPerformanceTracker:
             metric_type=MetricType.GAUGE,
             timestamp=datetime.now(timezone.utc),
             labels={"test": "value"},
-            metadata={"unit": "ms"}
+            metadata={"unit": "ms"},
         )
 
         self.tracker.add_metric(metric)
@@ -54,7 +55,7 @@ class TestPerformanceTracker:
                 name="test.metric",
                 value=float(i + 1),
                 metric_type=MetricType.GAUGE,
-                timestamp=base_time + timedelta(minutes=i)
+                timestamp=base_time + timedelta(minutes=i),
             )
             self.tracker.add_metric(metric)
 
@@ -75,7 +76,7 @@ class TestPerformanceTracker:
             name="test.metric",
             value=1.0,
             metric_type=MetricType.GAUGE,
-            timestamp=base_time - timedelta(days=40)  # Older than retention
+            timestamp=base_time - timedelta(days=40),  # Older than retention
         )
         self.tracker.add_metric(old_metric)
 
@@ -84,7 +85,7 @@ class TestPerformanceTracker:
             name="test.metric",
             value=2.0,
             metric_type=MetricType.GAUGE,
-            timestamp=base_time
+            timestamp=base_time,
         )
         self.tracker.add_metric(recent_metric)
 
@@ -104,10 +105,10 @@ class TestResourceMonitor:
         self.tracker = PerformanceTracker()
         self.monitor = ResourceMonitor(self.tracker)
 
-    @patch('psutil.cpu_percent')
-    @patch('psutil.virtual_memory')
-    @patch('psutil.disk_usage')
-    @patch('psutil.net_io_counters')
+    @patch("psutil.cpu_percent")
+    @patch("psutil.virtual_memory")
+    @patch("psutil.disk_usage")
+    @patch("psutil.net_io_counters")
     def test_collect_system_metrics(self, mock_net, mock_disk, mock_memory, mock_cpu):
         """Test collecting system metrics"""
         # Mock system calls
@@ -186,12 +187,12 @@ class TestPerformancePredictor:
         result = self.predictor.predict_metric("test.metric")
         assert result is None
 
-    @patch('src.utils.performance_monitor.PerformancePredictor._ml_available', True)
+    @patch("src.utils.performance_monitor.PerformancePredictor._ml_available", True)
     def test_with_mock_ml_available(self):
         """Test behavior when ML libraries are mocked as available"""
         # This would require more extensive mocking of numpy, sklearn, pandas
         # For now, just test that the attribute exists
-        assert hasattr(self.predictor, '_ml_available')
+        assert hasattr(self.predictor, "_ml_available")
 
 
 class TestAnomalyDetector:
@@ -221,7 +222,7 @@ class TestAnomalyDetector:
                 name="test.metric",
                 value=100.0 + i,  # Some variation
                 metric_type=MetricType.GAUGE,
-                timestamp=base_time + timedelta(hours=i)
+                timestamp=base_time + timedelta(hours=i),
             )
             self.tracker.add_metric(metric)
 
@@ -241,13 +242,13 @@ class TestAnomalyDetector:
         """Test anomaly detection with baseline data"""
         # Set up baseline manually
         self.detector._metric_baselines["test.metric"] = {
-            'mean': 100.0,
-            'std': 10.0,
-            'min': 80.0,
-            'max': 120.0,
-            'p95': 115.0,
-            'p99': 118.0,
-            'last_updated': datetime.now(timezone.utc)
+            "mean": 100.0,
+            "std": 10.0,
+            "min": 80.0,
+            "max": 120.0,
+            "p95": 115.0,
+            "p99": 118.0,
+            "last_updated": datetime.now(timezone.utc),
         }
 
         # Test normal value
@@ -257,18 +258,18 @@ class TestAnomalyDetector:
         # Test anomalous value (more than 3 sigma)
         result = self.detector.detect_anomalies("test.metric", 140.0)
         assert result is not None
-        assert result['severity'] == 'high'
-        assert result['current_value'] == 140.0
+        assert result["severity"] == "high"
+        assert result["current_value"] == 140.0
 
     def test_get_recent_anomalies(self):
         """Test getting recent anomalies"""
         # Add a mock anomaly
         anomaly = {
-            'metric_name': 'test.metric',
-            'current_value': 150.0,
-            'severity': 'high',
-            'timestamp': datetime.now(timezone.utc),
-            'description': 'Test anomaly'
+            "metric_name": "test.metric",
+            "current_value": 150.0,
+            "severity": "high",
+            "timestamp": datetime.now(timezone.utc),
+            "description": "Test anomaly",
         }
         self.detector._anomalies.append(anomaly)
 
@@ -276,25 +277,25 @@ class TestAnomalyDetector:
         recent = self.detector.get_recent_anomalies(timedelta(hours=1))
 
         assert len(recent) == 1
-        assert recent[0]['current_value'] == 150.0
+        assert recent[0]["current_value"] == 150.0
 
     def test_get_anomaly_summary(self):
         """Test getting anomaly summary"""
         # Add mock anomalies
         base_time = datetime.now(timezone.utc)
         anomalies = [
-            {'metric_name': 'metric1', 'severity': 'high', 'timestamp': base_time},
-            {'metric_name': 'metric1', 'severity': 'medium', 'timestamp': base_time},
-            {'metric_name': 'metric2', 'severity': 'high', 'timestamp': base_time},
+            {"metric_name": "metric1", "severity": "high", "timestamp": base_time},
+            {"metric_name": "metric1", "severity": "medium", "timestamp": base_time},
+            {"metric_name": "metric2", "severity": "high", "timestamp": base_time},
         ]
         self.detector._anomalies.extend(anomalies)
 
         summary = self.detector.get_anomaly_summary()
 
-        assert summary['total_anomalies_detected'] == 3
-        assert summary['anomalies_by_severity']['high'] == 2
-        assert summary['anomalies_by_severity']['medium'] == 1
-        assert len(summary['most_anomalous_metrics']) > 0
+        assert summary["total_anomalies_detected"] == 3
+        assert summary["anomalies_by_severity"]["high"] == 2
+        assert summary["anomalies_by_severity"]["medium"] == 1
+        assert len(summary["most_anomalous_metrics"]) > 0
 
 
 class TestPerformanceOptimizer:
@@ -309,10 +310,10 @@ class TestPerformanceOptimizer:
         """Test performance analysis with no data"""
         result = self.optimizer.analyze_performance(timedelta(hours=1))
 
-        assert result['time_window_hours'] == 1.0
-        assert result['recommendations'] == []
-        assert result['critical_issues'] == []
-        assert result['optimization_opportunities'] == []
+        assert result["time_window_hours"] == 1.0
+        assert result["recommendations"] == []
+        assert result["critical_issues"] == []
+        assert result["optimization_opportunities"] == []
 
     def test_analyze_performance_with_api_data(self):
         """Test performance analysis with API metrics"""
@@ -323,14 +324,14 @@ class TestPerformanceOptimizer:
                 name="api.request.duration",
                 value=2000.0 if i < 9 else 8000.0,  # One slow request
                 metric_type=MetricType.HISTOGRAM,
-                timestamp=base_time + timedelta(minutes=i)
+                timestamp=base_time + timedelta(minutes=i),
             )
             self.tracker.add_metric(metric)
 
         result = self.optimizer.analyze_performance(timedelta(hours=1))
 
-        assert 'api_avg_response_time_ms' in result['metrics_summary']
-        assert len(result['optimization_opportunities']) > 0
+        assert "api_avg_response_time_ms" in result["metrics_summary"]
+        assert len(result["optimization_opportunities"]) > 0
 
     def test_analyze_performance_with_db_data(self):
         """Test performance analysis with database metrics"""
@@ -341,14 +342,14 @@ class TestPerformanceOptimizer:
                 name="database.query.duration",
                 value=50.0 if i < 9 else 200.0,  # One slow query
                 metric_type=MetricType.HISTOGRAM,
-                timestamp=base_time + timedelta(minutes=i)
+                timestamp=base_time + timedelta(minutes=i),
             )
             self.tracker.add_metric(metric)
 
         result = self.optimizer.analyze_performance(timedelta(hours=1))
 
-        assert 'db_avg_query_time_ms' in result['metrics_summary']
-        assert len(result['optimization_opportunities']) > 0
+        assert "db_avg_query_time_ms" in result["metrics_summary"]
+        assert len(result["optimization_opportunities"]) > 0
 
 
 class TestPerformanceManager:
@@ -390,23 +391,23 @@ class TestPerformanceManager:
         """Test getting performance summary"""
         summary = self.manager.get_performance_summary()
 
-        assert 'timestamp' in summary
-        assert 'time_window_hours' in summary
-        assert 'system_metrics' in summary
-        assert 'api_metrics' in summary
-        assert 'database_metrics' in summary
-        assert 'recent_alerts' in summary
-        assert 'performance_analysis' in summary
+        assert "timestamp" in summary
+        assert "time_window_hours" in summary
+        assert "system_metrics" in summary
+        assert "api_metrics" in summary
+        assert "database_metrics" in summary
+        assert "recent_alerts" in summary
+        assert "performance_analysis" in summary
 
     def test_get_health_status(self):
         """Test getting health status"""
         status = self.manager.get_health_status()
 
-        assert 'timestamp' in status
-        assert 'performance_monitoring' in status
-        assert 'metrics_count' in status
-        assert 'recent_alerts_count' in status
-        assert 'system_status' in status
+        assert "timestamp" in status
+        assert "performance_monitoring" in status
+        assert "metrics_count" in status
+        assert "recent_alerts_count" in status
+        assert "system_status" in status
 
 
 class TestPerformanceThresholds:
@@ -414,28 +415,28 @@ class TestPerformanceThresholds:
 
     def test_thresholds_defined(self):
         """Test that performance thresholds are properly defined"""
-        assert 'api_response_time' in PERFORMANCE_THRESHOLDS
-        assert 'database_query_time' in PERFORMANCE_THRESHOLDS
-        assert 'memory_usage' in PERFORMANCE_THRESHOLDS
-        assert 'cpu_usage' in PERFORMANCE_THRESHOLDS
+        assert "api_response_time" in PERFORMANCE_THRESHOLDS
+        assert "database_query_time" in PERFORMANCE_THRESHOLDS
+        assert "memory_usage" in PERFORMANCE_THRESHOLDS
+        assert "cpu_usage" in PERFORMANCE_THRESHOLDS
 
         # Check threshold structure
-        api_thresholds = PERFORMANCE_THRESHOLDS['api_response_time']
-        assert 'warning' in api_thresholds
-        assert 'critical' in api_thresholds
+        api_thresholds = PERFORMANCE_THRESHOLDS["api_response_time"]
+        assert "warning" in api_thresholds
+        assert "critical" in api_thresholds
 
     def test_threshold_values_reasonable(self):
         """Test that threshold values are reasonable"""
         # API response time should be in milliseconds
-        api_thresholds = PERFORMANCE_THRESHOLDS['api_response_time']
-        assert api_thresholds['warning'] > 100  # At least 100ms
-        assert api_thresholds['critical'] > api_thresholds['warning']
+        api_thresholds = PERFORMANCE_THRESHOLDS["api_response_time"]
+        assert api_thresholds["warning"] > 100  # At least 100ms
+        assert api_thresholds["critical"] > api_thresholds["warning"]
 
         # Memory usage should be percentage
-        memory_thresholds = PERFORMANCE_THRESHOLDS['memory_usage']
-        assert 0 < memory_thresholds['warning'] < 100
-        assert 0 < memory_thresholds['critical'] < 100
-        assert memory_thresholds['critical'] > memory_thresholds['warning']
+        memory_thresholds = PERFORMANCE_THRESHOLDS["memory_usage"]
+        assert 0 < memory_thresholds["warning"] < 100
+        assert 0 < memory_thresholds["critical"] < 100
+        assert memory_thresholds["critical"] > memory_thresholds["warning"]
 
 
 # Integration tests
@@ -451,9 +452,9 @@ class TestPerformanceMonitoringIntegration:
         """Test a complete monitoring cycle"""
         # Initialize the system
         config = {
-            'enable_resource_monitoring': False,  # Disable to avoid psutil dependency in tests
-            'enable_memory_profiling': False,
-            'enable_alerting': False
+            "enable_resource_monitoring": False,  # Disable to avoid psutil dependency in tests
+            "enable_memory_profiling": False,
+            "enable_alerting": False,
         }
 
         await self.manager.initialize(config)
@@ -465,7 +466,7 @@ class TestPerformanceMonitoringIntegration:
                 name="test.api.response_time",
                 value=100.0 + i * 10,
                 metric_type=MetricType.HISTOGRAM,
-                timestamp=base_time + timedelta(minutes=i)
+                timestamp=base_time + timedelta(minutes=i),
             )
             self.manager.tracker.add_metric(metric)
 
@@ -473,7 +474,7 @@ class TestPerformanceMonitoringIntegration:
         summary = self.manager.get_performance_summary()
 
         assert summary is not None
-        assert len(summary['performance_analysis']) > 0
+        assert len(summary["performance_analysis"]) > 0
 
         # Shutdown
         await self.manager.shutdown()
@@ -489,7 +490,7 @@ class TestPerformanceMonitoringIntegration:
                 name="api.request.duration",
                 value=5000.0,  # 5 seconds - should trigger warning
                 metric_type=MetricType.HISTOGRAM,
-                timestamp=base_time + timedelta(minutes=i)
+                timestamp=base_time + timedelta(minutes=i),
             )
             self.manager.tracker.add_metric(metric)
 
@@ -497,8 +498,8 @@ class TestPerformanceMonitoringIntegration:
         analysis = self.manager.optimizer.analyze_performance(timedelta(hours=1))
 
         # Should detect performance issues
-        assert len(analysis['optimization_opportunities']) > 0
-        assert 'api_avg_response_time_ms' in analysis['metrics_summary']
+        assert len(analysis["optimization_opportunities"]) > 0
+        assert "api_avg_response_time_ms" in analysis["metrics_summary"]
 
 
 if __name__ == "__main__":

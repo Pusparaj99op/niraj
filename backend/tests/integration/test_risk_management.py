@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 class RiskLevel(Enum):
     """Risk level enumeration"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,6 +35,7 @@ class RiskLevel(Enum):
 
 class CircuitBreakerState(Enum):
     """Circuit breaker state enumeration"""
+
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
@@ -41,6 +43,7 @@ class CircuitBreakerState(Enum):
 
 class RiskMetricType(Enum):
     """Risk metric type enumeration"""
+
     VAR = "value_at_risk"
     DRAWDOWN = "max_drawdown"
     VOLATILITY = "portfolio_volatility"
@@ -50,6 +53,7 @@ class RiskMetricType(Enum):
 
 class TradingMode(Enum):
     """Trading mode enumeration"""
+
     NORMAL = "normal"
     REDUCED = "reduced"
     EMERGENCY_STOP = "emergency_stop"
@@ -58,31 +62,37 @@ class TradingMode(Enum):
 
 class RiskError(Exception):
     """Base exception for risk-related errors"""
+
     pass
 
 
 class RiskLimitExceededError(RiskError):
     """Raised when risk limits are exceeded"""
+
     pass
 
 
 class CircuitBreakerTriggeredError(RiskError):
     """Raised when circuit breaker is triggered"""
+
     pass
 
 
 class PositionSizeError(RiskError):
     """Raised when position size validation fails"""
+
     pass
 
 
 class ExposureLimitError(RiskError):
     """Raised when exposure limits are exceeded"""
+
     pass
 
 
 class MockRiskMetric:
     """Mock Risk Metric model"""
+
     def __init__(self, metric_type: RiskMetricType, value: Decimal):
         self.id = f"risk_{metric_type.value}_{datetime.now().microsecond}"
         self.metric_type = metric_type
@@ -95,6 +105,7 @@ class MockRiskMetric:
 
 class MockCircuitBreaker:
     """Mock Circuit Breaker model"""
+
     def __init__(self, name: str, threshold: Decimal):
         self.name = name
         self.threshold = threshold
@@ -108,6 +119,7 @@ class MockCircuitBreaker:
 
 class MockPortfolio:
     """Mock Portfolio model"""
+
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.total_value = Decimal("100000.00")  # $100,000 portfolio
@@ -121,6 +133,7 @@ class MockPortfolio:
 
 class MockPosition:
     """Mock Position model"""
+
     def __init__(self, symbol: str, quantity: int, avg_price: Decimal):
         self.symbol = symbol
         self.quantity = quantity
@@ -134,6 +147,7 @@ class MockPosition:
 
 class MockTrade:
     """Mock Trade model"""
+
     def __init__(self, symbol: str, quantity: int, price: Decimal):
         self.id = f"trade_{datetime.now().microsecond}"
         self.symbol = symbol
@@ -223,7 +237,7 @@ class TestRiskManagement:
         risk_manager,
         circuit_breaker_service,
         position_manager,
-        alert_service
+        alert_service,
     ):
         """Test complete risk management workflow with all components"""
 
@@ -236,15 +250,15 @@ class TestRiskManagement:
             "risk_level": RiskLevel.MEDIUM,
             "position_size_ok": True,
             "exposure_ok": True,
-            "var_impact": Decimal("0.02")  # 2% VaR impact
+            "var_impact": Decimal("0.02"),  # 2% VaR impact
         }
 
         # Mock circuit breaker check
         breaker_status = {
             "state": CircuitBreakerState.CLOSED,
             "current_value": Decimal("0.05"),  # 5% current loss
-            "threshold": Decimal("0.10"),      # 10% threshold
-            "trip_required": False
+            "threshold": Decimal("0.10"),  # 10% threshold
+            "trip_required": False,
         }
 
         # Configure service responses
@@ -261,8 +275,12 @@ class TestRiskManagement:
             )
 
             assert risk_result["risk_score"] <= 1
-            assert risk_result["risk_level"] in [RiskLevel.LOW, RiskLevel.MEDIUM,
-                                                 RiskLevel.HIGH, RiskLevel.CRITICAL]
+            assert risk_result["risk_level"] in [
+                RiskLevel.LOW,
+                RiskLevel.MEDIUM,
+                RiskLevel.HIGH,
+                RiskLevel.CRITICAL,
+            ]
             test_trade.risk_score = risk_result["risk_score"]
 
             # Step 2: Validate position sizing
@@ -314,7 +332,7 @@ class TestRiskManagement:
         mock_circuit_breaker,
         circuit_breaker_service,
         alert_service,
-        risk_manager
+        risk_manager,
     ):
         """Test circuit breaker activation and recovery process"""
 
@@ -326,8 +344,8 @@ class TestRiskManagement:
         circuit_breaker_service.check_breaker.return_value = {
             "state": CircuitBreakerState.OPEN,
             "current_value": Decimal("0.12"),  # 12% loss
-            "threshold": Decimal("0.10"),      # 10% threshold
-            "trip_required": True
+            "threshold": Decimal("0.10"),  # 10% threshold
+            "trip_required": True,
         }
 
         try:
@@ -352,7 +370,7 @@ class TestRiskManagement:
             await alert_service.emergency_notification(
                 user_id=mock_portfolio.user_id,
                 message=f"Circuit breaker activated: {breaker_status['current_value']}% loss",
-                severity="CRITICAL"
+                severity="CRITICAL",
             )
 
             # Step 4: Trigger emergency stop
@@ -376,12 +394,10 @@ class TestRiskManagement:
             # Step 7: Reset breaker after successful recovery
             circuit_breaker_service.reset_breaker.return_value = {
                 "state": CircuitBreakerState.CLOSED,
-                "reset_successful": True
+                "reset_successful": True,
             }
 
-            reset_result = await circuit_breaker_service.reset_breaker(
-                "portfolio_loss"
-            )
+            reset_result = await circuit_breaker_service.reset_breaker("portfolio_loss")
             assert reset_result["reset_successful"] is True
 
             print("✅ Circuit breaker activation and recovery working correctly")
@@ -391,11 +407,7 @@ class TestRiskManagement:
 
     @pytest.mark.asyncio
     async def test_position_sizing_risk_validation(
-        self,
-        mock_db_session,
-        mock_portfolio,
-        risk_manager,
-        position_manager
+        self, mock_db_session, mock_portfolio, risk_manager, position_manager
     ):
         """Test position sizing with risk-based validation"""
 
@@ -405,33 +417,31 @@ class TestRiskManagement:
                 "symbol": "RELIANCE",
                 "risk_level": RiskLevel.LOW,
                 "max_position_pct": 0.05,  # 5% of portfolio
-                "expected_size": 100
+                "expected_size": 100,
             },
             {
                 "symbol": "SMALLCAP_STOCK",
                 "risk_level": RiskLevel.HIGH,
                 "max_position_pct": 0.02,  # 2% of portfolio
-                "expected_size": 40
+                "expected_size": 40,
             },
             {
                 "symbol": "CRYPTO_STOCK",
                 "risk_level": RiskLevel.CRITICAL,
                 "max_position_pct": 0.01,  # 1% of portfolio
-                "expected_size": 20
-            }
+                "expected_size": 20,
+            },
         ]
 
         try:
             for scenario in risk_scenarios:
-                test_trade = MockTrade(
-                    scenario["symbol"], 200, Decimal("2500.00")
-                )
+                test_trade = MockTrade(scenario["symbol"], 200, Decimal("2500.00"))
 
                 # Mock risk assessment
                 max_position_pct = Decimal(str(scenario["max_position_pct"]))
                 risk_manager.assess_trade_risk.return_value = {
                     "risk_level": scenario["risk_level"],
-                    "max_position_value": mock_portfolio.total_value * max_position_pct
+                    "max_position_value": mock_portfolio.total_value * max_position_pct,
                 }
 
                 # Calculate position size based on risk
@@ -452,43 +462,43 @@ class TestRiskManagement:
 
                 # Validate position value doesn't exceed limits
                 position_value = position_size * test_trade.price
-                max_allowed = mock_portfolio.total_value * Decimal(str(scenario["max_position_pct"]))
+                max_allowed = mock_portfolio.total_value * Decimal(
+                    str(scenario["max_position_pct"])
+                )
                 assert position_value <= max_allowed
 
-                print(f"✅ Position sizing validated for {scenario['symbol']} "
-                      f"({scenario['risk_level'].value})")
+                print(
+                    f"✅ Position sizing validated for {scenario['symbol']} "
+                    f"({scenario['risk_level'].value})"
+                )
 
         except Exception as e:
             pytest.fail(f"Position sizing risk validation failed: {str(e)}")
 
     @pytest.mark.asyncio
     async def test_portfolio_exposure_limits_monitoring(
-        self,
-        mock_db_session,
-        mock_portfolio,
-        risk_manager,
-        alert_service
+        self, mock_db_session, mock_portfolio, risk_manager, alert_service
     ):
         """Test portfolio exposure limits and concentration monitoring"""
 
         # Setup portfolio with concentrated positions
         mock_portfolio.positions = {
-            "RELIANCE": MockPosition("RELIANCE", 500, Decimal("2500.00")),    # 62.5K
-            "TCS": MockPosition("TCS", 200, Decimal("3000.00")),              # 60K
-            "INFY": MockPosition("INFY", 100, Decimal("1500.00")),            # 15K
+            "RELIANCE": MockPosition("RELIANCE", 500, Decimal("2500.00")),  # 62.5K
+            "TCS": MockPosition("TCS", 200, Decimal("3000.00")),  # 60K
+            "INFY": MockPosition("INFY", 100, Decimal("1500.00")),  # 15K
         }
 
         # Calculate sector exposure
         mock_portfolio.exposure_by_sector = {
-            "IT": Decimal("75000.00"),      # TCS + INFY = 75% of portfolio
-            "ENERGY": Decimal("62500.00"),   # RELIANCE = 62.5% of portfolio
+            "IT": Decimal("75000.00"),  # TCS + INFY = 75% of portfolio
+            "ENERGY": Decimal("62500.00"),  # RELIANCE = 62.5% of portfolio
         }
 
         # Define exposure limits
         exposure_limits = {
-            "single_stock_limit": Decimal("0.20"),    # 20% max per stock
-            "sector_limit": Decimal("0.40"),          # 40% max per sector
-            "concentration_threshold": Decimal("0.60")  # 60% max in top 3 positions
+            "single_stock_limit": Decimal("0.20"),  # 20% max per stock
+            "sector_limit": Decimal("0.40"),  # 40% max per sector
+            "concentration_threshold": Decimal("0.60"),  # 60% max in top 3 positions
         }
 
         try:
@@ -502,7 +512,7 @@ class TestRiskManagement:
                         alert_type="single_stock_exposure",
                         symbol=symbol,
                         current_exposure=float(stock_exposure),
-                        limit=float(exposure_limits["single_stock_limit"])
+                        limit=float(exposure_limits["single_stock_limit"]),
                     )
 
             # Check sector exposure
@@ -515,13 +525,14 @@ class TestRiskManagement:
                         alert_type="sector_concentration",
                         sector=sector,
                         current_exposure=float(sector_exposure),
-                        limit=float(exposure_limits["sector_limit"])
+                        limit=float(exposure_limits["sector_limit"]),
                     )
 
             # Check overall concentration
             portfolio_positions = list(mock_portfolio.positions.values())
-            top3_positions = sorted(portfolio_positions,
-                                    key=lambda p: p.market_value, reverse=True)[:3]
+            top3_positions = sorted(
+                portfolio_positions, key=lambda p: p.market_value, reverse=True
+            )[:3]
             total_top3_value = sum(pos.market_value for pos in top3_positions)
             concentration = total_top3_value / mock_portfolio.total_value
 
@@ -530,13 +541,15 @@ class TestRiskManagement:
                     user_id=mock_portfolio.user_id,
                     alert_type="portfolio_concentration",
                     current_concentration=float(concentration),
-                    limit=float(exposure_limits["concentration_threshold"])
+                    limit=float(exposure_limits["concentration_threshold"]),
                 )
 
             # Validate exposure calculations
             assert concentration > 0
             reliance_position = mock_portfolio.positions["RELIANCE"]
-            reliance_exposure = reliance_position.market_value / mock_portfolio.total_value
+            reliance_exposure = (
+                reliance_position.market_value / mock_portfolio.total_value
+            )
             assert reliance_exposure > exposure_limits["single_stock_limit"]
 
             print("✅ Portfolio exposure limits monitoring working correctly")
@@ -546,19 +559,15 @@ class TestRiskManagement:
 
     @pytest.mark.asyncio
     async def test_stop_loss_take_profit_execution(
-        self,
-        mock_db_session,
-        mock_portfolio,
-        position_manager,
-        alert_service
+        self, mock_db_session, mock_portfolio, position_manager, alert_service
     ):
         """Test automated stop-loss and take-profit execution"""
 
         # Setup position with stop-loss and take-profit
         position = MockPosition("RELIANCE", 100, Decimal("2500.00"))
-        position.stop_loss_price = Decimal("2250.00")     # 10% stop loss
-        position.take_profit_price = Decimal("2875.00")   # 15% take profit
-        position.current_price = Decimal("2200.00")       # Price dropped below stop
+        position.stop_loss_price = Decimal("2250.00")  # 10% stop loss
+        position.take_profit_price = Decimal("2875.00")  # 15% take profit
+        position.current_price = Decimal("2200.00")  # Price dropped below stop
 
         mock_portfolio.positions["RELIANCE"] = position
 
@@ -570,7 +579,7 @@ class TestRiskManagement:
                     mock_portfolio.user_id,
                     "RELIANCE",
                     reason="stop_loss_triggered",
-                    price=position.current_price
+                    price=position.current_price,
                 )
 
                 # Send alert
@@ -579,7 +588,7 @@ class TestRiskManagement:
                     alert_type="stop_loss_executed",
                     symbol="RELIANCE",
                     trigger_price=float(position.current_price),
-                    stop_price=float(position.stop_loss_price)
+                    stop_price=float(position.stop_loss_price),
                 )
 
                 # Calculate realized loss
@@ -587,7 +596,9 @@ class TestRiskManagement:
                 total_loss = loss_per_share * position.quantity
 
                 assert total_loss < 0  # Confirm it's a loss
-                assert abs(total_loss) <= (position.avg_price * position.quantity * Decimal("0.10"))
+                assert abs(total_loss) <= (
+                    position.avg_price * position.quantity * Decimal("0.10")
+                )
 
             # Test take-profit scenario
             position.current_price = Decimal("2900.00")  # Price above take profit
@@ -598,7 +609,7 @@ class TestRiskManagement:
                     mock_portfolio.user_id,
                     "RELIANCE",
                     reason="take_profit_triggered",
-                    price=position.current_price
+                    price=position.current_price,
                 )
 
                 # Calculate realized profit
@@ -614,11 +625,7 @@ class TestRiskManagement:
 
     @pytest.mark.asyncio
     async def test_value_at_risk_calculation_monitoring(
-        self,
-        mock_db_session,
-        mock_portfolio,
-        risk_manager,
-        alert_service
+        self, mock_db_session, mock_portfolio, risk_manager, alert_service
     ):
         """Test Value at Risk (VaR) calculation and monitoring"""
 
@@ -631,15 +638,15 @@ class TestRiskManagement:
             await risk_manager.calculate_portfolio_var(
                 mock_portfolio.user_id,
                 confidence_level=confidence_level,
-                time_horizon=time_horizon
+                time_horizon=time_horizon,
             )
 
             # Mock VaR calculation result
             portfolio_var = {
-                "daily_var_95": Decimal("4500.00"),    # $4,500 daily VaR at 95%
-                "daily_var_99": Decimal("6200.00"),    # $6,200 daily VaR at 99%
+                "daily_var_95": Decimal("4500.00"),  # $4,500 daily VaR at 95%
+                "daily_var_99": Decimal("6200.00"),  # $6,200 daily VaR at 99%
                 "portfolio_volatility": Decimal("0.18"),  # 18% volatility
-                "correlation_adjusted": True
+                "correlation_adjusted": True,
             }
 
             # Validate VaR calculations
@@ -657,7 +664,7 @@ class TestRiskManagement:
                     alert_type="var_limit_exceeded",
                     current_var=float(current_var),
                     var_limit=float(var_limit),
-                    confidence_level=confidence_level
+                    confidence_level=confidence_level,
                 )
 
             # Create risk metric
@@ -682,7 +689,7 @@ class TestRiskManagement:
         mock_portfolio,
         risk_manager,
         position_manager,
-        alert_service
+        alert_service,
     ):
         """Test maximum drawdown protection and portfolio rebalancing"""
 
@@ -692,14 +699,16 @@ class TestRiskManagement:
         max_drawdown_limit = Decimal("0.10")  # 10% limit
 
         # Calculate current drawdown
-        current_drawdown = (initial_portfolio_value - current_portfolio_value) / initial_portfolio_value
+        current_drawdown = (
+            initial_portfolio_value - current_portfolio_value
+        ) / initial_portfolio_value
 
         try:
             # Monitor drawdown
             await risk_manager.monitor_drawdown(
                 mock_portfolio.user_id,
                 current_value=current_portfolio_value,
-                peak_value=initial_portfolio_value
+                peak_value=initial_portfolio_value,
             )
 
             # Mock drawdown monitoring result
@@ -707,7 +716,7 @@ class TestRiskManagement:
                 "current_drawdown": current_drawdown,
                 "max_drawdown_limit": max_drawdown_limit,
                 "limit_breached": current_drawdown > max_drawdown_limit,
-                "action_required": True
+                "action_required": True,
             }
 
             # Check if drawdown limit is breached
@@ -716,14 +725,14 @@ class TestRiskManagement:
                 await alert_service.emergency_notification(
                     user_id=mock_portfolio.user_id,
                     message=f"Maximum drawdown exceeded: {float(current_drawdown):.2%}",
-                    severity="CRITICAL"
+                    severity="CRITICAL",
                 )
 
                 # Trigger portfolio rebalancing
                 rebalance_result = await position_manager.rebalance_portfolio(
                     mock_portfolio.user_id,
                     target_risk_level=RiskLevel.LOW,
-                    reason="drawdown_protection"
+                    reason="drawdown_protection",
                 )
 
                 # Validate rebalancing actions
@@ -733,8 +742,7 @@ class TestRiskManagement:
                 emergency_drawdown_limit = Decimal("0.20")  # 20% emergency limit
                 if current_drawdown > emergency_drawdown_limit:
                     await risk_manager.trigger_emergency_stop(
-                        mock_portfolio.user_id,
-                        reason="maximum_drawdown_exceeded"
+                        mock_portfolio.user_id, reason="maximum_drawdown_exceeded"
                     )
 
             # Validate drawdown calculations
@@ -755,16 +763,16 @@ class TestRiskManagement:
         risk_manager,
         position_manager,
         alert_service,
-        circuit_breaker_service
+        circuit_breaker_service,
     ):
         """Test emergency shutdown procedures and system recovery"""
 
         # Setup critical risk scenario
         emergency_triggers = {
-            "portfolio_loss": Decimal("0.25"),    # 25% loss
+            "portfolio_loss": Decimal("0.25"),  # 25% loss
             "system_failure": True,
             "api_connection_lost": True,
-            "data_feed_error": True
+            "data_feed_error": True,
         }
 
         try:
@@ -772,7 +780,7 @@ class TestRiskManagement:
             shutdown_result = await risk_manager.trigger_emergency_stop(
                 mock_portfolio.user_id,
                 reason="multiple_system_failures",
-                triggers=emergency_triggers
+                triggers=emergency_triggers,
             )
 
             # Emergency actions should include:
@@ -783,13 +791,12 @@ class TestRiskManagement:
                     mock_portfolio.user_id,
                     symbol,
                     reason="emergency_shutdown",
-                    priority="IMMEDIATE"
+                    priority="IMMEDIATE",
                 )
 
             # 2. Trip all circuit breakers
             await circuit_breaker_service.trip_breaker(
-                "emergency_stop",
-                reason="System emergency shutdown activated"
+                "emergency_stop", reason="System emergency shutdown activated"
             )
 
             # 3. Send emergency notifications
@@ -797,7 +804,7 @@ class TestRiskManagement:
                 user_id=mock_portfolio.user_id,
                 message="EMERGENCY: Trading system shutdown activated",
                 severity="CRITICAL",
-                channels=["email", "sms", "push"]
+                channels=["email", "sms", "push"],
             )
 
             # 4. Switch to maintenance mode
@@ -812,8 +819,8 @@ class TestRiskManagement:
                     "positions_closed",
                     "breakers_tripped",
                     "notifications_sent",
-                    "system_locked"
-                ]
+                    "system_locked",
+                ],
             }
 
             # Validate emergency procedures
@@ -827,7 +834,7 @@ class TestRiskManagement:
                 "data_feed_restored": False,
                 "api_connections_verified": False,
                 "risk_limits_reset": False,
-                "manual_approval_received": False
+                "manual_approval_received": False,
             }
 
             # Simulate recovery process
@@ -854,11 +861,7 @@ class TestRiskManagement:
 
     @pytest.mark.asyncio
     async def test_risk_error_handling_recovery(
-        self,
-        mock_db_session,
-        risk_manager,
-        circuit_breaker_service,
-        alert_service
+        self, mock_db_session, risk_manager, circuit_breaker_service, alert_service
     ):
         """Test error handling and recovery in risk management system"""
 
@@ -867,18 +870,18 @@ class TestRiskManagement:
             {
                 "error_type": RiskLimitExceededError,
                 "message": "Position size exceeds risk limits",
-                "recovery_action": "reduce_position_size"
+                "recovery_action": "reduce_position_size",
             },
             {
                 "error_type": CircuitBreakerTriggeredError,
                 "message": "Circuit breaker activated",
-                "recovery_action": "wait_for_recovery"
+                "recovery_action": "wait_for_recovery",
             },
             {
                 "error_type": ExposureLimitError,
                 "message": "Sector exposure limit exceeded",
-                "recovery_action": "diversify_portfolio"
-            }
+                "recovery_action": "diversify_portfolio",
+            },
         ]
 
         try:
@@ -894,24 +897,21 @@ class TestRiskManagement:
                     await alert_service.send_risk_alert(
                         user_id="test_user",
                         alert_type="risk_limit_exceeded",
-                        message=str(e)
+                        message=str(e),
                     )
                     error_handled = True
 
                 except CircuitBreakerTriggeredError as e:
                     # Handle circuit breaker error
                     await circuit_breaker_service.trip_breaker(
-                        "risk_error",
-                        reason=str(e)
+                        "risk_error", reason=str(e)
                     )
                     error_handled = True
 
                 except ExposureLimitError as e:
                     # Handle exposure limit error
                     await alert_service.notify_limit_breach(
-                        user_id="test_user",
-                        alert_type="exposure_limit",
-                        message=str(e)
+                        user_id="test_user", alert_type="exposure_limit", message=str(e)
                     )
                     error_handled = True
 
@@ -925,10 +925,7 @@ class TestRiskManagement:
 
     @pytest.mark.asyncio
     async def test_risk_metrics_calculation_accuracy(
-        self,
-        mock_db_session,
-        mock_portfolio,
-        risk_manager
+        self, mock_db_session, mock_portfolio, risk_manager
     ):
         """Test accuracy of risk metrics calculations"""
 
@@ -937,13 +934,13 @@ class TestRiskManagement:
             "positions": {
                 "RELIANCE": {"value": 50000, "volatility": 0.25},
                 "TCS": {"value": 30000, "volatility": 0.20},
-                "INFY": {"value": 20000, "volatility": 0.22}
+                "INFY": {"value": 20000, "volatility": 0.22},
             },
             "correlation_matrix": {
                 ("RELIANCE", "TCS"): 0.6,
                 ("RELIANCE", "INFY"): 0.5,
-                ("TCS", "INFY"): 0.8
-            }
+                ("TCS", "INFY"): 0.8,
+            },
         }
 
         try:
@@ -959,8 +956,7 @@ class TestRiskManagement:
 
             # 2. Value at Risk
             var_95 = await risk_manager.calculate_portfolio_var(
-                mock_portfolio.user_id,
-                confidence_level=0.95
+                mock_portfolio.user_id, confidence_level=0.95
             )
             var_metric = MockRiskMetric(RiskMetricType.VAR, var_95)
             risk_metrics.append(var_metric)
@@ -969,13 +965,13 @@ class TestRiskManagement:
             concentration = await risk_manager.calculate_concentration_risk(
                 portfolio_data["positions"]
             )
-            concentration_metric = MockRiskMetric(RiskMetricType.CONCENTRATION, concentration)
+            concentration_metric = MockRiskMetric(
+                RiskMetricType.CONCENTRATION, concentration
+            )
             risk_metrics.append(concentration_metric)
 
             # 4. Leverage Ratio
-            leverage = await risk_manager.calculate_leverage_ratio(
-                mock_portfolio
-            )
+            leverage = await risk_manager.calculate_leverage_ratio(mock_portfolio)
             leverage_metric = MockRiskMetric(RiskMetricType.LEVERAGE, leverage)
             risk_metrics.append(leverage_metric)
 
@@ -1013,24 +1009,22 @@ def create_risk_test_scenario(scenario_name: str) -> Dict[str, Any]:
     scenarios = {
         "normal_risk": {
             "portfolio_value": 100000,
-            "daily_pnl": -1000,     # -1% daily loss
-            "max_drawdown": 0.03,   # 3% drawdown
-            "expected_outcome": "normal_operations"
+            "daily_pnl": -1000,  # -1% daily loss
+            "max_drawdown": 0.03,  # 3% drawdown
+            "expected_outcome": "normal_operations",
         },
-
         "high_risk": {
             "portfolio_value": 100000,
-            "daily_pnl": -8000,     # -8% daily loss
-            "max_drawdown": 0.12,   # 12% drawdown
-            "expected_outcome": "risk_alerts"
+            "daily_pnl": -8000,  # -8% daily loss
+            "max_drawdown": 0.12,  # 12% drawdown
+            "expected_outcome": "risk_alerts",
         },
-
         "critical_risk": {
             "portfolio_value": 100000,
-            "daily_pnl": -15000,    # -15% daily loss
-            "max_drawdown": 0.25,   # 25% drawdown
-            "expected_outcome": "emergency_stop"
-        }
+            "daily_pnl": -15000,  # -15% daily loss
+            "max_drawdown": 0.25,  # 25% drawdown
+            "expected_outcome": "emergency_stop",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -1040,7 +1034,12 @@ def validate_risk_assessment(assessment: Dict[str, Any]) -> bool:
     """Validate risk assessment results"""
 
     try:
-        required_fields = ["risk_score", "risk_level", "position_size_ok", "exposure_ok"]
+        required_fields = [
+            "risk_score",
+            "risk_level",
+            "position_size_ok",
+            "exposure_ok",
+        ]
 
         for field in required_fields:
             assert field in assessment
@@ -1049,8 +1048,12 @@ def validate_risk_assessment(assessment: Dict[str, Any]) -> bool:
         assert 0 <= assessment["risk_score"] <= 1
 
         # Validate risk level
-        risk_levels = [RiskLevel.LOW, RiskLevel.MEDIUM,
-                       RiskLevel.HIGH, RiskLevel.CRITICAL]
+        risk_levels = [
+            RiskLevel.LOW,
+            RiskLevel.MEDIUM,
+            RiskLevel.HIGH,
+            RiskLevel.CRITICAL,
+        ]
         assert assessment["risk_level"] in risk_levels
 
         # Validate boolean flags
@@ -1071,12 +1074,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

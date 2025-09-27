@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 class PredictionType(Enum):
     """Prediction type enumeration"""
+
     PRICE_MOVEMENT = "price_movement"
     MARKET_SENTIMENT = "market_sentiment"
     VOLATILITY = "volatility"
@@ -34,6 +35,7 @@ class PredictionType(Enum):
 
 class ConfidenceLevel(Enum):
     """Confidence level enumeration"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -42,6 +44,7 @@ class ConfidenceLevel(Enum):
 
 class AIModelStatus(Enum):
     """AI model status enumeration"""
+
     INITIALIZING = "initializing"
     READY = "ready"
     BUSY = "busy"
@@ -51,31 +54,37 @@ class AIModelStatus(Enum):
 
 class AIError(Exception):
     """Base exception for AI-related errors"""
+
     pass
 
 
 class ModelConnectionError(AIError):
     """Raised when AI model connection fails"""
+
     pass
 
 
 class PredictionError(AIError):
     """Raised when prediction generation fails"""
+
     pass
 
 
 class RAGProcessingError(AIError):
     """Raised when RAG processing fails"""
+
     pass
 
 
 class ConfidenceCalculationError(AIError):
     """Raised when confidence calculation fails"""
+
     pass
 
 
 class MockAIModel:
     """Mock AI Model representation"""
+
     def __init__(self, model_id: str = "gemma3_4b_it_q4_K_M"):
         self.id = model_id
         self.name = "Gemma3 4B IT Q4_K_M"
@@ -86,14 +95,16 @@ class MockAIModel:
         self.performance_metrics = {
             "accuracy": Decimal("0.75"),
             "response_time": Decimal("2.5"),  # seconds
-            "confidence_calibration": Decimal("0.82")
+            "confidence_calibration": Decimal("0.82"),
         }
 
 
 class MockPrediction:
     """Mock AI Prediction model"""
-    def __init__(self, prediction_id: str, symbol: str,
-                 prediction_type: PredictionType):
+
+    def __init__(
+        self, prediction_id: str, symbol: str, prediction_type: PredictionType
+    ):
         self.id = prediction_id
         self.symbol = symbol
         self.prediction_type = prediction_type
@@ -108,6 +119,7 @@ class MockPrediction:
 
 class MockRAGData:
     """Mock RAG (Retrieval-Augmented Generation) data"""
+
     def __init__(self, query: str):
         self.query = query
         self.retrieved_documents = []
@@ -187,7 +199,7 @@ class TestAIIntegration:
         mock_ai_model,
         ollama_service,
         rag_service,
-        confidence_tracker
+        confidence_tracker,
     ):
         """Test complete AI prediction workflow with confidence tracking"""
 
@@ -198,17 +210,16 @@ class TestAIIntegration:
         # Mock RAG data
         rag_data = MockRAGData(query)
         rag_data.retrieved_documents = [
-            {"content": "Recent financial reports show strong growth",
-             "relevance": 0.85},
-            {"content": "Market sentiment is bullish on this stock",
-             "relevance": 0.78}
+            {
+                "content": "Recent financial reports show strong growth",
+                "relevance": 0.85,
+            },
+            {"content": "Market sentiment is bullish on this stock", "relevance": 0.78},
         ]
         rag_data.context_relevance = Decimal("0.82")
 
         # Mock prediction
-        prediction = MockPrediction(
-            "pred_001", symbol, PredictionType.PRICE_MOVEMENT
-        )
+        prediction = MockPrediction("pred_001", symbol, PredictionType.PRICE_MOVEMENT)
         prediction.prediction_value = "BULLISH_TREND"
         prediction.confidence_score = Decimal("0.78")
         prediction.confidence_level = ConfidenceLevel.HIGH
@@ -225,21 +236,18 @@ class TestAIIntegration:
         ollama_service.generate_prediction.return_value = prediction
         ollama_service.calculate_confidence.return_value = Decimal("0.78")
         confidence_tracker.track_prediction.return_value = {
-            "tracked": True, "confidence_calibrated": True
+            "tracked": True,
+            "confidence_calibrated": True,
         }
 
         try:
             # Step 1: Initialize AI model
-            init_result = await ollama_service.initialize_model(
-                mock_ai_model.id
-            )
+            init_result = await ollama_service.initialize_model(mock_ai_model.id)
             assert init_result["success"] is True
             assert mock_ai_model.status == AIModelStatus.READY
 
             # Step 2: Retrieve and process context via RAG
-            context_data = await rag_service.retrieve_context(
-                query, max_documents=5
-            )
+            context_data = await rag_service.retrieve_context(query, max_documents=5)
             assert context_data.context_relevance > Decimal("0.50")
             assert len(context_data.retrieved_documents) > 0
 
@@ -252,9 +260,7 @@ class TestAIIntegration:
 
             # Step 4: Generate AI prediction
             ai_prediction = await ollama_service.generate_prediction(
-                symbol,
-                PredictionType.PRICE_MOVEMENT,
-                augmented_prompt
+                symbol, PredictionType.PRICE_MOVEMENT, augmented_prompt
             )
 
             assert ai_prediction.symbol == symbol
@@ -280,9 +286,7 @@ class TestAIIntegration:
                 ai_prediction.confidence_level = ConfidenceLevel.LOW
 
             # Step 6: Track prediction for learning
-            tracking_result = await confidence_tracker.track_prediction(
-                ai_prediction
-            )
+            tracking_result = await confidence_tracker.track_prediction(ai_prediction)
             assert tracking_result["tracked"] is True
 
             print("✅ Complete AI prediction workflow executed successfully")
@@ -292,10 +296,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_ollama_model_connection_failure(
-        self,
-        mock_db_session,
-        mock_ai_model,
-        ollama_service
+        self, mock_db_session, mock_ai_model, ollama_service
     ):
         """Test handling of Ollama model connection failures"""
 
@@ -321,10 +322,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_rag_processing_failure_recovery(
-        self,
-        mock_db_session,
-        rag_service,
-        ollama_service
+        self, mock_db_session, rag_service, ollama_service
     ):
         """Test recovery from RAG processing failures"""
 
@@ -348,8 +346,9 @@ class TestAIIntegration:
             return prediction
 
         rag_service.retrieve_context.side_effect = mock_retrieve_context
-        ollama_service.generate_prediction.side_effect = \
+        ollama_service.generate_prediction.side_effect = (
             mock_generate_prediction_fallback
+        )
 
         try:
             # Attempt RAG processing (should fail)
@@ -363,7 +362,7 @@ class TestAIIntegration:
             prediction = await ollama_service.generate_prediction(
                 "RELIANCE",
                 PredictionType.MARKET_SENTIMENT,
-                query  # Simple prompt without RAG context
+                query,  # Simple prompt without RAG context
             )
 
             # Verify fallback mode was used
@@ -378,10 +377,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_confidence_calibration_learning(
-        self,
-        mock_db_session,
-        confidence_tracker,
-        ai_learning_engine
+        self, mock_db_session, confidence_tracker, ai_learning_engine
     ):
         """Test confidence calibration and learning from outcomes"""
 
@@ -391,20 +387,20 @@ class TestAIIntegration:
                 "prediction_id": "pred_001",
                 "predicted_confidence": Decimal("0.80"),
                 "actual_outcome": True,  # Prediction was correct
-                "symbol": "RELIANCE"
+                "symbol": "RELIANCE",
             },
             {
                 "prediction_id": "pred_002",
                 "predicted_confidence": Decimal("0.90"),
                 "actual_outcome": False,  # Prediction was wrong
-                "symbol": "TCS"
+                "symbol": "TCS",
             },
             {
                 "prediction_id": "pred_003",
                 "predicted_confidence": Decimal("0.60"),
                 "actual_outcome": True,  # Prediction was correct
-                "symbol": "INFY"
-            }
+                "symbol": "INFY",
+            },
         ]
 
         # Mock learning results
@@ -413,15 +409,15 @@ class TestAIIntegration:
             "overconfidence_bias": Decimal("0.08"),
             "accuracy_by_confidence": {
                 "0.8-0.9": Decimal("0.75"),
-                "0.9-1.0": Decimal("0.60")
-            }
+                "0.9-1.0": Decimal("0.60"),
+            },
         }
 
         confidence_tracker.calibrate_confidence.return_value = calibration_metrics
         ai_learning_engine.learn_from_outcomes.return_value = {
             "learning_applied": True,
             "model_updated": True,
-            "performance_improvement": Decimal("0.05")
+            "performance_improvement": Decimal("0.05"),
         }
 
         try:
@@ -452,10 +448,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_ai_sentiment_analysis_integration(
-        self,
-        mock_db_session,
-        ollama_service,
-        rag_service
+        self, mock_db_session, ollama_service, rag_service
     ):
         """Test AI sentiment analysis integration with market data"""
 
@@ -465,21 +458,21 @@ class TestAIIntegration:
                 "headline": "RELIANCE reports strong Q4 earnings",
                 "content": "Company exceeded expectations...",
                 "sentiment_score": 0.8,
-                "source": "financial_news"
+                "source": "financial_news",
             },
             {
                 "headline": "Market volatility concerns rise",
                 "content": "Investors worry about global economic factors...",
                 "sentiment_score": -0.3,
-                "source": "market_analysis"
-            }
+                "source": "market_analysis",
+            },
         ]
 
         # Mock services
         rag_service.process_documents.return_value = {
             "processed_docs": len(news_data),
             "average_sentiment": 0.25,  # Mixed sentiment
-            "key_themes": ["earnings", "volatility", "economic_factors"]
+            "key_themes": ["earnings", "volatility", "economic_factors"],
         }
 
         ollama_service.analyze_sentiment.return_value = {
@@ -488,8 +481,8 @@ class TestAIIntegration:
             "sentiment_components": {
                 "earnings_sentiment": 0.8,
                 "market_sentiment": -0.2,
-                "economic_sentiment": -0.1
-            }
+                "economic_sentiment": -0.1,
+            },
         }
 
         try:
@@ -524,11 +517,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_ai_performance_monitoring(
-        self,
-        mock_db_session,
-        mock_ai_model,
-        ollama_service,
-        confidence_tracker
+        self, mock_db_session, mock_ai_model, ollama_service, confidence_tracker
     ):
         """Test AI model performance monitoring and metrics"""
 
@@ -540,7 +529,7 @@ class TestAIIntegration:
             "avg_confidence": Decimal("0.68"),
             "confidence_calibration": Decimal("0.82"),
             "avg_response_time": Decimal("2.1"),  # seconds
-            "uptime": Decimal("0.98")  # 98%
+            "uptime": Decimal("0.98"),  # 98%
         }
 
         # Mock service responses
@@ -548,13 +537,13 @@ class TestAIIntegration:
             "status": "healthy",
             "response_time": Decimal("1.8"),
             "memory_usage": Decimal("0.65"),
-            "cpu_usage": Decimal("0.45")
+            "cpu_usage": Decimal("0.45"),
         }
 
         confidence_tracker.get_confidence_metrics.return_value = {
             "calibration_score": Decimal("0.82"),
             "overconfidence_rate": Decimal("0.18"),
-            "underconfidence_rate": Decimal("0.12")
+            "underconfidence_rate": Decimal("0.12"),
         }
 
         try:
@@ -572,11 +561,13 @@ class TestAIIntegration:
             assert confidence_metrics["calibration_score"] > Decimal("0.70")
 
             # Step 3: Update model performance metrics
-            mock_ai_model.performance_metrics.update({
-                "accuracy": performance_data["accuracy"],
-                "response_time": health_status["response_time"],
-                "confidence_calibration": confidence_metrics["calibration_score"]
-            })
+            mock_ai_model.performance_metrics.update(
+                {
+                    "accuracy": performance_data["accuracy"],
+                    "response_time": health_status["response_time"],
+                    "confidence_calibration": confidence_metrics["calibration_score"],
+                }
+            )
 
             # Step 4: Validate performance thresholds
             assert mock_ai_model.performance_metrics["accuracy"] > Decimal("0.70")
@@ -592,10 +583,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_ai_data_privacy_security(
-        self,
-        mock_db_session,
-        ollama_service,
-        rag_service
+        self, mock_db_session, ollama_service, rag_service
     ):
         """Test AI data privacy and security measures"""
 
@@ -626,7 +614,7 @@ class TestAIIntegration:
             secure_prediction_request = {
                 "query": processed_query,
                 "encrypted": True,
-                "user_id_hash": "hashed_user_identifier"
+                "user_id_hash": "hashed_user_identifier",
             }
 
             assert "encrypted" in secure_prediction_request
@@ -640,10 +628,7 @@ class TestAIIntegration:
 
     @pytest.mark.asyncio
     async def test_ai_prediction_validation_feedback(
-        self,
-        mock_db_session,
-        ai_learning_engine,
-        confidence_tracker
+        self, mock_db_session, ai_learning_engine, confidence_tracker
     ):
         """Test AI prediction validation and feedback loop"""
 
@@ -655,14 +640,14 @@ class TestAIIntegration:
             "actual_value": "BULLISH_TREND",
             "predicted_confidence": Decimal("0.80"),
             "outcome_accuracy": True,
-            "market_movement": Decimal("0.08")  # 8% positive movement
+            "market_movement": Decimal("0.08"),  # 8% positive movement
         }
 
         # Mock validation and learning
         ai_learning_engine.validate_learning.return_value = {
             "validation_passed": True,
             "accuracy_improved": True,
-            "confidence_better_calibrated": True
+            "confidence_better_calibrated": True,
         }
 
         try:
@@ -679,9 +664,9 @@ class TestAIIntegration:
                 "prediction_id": prediction_id,
                 "outcome_accuracy": actual_outcome["outcome_accuracy"],
                 "confidence_error": abs(
-                    actual_outcome["predicted_confidence"] -
-                    (1.0 if actual_outcome["outcome_accuracy"] else 0.0)
-                )
+                    actual_outcome["predicted_confidence"]
+                    - (1.0 if actual_outcome["outcome_accuracy"] else 0.0)
+                ),
             }
 
             await confidence_tracker.update_confidence(confidence_update)
@@ -704,22 +689,20 @@ def create_ai_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "model_available": True,
             "rag_context_quality": 0.80,
             "expected_confidence": 0.75,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "model_offline": {
             "model_available": False,
             "rag_context_quality": 0.80,
             "expected_confidence": 0.00,
-            "expected_outcome": "model_connection_error"
+            "expected_outcome": "model_connection_error",
         },
-
         "poor_context": {
             "model_available": True,
             "rag_context_quality": 0.30,
             "expected_confidence": 0.45,
-            "expected_outcome": "low_confidence"
-        }
+            "expected_outcome": "low_confidence",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -753,12 +736,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

@@ -5,6 +5,7 @@ These tests validate the API contract defined in the REST API specification.
 Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -22,6 +23,7 @@ class TestTradesListContract:
         """
         # This import will fail until the main app is created
         from src.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -44,9 +46,9 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -80,9 +82,9 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -90,9 +92,9 @@ class TestTradesListContract:
 
         # Assert - Symbol filter is applied (if trades exist)
         for trade in response_json["trades"]:
-            assert trade["symbol"] == test_symbol, (
-                f"Trade symbol should be {test_symbol}, got {trade.get('symbol')}"
-            )
+            assert (
+                trade["symbol"] == test_symbol
+            ), f"Trade symbol should be {test_symbol}, got {trade.get('symbol')}"
 
     def test_get_trades_with_strategy_id_filter_contract(
         self, client: TestClient, valid_strategy_id: str
@@ -105,14 +107,16 @@ class TestTradesListContract:
         - strategy_id must be valid UUID format
         """
         # Act
-        response: Response = client.get(f"/api/v1/trades?strategy_id={valid_strategy_id}")
+        response: Response = client.get(
+            f"/api/v1/trades?strategy_id={valid_strategy_id}"
+        )
 
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -143,9 +147,9 @@ class TestTradesListContract:
             # Assert - Status Code
             expected_status = 200
             actual_status = response.status_code
-            assert actual_status == expected_status, (
-                f"Expected status {expected_status}, got {actual_status} for status={status}"
-            )
+            assert (
+                actual_status == expected_status
+            ), f"Expected status {expected_status}, got {actual_status} for status={status}"
 
             # Assert - Response Structure
             response_json = response.json()
@@ -153,9 +157,9 @@ class TestTradesListContract:
 
             # Assert - Status filter is applied (if trades exist)
             for trade in response_json["trades"]:
-                assert trade["status"] == status, (
-                    f"Trade status should be {status}, got {trade.get('status')}"
-                )
+                assert (
+                    trade["status"] == status
+                ), f"Trade status should be {status}, got {trade.get('status')}"
 
     def test_get_trades_with_date_range_contract(self, client: TestClient) -> None:
         """
@@ -175,9 +179,9 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -198,9 +202,9 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -208,9 +212,9 @@ class TestTradesListContract:
 
         # Assert - Limit is respected
         trades_count = len(response_json["trades"])
-        assert trades_count <= test_limit, (
-            f"Trades count {trades_count} should not exceed limit {test_limit}"
-        )
+        assert (
+            trades_count <= test_limit
+        ), f"Trades count {trades_count} should not exceed limit {test_limit}"
 
     def test_get_trades_with_combined_filters_contract(
         self, client: TestClient, valid_strategy_id: str
@@ -228,7 +232,7 @@ class TestTradesListContract:
             "status": "CLOSED",
             "start_date": "2025-01-01",
             "end_date": "2025-09-17",
-            "limit": "50"
+            "limit": "50",
         }
         query_string = "&".join([f"{k}={v}" for k, v in params.items()])
         response: Response = client.get(f"/api/v1/trades?{query_string}")
@@ -236,15 +240,17 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
         self._validate_trades_list_structure(response_json)
 
-    def test_get_trades_invalid_strategy_id_format_contract(self, client: TestClient) -> None:
+    def test_get_trades_invalid_strategy_id_format_contract(
+        self, client: TestClient
+    ) -> None:
         """
         Test trades list with invalid strategy_id format.
 
@@ -254,13 +260,15 @@ class TestTradesListContract:
         """
         # Act
         invalid_strategy_id = "not-a-uuid"
-        response: Response = client.get(f"/api/v1/trades?strategy_id={invalid_strategy_id}")
+        response: Response = client.get(
+            f"/api/v1/trades?strategy_id={invalid_strategy_id}"
+        )
 
         # Assert - Status Code
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid strategy_id should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid strategy_id should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_invalid_status_contract(self, client: TestClient) -> None:
         """
@@ -276,9 +284,9 @@ class TestTradesListContract:
 
         # Assert - Status Code
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid status should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid status should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_invalid_date_format_contract(self, client: TestClient) -> None:
         """
@@ -291,15 +299,15 @@ class TestTradesListContract:
         # Test invalid start_date format
         response = client.get("/api/v1/trades?start_date=01/01/2025")
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid start_date format should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid start_date format should return {expected_codes}, got {response.status_code}"
 
         # Test invalid end_date format
         response = client.get("/api/v1/trades?end_date=17-09-2025")
-        assert response.status_code in expected_codes, (
-            f"Invalid end_date format should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid end_date format should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_invalid_limit_range_contract(self, client: TestClient) -> None:
         """
@@ -312,21 +320,21 @@ class TestTradesListContract:
         # Test limit too small
         response = client.get("/api/v1/trades?limit=0")
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Limit=0 should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Limit=0 should return {expected_codes}, got {response.status_code}"
 
         # Test limit too large
         response = client.get("/api/v1/trades?limit=1001")
-        assert response.status_code in expected_codes, (
-            f"Limit=1001 should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Limit=1001 should return {expected_codes}, got {response.status_code}"
 
         # Test negative limit
         response = client.get("/api/v1/trades?limit=-10")
-        assert response.status_code in expected_codes, (
-            f"Negative limit should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Negative limit should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_invalid_limit_format_contract(self, client: TestClient) -> None:
         """
@@ -341,9 +349,9 @@ class TestTradesListContract:
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Non-integer limit should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Non-integer limit should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_invalid_date_range_contract(self, client: TestClient) -> None:
         """
@@ -354,13 +362,15 @@ class TestTradesListContract:
         - Should return 400 Bad Request or 422 Unprocessable Entity
         """
         # Act - end_date before start_date
-        response = client.get("/api/v1/trades?start_date=2025-09-17&end_date=2025-01-01")
+        response = client.get(
+            "/api/v1/trades?start_date=2025-09-17&end_date=2025-01-01"
+        )
 
         # Assert
         expected_codes = [400, 422]
-        assert response.status_code in expected_codes, (
-            f"Invalid date range should return {expected_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in expected_codes
+        ), f"Invalid date range should return {expected_codes}, got {response.status_code}"
 
     def test_get_trades_empty_symbol_contract(self, client: TestClient) -> None:
         """
@@ -374,9 +384,9 @@ class TestTradesListContract:
 
         # Assert - Should either return 200 (ignoring filter) or validation error
         acceptable_codes = [200, 400, 422]
-        assert response.status_code in acceptable_codes, (
-            f"Empty symbol should return {acceptable_codes}, got {response.status_code}"
-        )
+        assert (
+            response.status_code in acceptable_codes
+        ), f"Empty symbol should return {acceptable_codes}, got {response.status_code}"
 
     def test_get_trades_pagination_contract(self, client: TestClient) -> None:
         """
@@ -392,9 +402,9 @@ class TestTradesListContract:
         # Assert - Status Code
         expected_status = 200
         actual_status = response.status_code
-        assert actual_status == expected_status, (
-            f"Expected status {expected_status}, got {actual_status}"
-        )
+        assert (
+            actual_status == expected_status
+        ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
         response_json = response.json()
@@ -407,15 +417,15 @@ class TestTradesListContract:
 
         # If we have trades and total > returned count, has_more should be True
         if trades_count > 0 and total_count > trades_count:
-            assert has_more is True, (
-                "has_more should be True when total > returned count"
-            )
-        
+            assert (
+                has_more is True
+            ), "has_more should be True when total > returned count"
+
         # If total equals returned count, has_more should be False
         if total_count == trades_count:
-            assert has_more is False, (
-                "has_more should be False when total equals returned count"
-            )
+            assert (
+                has_more is False
+            ), "has_more should be False when total equals returned count"
 
     def test_get_trades_case_sensitivity_contract(self, client: TestClient) -> None:
         """
@@ -426,15 +436,19 @@ class TestTradesListContract:
         """
         # Test with lowercase symbol
         response = client.get("/api/v1/trades?symbol=banknifty")
-        assert response.status_code in [200, 400, 422], (
-            f"Lowercase symbol handling returned {response.status_code}"
-        )
+        assert response.status_code in [
+            200,
+            400,
+            422,
+        ], f"Lowercase symbol handling returned {response.status_code}"
 
         # Test with lowercase status
         response = client.get("/api/v1/trades?status=open")
-        assert response.status_code in [200, 400, 422], (
-            f"Lowercase status handling returned {response.status_code}"
-        )
+        assert response.status_code in [
+            200,
+            400,
+            422,
+        ], f"Lowercase status handling returned {response.status_code}"
 
     def _validate_trades_list_structure(self, trades_list: dict) -> None:
         """
@@ -473,8 +487,14 @@ class TestTradesListContract:
         """
         # Required fields for Trade schema
         required_fields = [
-            "trade_id", "symbol", "trade_type", "quantity", 
-            "entry_price", "entry_timestamp", "status", "created_at"
+            "trade_id",
+            "symbol",
+            "trade_type",
+            "quantity",
+            "entry_price",
+            "entry_timestamp",
+            "status",
+            "created_at",
         ]
 
         for field in required_fields:
@@ -495,9 +515,10 @@ class TestTradesListContract:
 
         # Validate trade_type
         trade_type = trade["trade_type"]
-        assert trade_type in ["BUY", "SELL"], (
-            f"trade_type must be BUY or SELL, got {trade_type}"
-        )
+        assert trade_type in [
+            "BUY",
+            "SELL",
+        ], f"trade_type must be BUY or SELL, got {trade_type}"
 
         # Validate quantity
         quantity = trade["quantity"]
@@ -515,9 +536,11 @@ class TestTradesListContract:
 
         # Validate status
         status = trade["status"]
-        assert status in ["OPEN", "CLOSED", "CANCELLED"], (
-            f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
-        )
+        assert status in [
+            "OPEN",
+            "CLOSED",
+            "CANCELLED",
+        ], f"status must be OPEN, CLOSED, or CANCELLED, got {status}"
 
         # Validate created_at
         created_at = trade["created_at"]
@@ -543,9 +566,12 @@ class TestTradesListContract:
 
         if "exit_reason" in trade and trade["exit_reason"] is not None:
             exit_reason = trade["exit_reason"]
-            assert exit_reason in ["STOP_LOSS", "TAKE_PROFIT", "MANUAL", "STRATEGY"], (
-                f"exit_reason must be valid enum value, got {exit_reason}"
-            )
+            assert exit_reason in [
+                "STOP_LOSS",
+                "TAKE_PROFIT",
+                "MANUAL",
+                "STRATEGY",
+            ], f"exit_reason must be valid enum value, got {exit_reason}"
 
         if "gross_pnl" in trade and trade["gross_pnl"] is not None:
             gross_pnl = trade["gross_pnl"]
@@ -553,7 +579,9 @@ class TestTradesListContract:
 
         if "transaction_cost" in trade:
             transaction_cost = trade["transaction_cost"]
-            assert isinstance(transaction_cost, (int, float)), "transaction_cost must be number"
+            assert isinstance(
+                transaction_cost, (int, float)
+            ), "transaction_cost must be number"
             assert transaction_cost >= 0, "transaction_cost cannot be negative"
 
         if "net_pnl" in trade and trade["net_pnl"] is not None:

@@ -25,8 +25,8 @@ from sqlalchemy.orm import Session
 
 class MockUser:
     """Mock User model for testing"""
-    def __init__(self, user_id: str = "test_user_001",
-                 email: str = "test@example.com"):
+
+    def __init__(self, user_id: str = "test_user_001", email: str = "test@example.com"):
         self.id = user_id
         self.email = email
         self.is_active = True
@@ -37,6 +37,7 @@ class MockUser:
 
 class MockPortfolio:
     """Mock Portfolio model for testing"""
+
     def __init__(self, user_id: str):
         self.id = f"portfolio_{user_id}"
         self.user_id = user_id
@@ -48,6 +49,7 @@ class MockPortfolio:
 
 class MockStrategy:
     """Mock Strategy model for testing"""
+
     def __init__(self, strategy_id: str = "paper_strategy_001"):
         self.id = strategy_id
         self.name = "Paper Trading Strategy"
@@ -59,8 +61,8 @@ class MockStrategy:
 
 class MockTrade:
     """Mock Trade model for testing"""
-    def __init__(self, trade_id: str, symbol: str, quantity: int,
-                 price: Decimal):
+
+    def __init__(self, trade_id: str, symbol: str, quantity: int, price: Decimal):
         self.id = trade_id
         self.symbol = symbol
         self.quantity = quantity
@@ -74,21 +76,25 @@ class MockTrade:
 
 class PaperTradingError(Exception):
     """Custom exception for paper trading errors"""
+
     pass
 
 
 class InsufficientFundsError(PaperTradingError):
     """Raised when insufficient funds for paper trading"""
+
     pass
 
 
 class StrategyExecutionError(PaperTradingError):
     """Raised when strategy execution fails"""
+
     pass
 
 
 class MarketDataError(PaperTradingError):
     """Raised when market data is unavailable"""
+
     pass
 
 
@@ -165,7 +171,7 @@ class TestPaperTradingWorkflow:
         mock_strategy,
         paper_trading_service,
         market_data_service,
-        strategy_service
+        strategy_service,
     ):
         """Test successful paper trading workflow from start to finish"""
 
@@ -176,8 +182,7 @@ class TestPaperTradingWorkflow:
 
         # Mock service responses
         market_data_service.get_current_price.return_value = expected_price
-        paper_trading_service.initialize_portfolio.return_value = \
-            mock_portfolio
+        paper_trading_service.initialize_portfolio.return_value = mock_portfolio
         strategy_service.create_strategy.return_value = mock_strategy
 
         # Create a mock trade
@@ -187,9 +192,7 @@ class TestPaperTradingWorkflow:
         # Execute workflow
         try:
             # Step 1: Initialize portfolio
-            portfolio = await paper_trading_service.initialize_portfolio(
-                mock_user.id
-            )
+            portfolio = await paper_trading_service.initialize_portfolio(mock_user.id)
             assert portfolio.cash_balance == Decimal("100000.00")
             assert portfolio.user_id == mock_user.id
 
@@ -197,7 +200,7 @@ class TestPaperTradingWorkflow:
             strategy = await strategy_service.create_strategy(
                 name="Test Strategy",
                 strategy_type="quantitative",
-                parameters={"risk_tolerance": 0.05}
+                parameters={"risk_tolerance": 0.05},
             )
             assert strategy.name == "Paper Trading Strategy"
             assert strategy.is_active
@@ -214,7 +217,7 @@ class TestPaperTradingWorkflow:
                 symbol=symbol,
                 quantity=quantity,
                 order_type="MARKET",
-                side="BUY"
+                side="BUY",
             )
 
             assert trade.symbol == symbol
@@ -229,8 +232,7 @@ class TestPaperTradingWorkflow:
 
             # Step 6: Update portfolio
             updated_portfolio = await paper_trading_service.update_portfolio(
-                mock_user.id,
-                trade
+                mock_user.id, trade
             )
 
             # Verify portfolio updated correctly
@@ -252,7 +254,7 @@ class TestPaperTradingWorkflow:
         mock_user,
         mock_portfolio,
         paper_trading_service,
-        market_data_service
+        market_data_service,
     ):
         """Test handling of insufficient funds error"""
 
@@ -282,7 +284,7 @@ class TestPaperTradingWorkflow:
                     symbol=symbol,
                     quantity=quantity,
                     order_type="MARKET",
-                    side="BUY"
+                    side="BUY",
                 )
 
             assert "Insufficient funds" in str(exc_info.value)
@@ -293,18 +295,15 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_strategy_execution_error_handling(
-        self,
-        mock_db_session,
-        mock_user,
-        mock_strategy,
-        strategy_service
+        self, mock_db_session, mock_user, mock_strategy, strategy_service
     ):
         """Test handling of strategy execution errors"""
 
         # Configure strategy service to fail
         error_msg = "Strategy activation failed: Invalid parameters"
-        strategy_service.activate_strategy.side_effect = \
-            StrategyExecutionError(error_msg)
+        strategy_service.activate_strategy.side_effect = StrategyExecutionError(
+            error_msg
+        )
 
         try:
             with pytest.raises(StrategyExecutionError) as exc_info:
@@ -318,9 +317,7 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_market_data_error_handling(
-        self,
-        mock_db_session,
-        market_data_service
+        self, mock_db_session, market_data_service
     ):
         """Test handling of market data errors"""
 
@@ -343,20 +340,14 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_portfolio_state_recovery(
-        self,
-        mock_db_session,
-        mock_user,
-        mock_portfolio,
-        paper_trading_service
+        self, mock_db_session, mock_user, mock_portfolio, paper_trading_service
     ):
         """Test portfolio state recovery after errors"""
 
         original_balance = mock_portfolio.cash_balance
 
         # Simulate failed trade that should not affect portfolio
-        paper_trading_service.place_order.side_effect = Exception(
-            "Network error"
-        )
+        paper_trading_service.place_order.side_effect = Exception("Network error")
 
         try:
             with pytest.raises(Exception):
@@ -365,15 +356,12 @@ class TestPaperTradingWorkflow:
                     symbol="RELIANCE",
                     quantity=10,
                     order_type="MARKET",
-                    side="BUY"
+                    side="BUY",
                 )
 
             # Verify portfolio state unchanged after error
-            paper_trading_service.initialize_portfolio.return_value = \
-                mock_portfolio
-            portfolio = await paper_trading_service.initialize_portfolio(
-                mock_user.id
-            )
+            paper_trading_service.initialize_portfolio.return_value = mock_portfolio
+            portfolio = await paper_trading_service.initialize_portfolio(mock_user.id)
 
             assert portfolio.cash_balance == original_balance
             print("✅ Portfolio state recovered successfully after error")
@@ -383,11 +371,7 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_concurrent_trade_execution(
-        self,
-        mock_db_session,
-        mock_user,
-        paper_trading_service,
-        market_data_service
+        self, mock_db_session, mock_user, paper_trading_service, market_data_service
     ):
         """Test handling of concurrent trade execution"""
 
@@ -400,9 +384,7 @@ class TestPaperTradingWorkflow:
 
         # Create mock trades
         mock_trades = []
-        for i, (symbol, quantity, price) in enumerate(
-            zip(symbols, quantities, prices)
-        ):
+        for i, (symbol, quantity, price) in enumerate(zip(symbols, quantities, prices)):
             trade = MockTrade(f"trade_{i+1}", symbol, quantity, price)
             mock_trades.append(trade)
 
@@ -417,16 +399,14 @@ class TestPaperTradingWorkflow:
                     symbol=symbol,
                     quantity=quantity,
                     order_type="MARKET",
-                    side="BUY"
+                    side="BUY",
                 )
                 tasks.append(task)
 
             trades = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Verify all trades executed successfully
-            successful_trades = [
-                t for t in trades if not isinstance(t, Exception)
-            ]
+            successful_trades = [t for t in trades if not isinstance(t, Exception)]
             assert len(successful_trades) == len(symbols)
 
             print("✅ Concurrent trade execution handled successfully")
@@ -436,11 +416,7 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_risk_management_triggers(
-        self,
-        mock_db_session,
-        mock_user,
-        mock_portfolio,
-        paper_trading_service
+        self, mock_db_session, mock_user, mock_portfolio, paper_trading_service
     ):
         """Test risk management triggers and circuit breakers"""
 
@@ -456,9 +432,7 @@ class TestPaperTradingWorkflow:
         try:
             # Simulate risk check
             if loss_percentage > risk_threshold:
-                error_msg = (
-                    f"Risk threshold exceeded: {loss_percentage:.2%} loss"
-                )
+                error_msg = f"Risk threshold exceeded: {loss_percentage:.2%} loss"
                 raise PaperTradingError(error_msg)
 
         except PaperTradingError as e:
@@ -475,7 +449,7 @@ class TestPaperTradingWorkflow:
                 "initial_balance": Decimal("100000.00"),
                 "max_position_size": Decimal("0.10"),
                 "risk_tolerance": Decimal("0.05"),
-                "commission_rate": Decimal("0.001")
+                "commission_rate": Decimal("0.001"),
             }
 
             # Validate configuration
@@ -491,10 +465,7 @@ class TestPaperTradingWorkflow:
 
     @pytest.mark.asyncio
     async def test_paper_trading_performance_metrics(
-        self,
-        mock_db_session,
-        mock_user,
-        paper_trading_service
+        self, mock_db_session, mock_user, paper_trading_service
     ):
         """Test calculation of paper trading performance metrics"""
 
@@ -503,13 +474,14 @@ class TestPaperTradingWorkflow:
             "total_return": Decimal("0.15"),  # 15% return
             "sharpe_ratio": Decimal("1.25"),
             "max_drawdown": Decimal("0.08"),  # 8% drawdown
-            "win_rate": Decimal("0.65"),      # 65% win rate
+            "win_rate": Decimal("0.65"),  # 65% win rate
             "total_trades": 25,
-            "profitable_trades": 16
+            "profitable_trades": 16,
         }
 
-        paper_trading_service.calculate_performance_metrics.return_value = \
+        paper_trading_service.calculate_performance_metrics.return_value = (
             performance_data
+        )
 
         try:
             calc_service = paper_trading_service.calculate_performance_metrics
@@ -518,7 +490,7 @@ class TestPaperTradingWorkflow:
             assert metrics["total_return"] > 0
             assert metrics["sharpe_ratio"] > 1
             assert metrics["max_drawdown"] < Decimal("0.20")  # Less than 20%
-            assert metrics["win_rate"] > Decimal("0.50")     # Greater than 50%
+            assert metrics["win_rate"] > Decimal("0.50")  # Greater than 50%
 
             print("✅ Paper trading performance metrics calculated")
 
@@ -534,56 +506,37 @@ def create_test_scenario(scenario_name: str) -> Dict[str, Any]:
         "successful_workflow": {
             "user_balance": Decimal("100000.00"),
             "trades": [
-                {
-                    "symbol": "RELIANCE",
-                    "quantity": 10,
-                    "price": Decimal("2500.00")
-                },
-                {
-                    "symbol": "TCS",
-                    "quantity": 5,
-                    "price": Decimal("3800.00")
-                }
+                {"symbol": "RELIANCE", "quantity": 10, "price": Decimal("2500.00")},
+                {"symbol": "TCS", "quantity": 5, "price": Decimal("3800.00")},
             ],
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "insufficient_funds": {
             "user_balance": Decimal("1000.00"),
             "trades": [
-                {
-                    "symbol": "RELIANCE",
-                    "quantity": 100,
-                    "price": Decimal("2500.00")
-                }
+                {"symbol": "RELIANCE", "quantity": 100, "price": Decimal("2500.00")}
             ],
-            "expected_outcome": "insufficient_funds_error"
+            "expected_outcome": "insufficient_funds_error",
         },
-
         "market_data_failure": {
             "user_balance": Decimal("100000.00"),
-            "trades": [
-                {"symbol": "INVALID", "quantity": 10, "price": None}
-            ],
-            "expected_outcome": "market_data_error"
-        }
+            "trades": [{"symbol": "INVALID", "quantity": 10, "price": None}],
+            "expected_outcome": "market_data_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
 
 
 def validate_paper_trading_state(
-    portfolio: MockPortfolio,
-    trades: List[MockTrade]
+    portfolio: MockPortfolio, trades: List[MockTrade]
 ) -> bool:
     """Validate consistency of paper trading state"""
 
     try:
         # Basic validation - portfolio values must be non-negative
         assert portfolio.cash_balance >= 0, "Cash balance cannot be negative"
-        assert portfolio.total_value >= 0, (
-            "Total portfolio value cannot be negative"
-        )
+        assert portfolio.total_value >= 0, "Total portfolio value cannot be negative"
 
         return True
 
@@ -599,12 +552,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

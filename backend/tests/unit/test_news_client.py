@@ -16,12 +16,25 @@ import feedparser
 # Import the news client
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.api.news_client import (
-    NewsClient, NewsConfig, NewsAPIConfig, RSSFeedConfig, FinancialModelingPrepConfig,
-    Article, NewsFilter, RateLimiter, NewsCache,
-    NewsError, AuthenticationError, RateLimitError, ValidationError, NetworkError, ParsingError
+    NewsClient,
+    NewsConfig,
+    NewsAPIConfig,
+    RSSFeedConfig,
+    FinancialModelingPrepConfig,
+    Article,
+    NewsFilter,
+    RateLimiter,
+    NewsCache,
+    NewsError,
+    AuthenticationError,
+    RateLimitError,
+    ValidationError,
+    NetworkError,
+    ParsingError,
 )
 
 
@@ -62,7 +75,9 @@ class TestNewsCache:
         data2 = {"test": "data2"}
 
         cache.set("provider", "endpoint", {"a": 1, "b": 2}, data1, 5)
-        cache.set("provider", "endpoint", {"b": 2, "a": 1}, data2, 5)  # Same params, different order
+        cache.set(
+            "provider", "endpoint", {"b": 2, "a": 1}, data2, 5
+        )  # Same params, different order
 
         # Should get the second data (overwrote first)
         result = cache.get("provider", "endpoint", {"a": 1, "b": 2})
@@ -119,7 +134,7 @@ class TestArticleModel:
             provider="test",
             title="Test Title",
             url="https://example.com",
-            published_at="2023-01-01T00:00:00Z"
+            published_at="2023-01-01T00:00:00Z",
         )
 
         assert article.source == "Test Source"
@@ -134,7 +149,7 @@ class TestArticleModel:
             "2023-01-01T00:00:00Z",
             "2023-01-01T00:00:00.000Z",
             "2023-01-01 00:00:00",
-            "Sun, 01 Jan 2023 00:00:00 GMT"
+            "Sun, 01 Jan 2023 00:00:00 GMT",
         ]
 
         for date_str in formats_to_test:
@@ -143,7 +158,7 @@ class TestArticleModel:
                 provider="test",
                 title="Test",
                 url="https://example.com",
-                published_at=date_str
+                published_at=date_str,
             )
             assert isinstance(article.published_at, datetime)
 
@@ -199,7 +214,7 @@ def sample_newsapi_response():
                 "url": "https://example.com/article1",
                 "urlToImage": "https://example.com/image1.jpg",
                 "author": "Test Author",
-                "publishedAt": "2023-01-01T00:00:00Z"
+                "publishedAt": "2023-01-01T00:00:00Z",
             },
             {
                 "source": {"id": "another-source", "name": "Another Source"},
@@ -209,9 +224,9 @@ def sample_newsapi_response():
                 "url": "https://example.com/article2",
                 "urlToImage": "https://example.com/image2.jpg",
                 "author": "Market Analyst",
-                "publishedAt": "2023-01-01T01:00:00Z"
-            }
-        ]
+                "publishedAt": "2023-01-01T01:00:00Z",
+            },
+        ],
     }
 
 
@@ -272,7 +287,7 @@ class TestNewsClient:
         # High relevance article
         high_relevance = {
             "title": "Stock market trading analysis with NSE shares",
-            "description": "Investment portfolio management and dividend analysis"
+            "description": "Investment portfolio management and dividend analysis",
         }
         score = news_client._calculate_relevance_score(high_relevance)
         assert score > 0.7
@@ -280,7 +295,7 @@ class TestNewsClient:
         # Low relevance article
         low_relevance = {
             "title": "Sports news and entertainment updates",
-            "description": "Celebrity gossip and movie reviews"
+            "description": "Celebrity gossip and movie reviews",
         }
         score = news_client._calculate_relevance_score(low_relevance)
         assert score < 0.3
@@ -295,7 +310,9 @@ class TestNewsClient:
         assert "INFY" in symbols
         assert "$TSLA" in symbols or "TSLA" in symbols
 
-    def test_article_standardization_newsapi(self, news_client, sample_newsapi_response):
+    def test_article_standardization_newsapi(
+        self, news_client, sample_newsapi_response
+    ):
         """Test NewsAPI article standardization"""
         article_data = sample_newsapi_response["articles"][0]
         article = news_client._standardize_newsapi_article(article_data)
@@ -307,7 +324,7 @@ class TestNewsClient:
         assert article.relevance_score is not None
         assert article.relevance_score > 0.5  # Should be high for stock market news
 
-    @patch('feedparser.parse')
+    @patch("feedparser.parse")
     def test_article_standardization_rss(self, mock_feedparser, news_client):
         """Test RSS article standardization"""
         # Mock feedparser entry
@@ -330,21 +347,33 @@ class TestNewsClient:
         # Create duplicate articles
         articles = [
             Article(
-                source="Source1", provider="test", title="Market News",
-                url="https://example.com/1", published_at=datetime.now()
+                source="Source1",
+                provider="test",
+                title="Market News",
+                url="https://example.com/1",
+                published_at=datetime.now(),
             ),
             Article(
-                source="Source2", provider="test", title="Market News",  # Same title
-                url="https://example.com/2", published_at=datetime.now()
+                source="Source2",
+                provider="test",
+                title="Market News",  # Same title
+                url="https://example.com/2",
+                published_at=datetime.now(),
             ),
             Article(
-                source="Source3", provider="test", title="Different News",
-                url="https://example.com/1", published_at=datetime.now()  # Same URL
+                source="Source3",
+                provider="test",
+                title="Different News",
+                url="https://example.com/1",
+                published_at=datetime.now(),  # Same URL
             ),
             Article(
-                source="Source4", provider="test", title="Unique News",
-                url="https://example.com/4", published_at=datetime.now()
-            )
+                source="Source4",
+                provider="test",
+                title="Unique News",
+                url="https://example.com/4",
+                published_at=datetime.now(),
+            ),
         ]
 
         unique_articles = news_client._deduplicate_articles(articles)
@@ -360,20 +389,29 @@ class TestNewsClient:
         now = datetime.now()
         articles = [
             Article(
-                source="Source1", provider="test", title="Old News",
-                url="https://example.com/1", published_at=now - timedelta(hours=2),
-                relevance_score=0.8
+                source="Source1",
+                provider="test",
+                title="Old News",
+                url="https://example.com/1",
+                published_at=now - timedelta(hours=2),
+                relevance_score=0.8,
             ),
             Article(
-                source="Source2", provider="test", title="Recent News",
-                url="https://example.com/2", published_at=now - timedelta(hours=1),
-                relevance_score=0.6
+                source="Source2",
+                provider="test",
+                title="Recent News",
+                url="https://example.com/2",
+                published_at=now - timedelta(hours=1),
+                relevance_score=0.6,
             ),
             Article(
-                source="Source3", provider="test", title="Latest News",
-                url="https://example.com/3", published_at=now,
-                relevance_score=0.4
-            )
+                source="Source3",
+                provider="test",
+                title="Latest News",
+                url="https://example.com/3",
+                published_at=now,
+                relevance_score=0.4,
+            ),
         ]
 
         # Test sort by published date
@@ -390,20 +428,29 @@ class TestNewsClient:
         now = datetime.now()
         articles = [
             Article(
-                source="Source1", provider="test", title="Stock market RELIANCE gains",
-                url="https://example.com/1", published_at=now - timedelta(hours=2),
-                relevance_score=0.8
+                source="Source1",
+                provider="test",
+                title="Stock market RELIANCE gains",
+                url="https://example.com/1",
+                published_at=now - timedelta(hours=2),
+                relevance_score=0.8,
             ),
             Article(
-                source="Source2", provider="test", title="General business news",
-                url="https://example.com/2", published_at=now - timedelta(hours=1),
-                relevance_score=0.3
+                source="Source2",
+                provider="test",
+                title="General business news",
+                url="https://example.com/2",
+                published_at=now - timedelta(hours=1),
+                relevance_score=0.3,
             ),
             Article(
-                source="Source3", provider="test", title="TCS stock analysis",
-                url="https://example.com/3", published_at=now,
-                relevance_score=0.7
-            )
+                source="Source3",
+                provider="test",
+                title="TCS stock analysis",
+                url="https://example.com/3",
+                published_at=now,
+                relevance_score=0.7,
+            ),
         ]
 
         # Test relevance score filtering
@@ -463,8 +510,10 @@ class TestNewsClientHTTPMethods:
         config.newsapi.api_key = "test_key"
         return NewsClient(config)
 
-    @patch('httpx.AsyncClient')
-    async def test_make_request_success(self, mock_client_class, news_client, sample_newsapi_response):
+    @patch("httpx.AsyncClient")
+    async def test_make_request_success(
+        self, mock_client_class, news_client, sample_newsapi_response
+    ):
         """Test successful HTTP request"""
         # Setup mock
         mock_client = AsyncMock()
@@ -484,8 +533,10 @@ class TestNewsClientHTTPMethods:
         assert news_client.stats["requests_made"] == 1
         assert news_client.stats["cache_misses"] == 1
 
-    @patch('httpx.AsyncClient')
-    async def test_make_request_authentication_error(self, mock_client_class, news_client):
+    @patch("httpx.AsyncClient")
+    async def test_make_request_authentication_error(
+        self, mock_client_class, news_client
+    ):
         """Test authentication error handling"""
         # Setup mock
         mock_client = AsyncMock()
@@ -505,7 +556,7 @@ class TestNewsClientHTTPMethods:
         assert exc_info.value.provider == "newsapi"
         assert exc_info.value.status_code == 401
 
-    @patch('httpx.AsyncClient')
+    @patch("httpx.AsyncClient")
     async def test_make_request_rate_limit_error(self, mock_client_class, news_client):
         """Test rate limit error handling"""
         # Setup mock
@@ -520,14 +571,16 @@ class TestNewsClientHTTPMethods:
         # Should raise RateLimitError
         with pytest.raises(RateLimitError) as exc_info:
             await news_client._make_request(
-                "newsapi", "GET", "https://api.example.com/test",
-                retries=0  # Disable retries for faster test
+                "newsapi",
+                "GET",
+                "https://api.example.com/test",
+                retries=0,  # Disable retries for faster test
             )
 
         assert exc_info.value.provider == "newsapi"
         assert exc_info.value.status_code == 429
 
-    @patch('httpx.AsyncClient')
+    @patch("httpx.AsyncClient")
     async def test_make_request_network_error(self, mock_client_class, news_client):
         """Test network error handling"""
         # Setup mock
@@ -539,14 +592,16 @@ class TestNewsClientHTTPMethods:
         # Should raise NetworkError
         with pytest.raises(NetworkError) as exc_info:
             await news_client._make_request(
-                "newsapi", "GET", "https://api.example.com/test",
-                retries=0  # Disable retries for faster test
+                "newsapi",
+                "GET",
+                "https://api.example.com/test",
+                retries=0,  # Disable retries for faster test
             )
 
         assert "Connection failed" in str(exc_info.value)
         assert exc_info.value.provider == "newsapi"
 
-    @patch('httpx.AsyncClient')
+    @patch("httpx.AsyncClient")
     async def test_make_request_timeout_error(self, mock_client_class, news_client):
         """Test timeout error handling"""
         # Setup mock
@@ -558,14 +613,16 @@ class TestNewsClientHTTPMethods:
         # Should raise NetworkError
         with pytest.raises(NetworkError) as exc_info:
             await news_client._make_request(
-                "newsapi", "GET", "https://api.example.com/test",
-                retries=0  # Disable retries for faster test
+                "newsapi",
+                "GET",
+                "https://api.example.com/test",
+                retries=0,  # Disable retries for faster test
             )
 
         assert "Timeout" in str(exc_info.value)
         assert exc_info.value.provider == "newsapi"
 
-    @patch('httpx.AsyncClient')
+    @patch("httpx.AsyncClient")
     async def test_make_request_retry_logic(self, mock_client_class, news_client):
         """Test retry logic for server errors"""
         # Setup mock to fail twice then succeed
@@ -586,7 +643,11 @@ class TestNewsClientHTTPMethods:
         success_response.status_code = 200
         success_response.json.return_value = {"status": "ok", "data": "success"}
 
-        mock_client.get.side_effect = [error_response1, error_response2, success_response]
+        mock_client.get.side_effect = [
+            error_response1,
+            error_response2,
+            success_response,
+        ]
 
         # Should succeed after retries
         result = await news_client._make_request(
@@ -597,7 +658,7 @@ class TestNewsClientHTTPMethods:
         assert result["data"] == "success"
         assert mock_client.get.call_count == 3
 
-    @patch('httpx.AsyncClient')
+    @patch("httpx.AsyncClient")
     async def test_caching_behavior(self, mock_client_class, news_client):
         """Test request caching"""
         # Setup mock
@@ -640,7 +701,7 @@ class TestNewsClientPublicAPI:
         config.newsapi.enabled = False  # Disable to avoid API key requirements
         return NewsClient(config)
 
-    @patch('src.api.news_client.NewsClient._get_rss_headlines')
+    @patch("src.api.news_client.NewsClient._get_rss_headlines")
     async def test_get_headlines(self, mock_rss_headlines, news_client):
         """Test get_headlines method"""
         # Mock RSS headlines
@@ -651,7 +712,7 @@ class TestNewsClientPublicAPI:
                 title="Stock Market Update",
                 url="https://example.com/1",
                 published_at=datetime.now(),
-                relevance_score=0.8
+                relevance_score=0.8,
             ),
             Article(
                 source="Test Feed",
@@ -659,8 +720,8 @@ class TestNewsClientPublicAPI:
                 title="Business News",
                 url="https://example.com/2",
                 published_at=datetime.now(),
-                relevance_score=0.6
-            )
+                relevance_score=0.6,
+            ),
         ]
         mock_rss_headlines.return_value = mock_articles
 
@@ -669,9 +730,11 @@ class TestNewsClientPublicAPI:
 
         assert len(result) == 2
         assert all(isinstance(article, Article) for article in result)
-        assert result[0].relevance_score >= result[1].relevance_score  # Should be sorted
+        assert (
+            result[0].relevance_score >= result[1].relevance_score
+        )  # Should be sorted
 
-    @patch('src.api.news_client.NewsClient.get_headlines')
+    @patch("src.api.news_client.NewsClient.get_headlines")
     async def test_search_news(self, mock_get_headlines, news_client):
         """Test search_news method"""
         mock_get_headlines.return_value = []
@@ -681,10 +744,10 @@ class TestNewsClientPublicAPI:
         # Should call get_headlines with query in keywords
         mock_get_headlines.assert_called_once()
         args, kwargs = mock_get_headlines.call_args
-        news_filter = args[0] if args else kwargs.get('news_filter')
+        news_filter = args[0] if args else kwargs.get("news_filter")
         assert "stock market" in news_filter.keywords
 
-    @patch('src.api.news_client.NewsClient.get_headlines')
+    @patch("src.api.news_client.NewsClient.get_headlines")
     async def test_get_market_news(self, mock_get_headlines, news_client):
         """Test get_market_news method"""
         mock_get_headlines.return_value = []
@@ -694,24 +757,39 @@ class TestNewsClientPublicAPI:
         # Should call get_headlines with market-specific filter
         mock_get_headlines.assert_called_once()
         args, kwargs = mock_get_headlines.call_args
-        news_filter = args[0] if args else kwargs.get('news_filter')
+        news_filter = args[0] if args else kwargs.get("news_filter")
 
         assert news_filter.stock_symbols == ["RELIANCE", "TCS"]
         assert news_filter.page_size == 30
         assert news_filter.min_relevance_score == 0.3
         assert "stock" in news_filter.keywords
 
-    @patch('src.api.news_client.NewsClient.get_headlines')
+    @patch("src.api.news_client.NewsClient.get_headlines")
     async def test_get_trending_topics(self, mock_get_headlines, news_client):
         """Test get_trending_topics method"""
         # Mock articles with repeated words
         mock_articles = [
-            Article(source="Test", provider="test", title="Stock market gains today",
-                   url="https://example.com/1", published_at=datetime.now()),
-            Article(source="Test", provider="test", title="Market analysis shows growth",
-                   url="https://example.com/2", published_at=datetime.now()),
-            Article(source="Test", provider="test", title="Stock prices rise in market",
-                   url="https://example.com/3", published_at=datetime.now()),
+            Article(
+                source="Test",
+                provider="test",
+                title="Stock market gains today",
+                url="https://example.com/1",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Test",
+                provider="test",
+                title="Market analysis shows growth",
+                url="https://example.com/2",
+                published_at=datetime.now(),
+            ),
+            Article(
+                source="Test",
+                provider="test",
+                title="Stock prices rise in market",
+                url="https://example.com/3",
+                published_at=datetime.now(),
+            ),
         ]
         mock_get_headlines.return_value = mock_articles
 
@@ -738,8 +816,11 @@ class TestNewsClientPublicAPI:
         stats = news_client.get_client_stats()
 
         required_keys = [
-            "session_id", "configuration", "statistics",
-            "rate_limits", "cache_stats"
+            "session_id",
+            "configuration",
+            "statistics",
+            "rate_limits",
+            "cache_stats",
         ]
 
         for key in required_keys:
@@ -777,7 +858,7 @@ class TestNewsClientPerformance:
 
     async def test_concurrent_requests(self, news_client):
         """Test handling of concurrent requests"""
-        with patch.object(news_client, '_make_request') as mock_request:
+        with patch.object(news_client, "_make_request") as mock_request:
             mock_request.return_value = {"articles": []}
 
             # Make multiple concurrent requests
@@ -795,9 +876,11 @@ class TestNewsClientPerformance:
     async def test_rate_limiting_under_load(self, news_client):
         """Test rate limiting behavior under load"""
         # Create a very restrictive rate limiter
-        news_client.rate_limiters["test"] = RateLimiter(max_requests=2, window_seconds=1)
+        news_client.rate_limiters["test"] = RateLimiter(
+            max_requests=2, window_seconds=1
+        )
 
-        with patch.object(news_client, '_get_client') as mock_get_client:
+        with patch.object(news_client, "_get_client") as mock_get_client:
             mock_client = AsyncMock()
             mock_response = AsyncMock()
             mock_response.status_code = 200
@@ -822,8 +905,11 @@ class TestNewsClientPerformance:
         # Add many entries to cache
         for i in range(1000):
             news_client.cache.set(
-                "provider", f"endpoint_{i}", {"param": i},
-                {"large_data": "x" * 1000}, 60
+                "provider",
+                f"endpoint_{i}",
+                {"param": i},
+                {"large_data": "x" * 1000},
+                60,
             )
 
         # Cache should have all entries

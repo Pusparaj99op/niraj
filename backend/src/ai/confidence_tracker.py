@@ -6,13 +6,8 @@ to improve future confidence estimates. Provides sophisticated metrics, calibrat
 and adaptive confidence scoring with comprehensive error handling.
 
 Features:
-- Dynamic confidence calibration based on historical performance
-- Multi-dimensional confidence scoring (accuracy, timing, stability)
-- Learning mechanisms for confidence improvement
-- Comprehensive error handling and recovery
-- Integration with AI models and predictions
-- Real-time confidence adjustment
-- Statistical validation and reporting
+- Dynamic confidence calibration based on historical performance - Multi-dimensional confidence scoring (accuracy, timing, stability) - Learning mechanisms for confidence improvement - Comprehensive error handling and recovery - Integration with AI models and predictions - Real-time confidence adjustment -
+Statistical validation and reporting
 """
 
 import json
@@ -37,40 +32,46 @@ logger = structlog.get_logger(__name__)
 
 class ConfidenceMetricType(str, Enum):
     """Types of confidence metrics"""
-    ACCURACY_CONFIDENCE = "accuracy_confidence"          # Prediction accuracy confidence
-    TIMING_CONFIDENCE = "timing_confidence"              # Timing prediction confidence
-    MAGNITUDE_CONFIDENCE = "magnitude_confidence"        # Price magnitude confidence
-    DIRECTIONAL_CONFIDENCE = "directional_confidence"    # Direction prediction confidence
-    STABILITY_CONFIDENCE = "stability_confidence"        # Prediction stability confidence
-    MARKET_CONFIDENCE = "market_confidence"              # Market condition confidence
-    MODEL_CONFIDENCE = "model_confidence"                # Model-specific confidence
-    COMPOSITE_CONFIDENCE = "composite_confidence"        # Overall composite confidence
+
+    ACCURACY_CONFIDENCE = "accuracy_confidence"  # Prediction accuracy confidence
+    TIMING_CONFIDENCE = "timing_confidence"  # Timing prediction confidence
+    MAGNITUDE_CONFIDENCE = "magnitude_confidence"  # Price magnitude confidence
+    DIRECTIONAL_CONFIDENCE = "directional_confidence"  # Direction prediction confidence
+    STABILITY_CONFIDENCE = "stability_confidence"  # Prediction stability confidence
+    MARKET_CONFIDENCE = "market_confidence"  # Market condition confidence
+    MODEL_CONFIDENCE = "model_confidence"  # Model-specific confidence
+    COMPOSITE_CONFIDENCE = "composite_confidence"  # Overall composite confidence
 
 
 class CalibrationMethod(str, Enum):
     """Confidence calibration methods"""
-    PLATT_SCALING = "platt_scaling"                     # Logistic regression calibration
-    ISOTONIC_REGRESSION = "isotonic_regression"         # Monotonic calibration
-    BAYESIAN_CALIBRATION = "bayesian_calibration"       # Bayesian approach
-    TEMPERATURE_SCALING = "temperature_scaling"         # Neural network calibration
-    HISTOGRAM_BINNING = "histogram_binning"             # Binning approach
-    ADAPTIVE_BINNING = "adaptive_binning"               # Adaptive bin sizing
+
+    PLATT_SCALING = "platt_scaling"  # Logistic regression calibration
+    ISOTONIC_REGRESSION = "isotonic_regression"  # Monotonic calibration
+    BAYESIAN_CALIBRATION = "bayesian_calibration"  # Bayesian approach
+    TEMPERATURE_SCALING = "temperature_scaling"  # Neural network calibration
+    HISTOGRAM_BINNING = "histogram_binning"  # Binning approach
+    ADAPTIVE_BINNING = "adaptive_binning"  # Adaptive bin sizing
 
 
 class ConfidenceLevel(str, Enum):
     """Enhanced confidence levels"""
-    CRITICAL_LOW = "critical_low"        # 0.0 - 0.1 (Critical, avoid trading)
-    VERY_LOW = "very_low"               # 0.1 - 0.3 (Very cautious)
-    LOW = "low"                         # 0.3 - 0.5 (Cautious)
-    MEDIUM = "medium"                   # 0.5 - 0.7 (Moderate)
-    HIGH = "high"                       # 0.7 - 0.85 (Confident)
-    VERY_HIGH = "very_high"             # 0.85 - 0.95 (Very confident)
-    CRITICAL_HIGH = "critical_high"     # 0.95 - 1.0 (Extremely confident)
+
+    CRITICAL_LOW = "critical_low"  # 0.0 - 0.1 (Critical, avoid trading)
+    VERY_LOW = "very_low"  # 0.1 - 0.3 (Very cautious)
+    LOW = "low"  # 0.3 - 0.5 (Cautious)
+    MEDIUM = "medium"  # 0.5 - 0.7 (Moderate)
+    HIGH = "high"  # 0.7 - 0.85 (Confident)
+    VERY_HIGH = "very_high"  # 0.85 - 0.95 (Very confident)
+    CRITICAL_HIGH = "critical_high"  # 0.95 - 1.0 (Extremely confident)
 
 
 class ConfidenceTrackingError(Exception):
     """Base exception for confidence tracking errors"""
-    def __init__(self, message: str, error_code: str = None, context: Dict[str, Any] = None):
+
+    def __init__(
+        self, message: str, error_code: str = None, context: Dict[str, Any] = None
+    ):
         self.message = message
         self.error_code = error_code
         self.context = context or {}
@@ -79,22 +80,26 @@ class ConfidenceTrackingError(Exception):
 
 class CalibrationError(ConfidenceTrackingError):
     """Exception for confidence calibration errors"""
+
     pass
 
 
 class MetricsCalculationError(ConfidenceTrackingError):
     """Exception for metrics calculation errors"""
+
     pass
 
 
 class LearningError(ConfidenceTrackingError):
     """Exception for learning mechanism errors"""
+
     pass
 
 
 @dataclass
 class ConfidenceMetrics:
     """Comprehensive confidence metrics"""
+
     metric_type: ConfidenceMetricType
     raw_confidence: float
     calibrated_confidence: float
@@ -127,6 +132,7 @@ class ConfidenceMetrics:
 @dataclass
 class ModelConfidenceProfile:
     """Confidence profile for a specific model"""
+
     model_id: str
     model_type: ModelType
 
@@ -136,7 +142,9 @@ class ModelConfidenceProfile:
     prediction_count: int = 0
 
     # Confidence by prediction type
-    type_confidence: Dict[PredictionType, ConfidenceMetrics] = field(default_factory=dict)
+    type_confidence: Dict[PredictionType, ConfidenceMetrics] = field(
+        default_factory=dict
+    )
 
     # Calibration curves
     calibration_curve: Dict[str, List[float]] = field(default_factory=dict)
@@ -160,6 +168,7 @@ class ModelConfidenceProfile:
 @dataclass
 class ConfidenceAdjustment:
     """Confidence adjustment record"""
+
     adjustment_id: str = field(default_factory=lambda: str(time.time_ns()))
     original_confidence: float = 0.0
     adjusted_confidence: float = 0.0
@@ -181,11 +190,11 @@ class AdvancedConfidenceTracker:
         """Initialize the advanced confidence tracker"""
 
         # Configuration
-        self.max_history_size = get_config('ai.confidence.max_history_size', 10000)
-        self.calibration_window = get_config('ai.confidence.calibration_window', 1000)
-        self.learning_rate = get_config('ai.confidence.learning_rate', 0.01)
-        self.confidence_bins = get_config('ai.confidence.bins', 20)
-        self.min_samples_for_calibration = get_config('ai.confidence.min_samples', 50)
+        self.max_history_size = get_config("ai.confidence.max_history_size", 10000)
+        self.calibration_window = get_config("ai.confidence.calibration_window", 1000)
+        self.learning_rate = get_config("ai.confidence.learning_rate", 0.01)
+        self.confidence_bins = get_config("ai.confidence.bins", 20)
+        self.min_samples_for_calibration = get_config("ai.confidence.min_samples", 50)
 
         # Storage for tracking data
         self.model_profiles: Dict[str, ModelConfidenceProfile] = {}
@@ -193,17 +202,19 @@ class AdvancedConfidenceTracker:
         self.confidence_adjustments: deque = deque(maxlen=1000)
 
         # Calibration data
-        self.calibration_data: Dict[str, Dict[str, List]] = defaultdict(lambda: defaultdict(list))
+        self.calibration_data: Dict[str, Dict[str, List]] = defaultdict(
+            lambda: defaultdict(list)
+        )
         self.calibration_models: Dict[str, Any] = {}
 
         # Performance metrics
         self.global_metrics = {
-            'total_predictions': 0,
-            'total_correct': 0,
-            'calibration_error': 0.0,
-            'reliability_score': 0.0,
-            'learning_iterations': 0,
-            'last_calibration': None
+            "total_predictions": 0,
+            "total_correct": 0,
+            "calibration_error": 0.0,
+            "reliability_score": 0.0,
+            "learning_iterations": 0,
+            "last_calibration": None,
         }
 
         # Error tracking and recovery
@@ -215,14 +226,14 @@ class AdvancedConfidenceTracker:
             "Advanced confidence tracker initialized",
             max_history=self.max_history_size,
             calibration_window=self.calibration_window,
-            learning_rate=self.learning_rate
+            learning_rate=self.learning_rate,
         )
 
     async def track_prediction_confidence(
         self,
         prediction: AIPrediction,
         market_context: Optional[Dict[str, Any]] = None,
-        additional_features: Optional[Dict[str, Any]] = None
+        additional_features: Optional[Dict[str, Any]] = None,
     ) -> ConfidenceMetrics:
         """
         Track confidence for a new prediction
@@ -277,20 +288,24 @@ class AdvancedConfidenceTracker:
                 prediction_type=prediction.prediction_type.value,
                 raw_confidence=raw_metrics.raw_confidence,
                 calibrated_confidence=adjusted_metrics.calibrated_confidence,
-                processing_time_ms=processing_time
+                processing_time_ms=processing_time,
             )
 
             return adjusted_metrics
 
         except Exception as e:
-            await self._handle_tracking_error(e, prediction.model_id if prediction else "unknown")
-            raise ConfidenceTrackingError(f"Failed to track prediction confidence: {str(e)}")
+            await self._handle_tracking_error(
+                e, prediction.model_id if prediction else "unknown"
+            )
+            raise ConfidenceTrackingError(
+                f"Failed to track prediction confidence: {str(e)}"
+            )
 
     async def _calculate_raw_confidence_metrics(
         self,
         prediction: AIPrediction,
         market_context: Optional[Dict[str, Any]] = None,
-        additional_features: Optional[Dict[str, Any]] = None
+        additional_features: Optional[Dict[str, Any]] = None,
     ) -> ConfidenceMetrics:
         """Calculate raw confidence metrics before calibration"""
         try:
@@ -299,17 +314,21 @@ class AdvancedConfidenceTracker:
 
             # Calculate component confidences
             accuracy_confidence = await self._calculate_accuracy_confidence(prediction)
-            timing_confidence = await self._calculate_timing_confidence(prediction, market_context)
-            stability_confidence = await self._calculate_stability_confidence(prediction)
+            timing_confidence = await self._calculate_timing_confidence(
+                prediction, market_context
+            )
+            stability_confidence = await self._calculate_stability_confidence(
+                prediction
+            )
             market_confidence = await self._calculate_market_confidence(market_context)
 
             # Composite confidence calculation
             confidence_components = {
-                'base': base_confidence,
-                'accuracy': accuracy_confidence,
-                'timing': timing_confidence,
-                'stability': stability_confidence,
-                'market': market_confidence
+                "base": base_confidence,
+                "accuracy": accuracy_confidence,
+                "timing": timing_confidence,
+                "stability": stability_confidence,
+                "market": market_confidence,
             }
 
             # Weighted average with adaptive weights
@@ -335,11 +354,13 @@ class AdvancedConfidenceTracker:
                 reliability_score=reliability_score,
                 prediction_count=1,
                 accuracy_rate=0.0,  # Unknown until outcome
-                sample_size=1
+                sample_size=1,
             )
 
         except Exception as e:
-            raise MetricsCalculationError(f"Failed to calculate raw confidence metrics: {str(e)}")
+            raise MetricsCalculationError(
+                f"Failed to calculate raw confidence metrics: {str(e)}"
+            )
 
     async def _calculate_accuracy_confidence(self, prediction: AIPrediction) -> float:
         """Calculate confidence based on model's historical accuracy"""
@@ -354,12 +375,16 @@ class AdvancedConfidenceTracker:
             # Adjust based on prediction type specific performance
             if prediction.prediction_type in model_profile.type_confidence:
                 type_metrics = model_profile.type_confidence[prediction.prediction_type]
-                accuracy_confidence = (accuracy_confidence + type_metrics.accuracy_rate) / 2
+                accuracy_confidence = (
+                    accuracy_confidence + type_metrics.accuracy_rate
+                ) / 2
 
             # Recent performance adjustment
             if len(model_profile.recent_performance) > 5:
                 recent_accuracy = mean(model_profile.recent_performance)
-                trend_factor = min(1.5, max(0.5, recent_accuracy / model_profile.overall_accuracy))
+                trend_factor = min(
+                    1.5, max(0.5, recent_accuracy / model_profile.overall_accuracy)
+                )
                 accuracy_confidence *= trend_factor
 
             return max(0.0, min(1.0, accuracy_confidence))
@@ -369,9 +394,7 @@ class AdvancedConfidenceTracker:
             return 0.5
 
     async def _calculate_timing_confidence(
-        self,
-        prediction: AIPrediction,
-        market_context: Optional[Dict[str, Any]] = None
+        self, prediction: AIPrediction, market_context: Optional[Dict[str, Any]] = None
     ) -> float:
         """Calculate confidence based on timing factors"""
         try:
@@ -379,16 +402,16 @@ class AdvancedConfidenceTracker:
 
             # Adjust based on market hours
             if market_context:
-                market_hours = market_context.get('market_hours', 'unknown')
-                if market_hours == 'pre_market':
+                market_hours = market_context.get("market_hours", "unknown")
+                if market_hours == "pre_market":
                     timing_confidence *= 0.8  # Less confident during pre-market
-                elif market_hours == 'after_hours':
+                elif market_hours == "after_hours":
                     timing_confidence *= 0.7  # Even less confident after hours
-                elif market_hours == 'market_open':
+                elif market_hours == "market_open":
                     timing_confidence *= 1.1  # More confident during market hours
 
                 # Volatility adjustment
-                volatility = market_context.get('volatility', 0.5)
+                volatility = market_context.get("volatility", 0.5)
                 if volatility > 0.8:
                     timing_confidence *= 0.9  # Less confident in high volatility
                 elif volatility < 0.3:
@@ -396,7 +419,9 @@ class AdvancedConfidenceTracker:
 
             # Expiry time adjustment
             if prediction.expiry_time:
-                time_to_expiry = (prediction.expiry_time - datetime.utcnow()).total_seconds()
+                time_to_expiry = (
+                    prediction.expiry_time - datetime.utcnow()
+                ).total_seconds()
                 if time_to_expiry < 300:  # Less than 5 minutes
                     timing_confidence *= 0.8
                 elif time_to_expiry > 86400:  # More than 1 day
@@ -416,14 +441,19 @@ class AdvancedConfidenceTracker:
 
             # Check for similar recent predictions
             similar_predictions = [
-                p for p in list(self.prediction_history)[-50:]  # Last 50 predictions
-                if (p.get('model_id') == prediction.model_id and
-                    p.get('prediction_type') == prediction.prediction_type.value)
+                p
+                for p in list(self.prediction_history)[-50:]  # Last 50 predictions
+                if (
+                    p.get("model_id") == prediction.model_id
+                    and p.get("prediction_type") == prediction.prediction_type.value
+                )
             ]
 
             if len(similar_predictions) >= 3:
                 # Calculate consistency of recent predictions
-                recent_confidences = [p.get('confidence_score', 0.5) for p in similar_predictions[-5:]]
+                recent_confidences = [
+                    p.get("confidence_score", 0.5) for p in similar_predictions[-5:]
+                ]
                 if len(recent_confidences) > 1:
                     confidence_std = stdev(recent_confidences)
                     # Lower standard deviation means more stability
@@ -431,10 +461,11 @@ class AdvancedConfidenceTracker:
                     stability_confidence *= stability_factor
 
             # Adjust based on input feature stability
-            if hasattr(prediction, 'input_features') and prediction.input_features:
+            if hasattr(prediction, "input_features") and prediction.input_features:
                 # Check for extreme values that might indicate instability
                 numeric_features = {
-                    k: v for k, v in prediction.input_features.items()
+                    k: v
+                    for k, v in prediction.input_features.items()
                     if isinstance(v, (int, float))
                 }
 
@@ -444,7 +475,9 @@ class AdvancedConfidenceTracker:
                         feature_std = stdev(feature_values)
                         feature_mean = mean(feature_values)
                         if feature_mean != 0:
-                            cv = feature_std / abs(feature_mean)  # Coefficient of variation
+                            cv = feature_std / abs(
+                                feature_mean
+                            )  # Coefficient of variation
                             if cv > 2.0:  # High variability
                                 stability_confidence *= 0.9
 
@@ -454,7 +487,9 @@ class AdvancedConfidenceTracker:
             logger.warning("Failed to calculate stability confidence", error=str(e))
             return 0.8
 
-    async def _calculate_market_confidence(self, market_context: Optional[Dict[str, Any]] = None) -> float:
+    async def _calculate_market_confidence(
+        self, market_context: Optional[Dict[str, Any]] = None
+    ) -> float:
         """Calculate confidence based on market conditions"""
         try:
             market_confidence = 0.6  # Base market confidence
@@ -463,33 +498,41 @@ class AdvancedConfidenceTracker:
                 return market_confidence
 
             # Market trend confidence
-            trend = market_context.get('trend', 'neutral')
-            if trend in ['strong_up', 'strong_down']:
+            trend = market_context.get("trend", "neutral")
+            if trend in ["strong_up", "strong_down"]:
                 market_confidence *= 1.1  # More confident in strong trends
-            elif trend == 'neutral':
+            elif trend == "neutral":
                 market_confidence *= 0.9  # Less confident in neutral markets
 
             # Volume confidence
-            volume_ratio = market_context.get('volume_ratio', 1.0)
+            volume_ratio = market_context.get("volume_ratio", 1.0)
             if volume_ratio > 1.5:
                 market_confidence *= 1.05  # High volume increases confidence
             elif volume_ratio < 0.5:
-                market_confidence *= 0.9   # Low volume decreases confidence
+                market_confidence *= 0.9  # Low volume decreases confidence
 
             # News sentiment confidence
-            news_sentiment = market_context.get('news_sentiment', 0.0)
+            news_sentiment = market_context.get("news_sentiment", 0.0)
             sentiment_strength = abs(news_sentiment)
             if sentiment_strength > 0.7:
                 market_confidence *= 1.1  # Strong sentiment increases confidence
             elif sentiment_strength < 0.2:
-                market_confidence *= 0.95  # Weak sentiment slightly decreases confidence
+                market_confidence *= (
+                    0.95  # Weak sentiment slightly decreases confidence
+                )
 
             # Economic indicators
-            economic_indicators = market_context.get('economic_indicators', {})
+            economic_indicators = market_context.get("economic_indicators", {})
             if economic_indicators:
                 indicator_count = len(economic_indicators)
-                positive_indicators = sum(1 for v in economic_indicators.values() if v > 0)
-                indicator_ratio = positive_indicators / indicator_count if indicator_count > 0 else 0.5
+                positive_indicators = sum(
+                    1 for v in economic_indicators.values() if v > 0
+                )
+                indicator_ratio = (
+                    positive_indicators / indicator_count
+                    if indicator_count > 0
+                    else 0.5
+                )
 
                 if indicator_ratio > 0.7:
                     market_confidence *= 1.05
@@ -502,33 +545,41 @@ class AdvancedConfidenceTracker:
             logger.warning("Failed to calculate market confidence", error=str(e))
             return 0.6
 
-    async def _calculate_adaptive_weights(self, prediction_type: PredictionType) -> Dict[str, float]:
+    async def _calculate_adaptive_weights(
+        self, prediction_type: PredictionType
+    ) -> Dict[str, float]:
         """Calculate adaptive weights for confidence components"""
         try:
             # Default weights
             base_weights = {
-                'base': 0.3,
-                'accuracy': 0.25,
-                'timing': 0.2,
-                'stability': 0.15,
-                'market': 0.1
+                "base": 0.3,
+                "accuracy": 0.25,
+                "timing": 0.2,
+                "stability": 0.15,
+                "market": 0.1,
             }
 
             # Adjust weights based on prediction type
-            if prediction_type in [PredictionType.PRICE_DIRECTION, PredictionType.PRICE_TARGET]:
-                base_weights['accuracy'] += 0.1
-                base_weights['market'] += 0.05
-                base_weights['base'] -= 0.15
+            if prediction_type in [
+                PredictionType.PRICE_DIRECTION,
+                PredictionType.PRICE_TARGET,
+            ]:
+                base_weights["accuracy"] += 0.1
+                base_weights["market"] += 0.05
+                base_weights["base"] -= 0.15
 
-            elif prediction_type in [PredictionType.BUY_SIGNAL, PredictionType.SELL_SIGNAL]:
-                base_weights['timing'] += 0.1
-                base_weights['stability'] += 0.05
-                base_weights['base'] -= 0.15
+            elif prediction_type in [
+                PredictionType.BUY_SIGNAL,
+                PredictionType.SELL_SIGNAL,
+            ]:
+                base_weights["timing"] += 0.1
+                base_weights["stability"] += 0.05
+                base_weights["base"] -= 0.15
 
             elif prediction_type == PredictionType.VOLATILITY:
-                base_weights['market'] += 0.15
-                base_weights['stability'] += 0.1
-                base_weights['base'] -= 0.25
+                base_weights["market"] += 0.15
+                base_weights["stability"] += 0.1
+                base_weights["base"] -= 0.25
 
             # Normalize weights to sum to 1.0
             total_weight = sum(base_weights.values())
@@ -537,12 +588,12 @@ class AdvancedConfidenceTracker:
         except Exception as e:
             logger.warning("Failed to calculate adaptive weights", error=str(e))
             # Return default equal weights
-            return {k: 0.2 for k in ['base', 'accuracy', 'timing', 'stability', 'market']}
+            return {
+                k: 0.2 for k in ["base", "accuracy", "timing", "stability", "market"]
+            }
 
     async def _calculate_reliability_score(
-        self,
-        prediction: AIPrediction,
-        confidence_components: Dict[str, float]
+        self, prediction: AIPrediction, confidence_components: Dict[str, float]
     ) -> float:
         """Calculate reliability score for the prediction"""
         try:
@@ -562,13 +613,19 @@ class AdvancedConfidenceTracker:
             model_profile = self.model_profiles.get(prediction.model_id)
             if model_profile and model_profile.prediction_count > 10:
                 historical_reliability = model_profile.overall_accuracy
-                reliability_from_consistency = (reliability_from_consistency + historical_reliability) / 2
+                reliability_from_consistency = (
+                    reliability_from_consistency + historical_reliability
+                ) / 2
 
             # Adjust based on prediction confidence level
             if prediction.confidence_score > 0.8:
-                reliability_from_consistency *= 1.1  # High confidence predictions should be more reliable
+                reliability_from_consistency *= (
+                    1.1  # High confidence predictions should be more reliable
+                )
             elif prediction.confidence_score < 0.4:
-                reliability_from_consistency *= 0.9  # Low confidence predictions are less reliable
+                reliability_from_consistency *= (
+                    0.9  # Low confidence predictions are less reliable
+                )
 
             return max(0.0, min(1.0, reliability_from_consistency))
 
@@ -580,14 +637,16 @@ class AdvancedConfidenceTracker:
         self,
         metrics: ConfidenceMetrics,
         profile: ModelConfidenceProfile,
-        prediction_type: PredictionType
+        prediction_type: PredictionType,
     ) -> ConfidenceMetrics:
         """Apply confidence calibration based on historical performance"""
         try:
             # Check if we have enough data for calibration
             if profile.prediction_count < self.min_samples_for_calibration:
                 # Return metrics with minimal calibration for new models
-                metrics.calibrated_confidence = metrics.raw_confidence * 0.9  # Slight conservatism
+                metrics.calibrated_confidence = (
+                    metrics.raw_confidence * 0.9
+                )  # Slight conservatism
                 metrics.calibration_method = CalibrationMethod.HISTOGRAM_BINNING
                 return metrics
 
@@ -620,9 +679,7 @@ class AdvancedConfidenceTracker:
             return metrics
 
     async def _build_calibration_model(
-        self,
-        profile: ModelConfidenceProfile,
-        prediction_type: PredictionType
+        self, profile: ModelConfidenceProfile, prediction_type: PredictionType
     ) -> None:
         """Build calibration model for a specific model and prediction type"""
         try:
@@ -631,19 +688,20 @@ class AdvancedConfidenceTracker:
             # Gather historical data
             historical_data = []
             for record in self.prediction_history:
-                if (record.get('model_id') == profile.model_id and
-                    record.get('prediction_type') == prediction_type.value and
-                    record.get('outcome_accuracy') is not None):
-
-                    confidence = record.get('confidence_score', 0.5)
-                    accuracy = record.get('outcome_accuracy', 0.0)
+                if (
+                    record.get("model_id") == profile.model_id
+                    and record.get("prediction_type") == prediction_type.value
+                    and record.get("outcome_accuracy") is not None
+                ):
+                    confidence = record.get("confidence_score", 0.5)
+                    accuracy = record.get("outcome_accuracy", 0.0)
                     historical_data.append((confidence, accuracy))
 
             if len(historical_data) < self.min_samples_for_calibration:
                 logger.warning(
                     "Insufficient data for calibration model",
                     calibration_key=calibration_key,
-                    data_points=len(historical_data)
+                    data_points=len(historical_data),
                 )
                 return
 
@@ -655,25 +713,27 @@ class AdvancedConfidenceTracker:
 
             # Store calibration model
             self.calibration_models[calibration_key] = {
-                'method': CalibrationMethod.ADAPTIVE_BINNING,
-                'bins': calibration_bins,
-                'data_points': len(historical_data),
-                'created_at': datetime.utcnow(),
-                'model_id': profile.model_id,
-                'prediction_type': prediction_type.value
+                "method": CalibrationMethod.ADAPTIVE_BINNING,
+                "bins": calibration_bins,
+                "data_points": len(historical_data),
+                "created_at": datetime.utcnow(),
+                "model_id": profile.model_id,
+                "prediction_type": prediction_type.value,
             }
 
             logger.info(
                 "Calibration model built",
                 calibration_key=calibration_key,
                 bins=len(calibration_bins),
-                data_points=len(historical_data)
+                data_points=len(historical_data),
             )
 
         except Exception as e:
             raise CalibrationError(f"Failed to build calibration model: {str(e)}")
 
-    async def _create_adaptive_bins(self, historical_data: List[Tuple[float, float]]) -> List[Dict[str, float]]:
+    async def _create_adaptive_bins(
+        self, historical_data: List[Tuple[float, float]]
+    ) -> List[Dict[str, float]]:
         """Create adaptive bins for calibration"""
         try:
             if len(historical_data) < 10:
@@ -682,20 +742,23 @@ class AdvancedConfidenceTracker:
 
             # Adaptive binning based on data density
             confidences = [x[0] for x in historical_data]
-            accuracies = [x[1] for x in historical_data]
 
             # Calculate optimal number of bins using Freedman-Diaconis rule
             q75, q25 = np.percentile(confidences, [75, 25])
             iqr = q75 - q25
-            bin_width = 2 * iqr / (len(confidences) ** (1/3))
-            num_bins = min(20, max(5, int((max(confidences) - min(confidences)) / bin_width)))
+            bin_width = 2 * iqr / (len(confidences) ** (1 / 3))
+            num_bins = min(
+                20, max(5, int((max(confidences) - min(confidences)) / bin_width))
+            )
 
             bins = []
             bin_size = len(historical_data) // num_bins
 
             for i in range(num_bins):
                 start_idx = i * bin_size
-                end_idx = start_idx + bin_size if i < num_bins - 1 else len(historical_data)
+                end_idx = (
+                    start_idx + bin_size if i < num_bins - 1 else len(historical_data)
+                )
 
                 bin_data = historical_data[start_idx:end_idx]
                 if not bin_data:
@@ -704,22 +767,30 @@ class AdvancedConfidenceTracker:
                 bin_confidences = [x[0] for x in bin_data]
                 bin_accuracies = [x[1] for x in bin_data]
 
-                bins.append({
-                    'confidence_min': min(bin_confidences),
-                    'confidence_max': max(bin_confidences),
-                    'confidence_mean': mean(bin_confidences),
-                    'accuracy_mean': mean(bin_accuracies),
-                    'accuracy_std': stdev(bin_accuracies) if len(bin_accuracies) > 1 else 0.0,
-                    'sample_count': len(bin_data)
-                })
+                bins.append(
+                    {
+                        "confidence_min": min(bin_confidences),
+                        "confidence_max": max(bin_confidences),
+                        "confidence_mean": mean(bin_confidences),
+                        "accuracy_mean": mean(bin_accuracies),
+                        "accuracy_std": (
+                            stdev(bin_accuracies) if len(bin_accuracies) > 1 else 0.0
+                        ),
+                        "sample_count": len(bin_data),
+                    }
+                )
 
             return bins
 
         except Exception as e:
-            logger.warning("Failed to create adaptive bins, using simple binning", error=str(e))
+            logger.warning(
+                "Failed to create adaptive bins, using simple binning", error=str(e)
+            )
             return await self._create_simple_bins(historical_data)
 
-    async def _create_simple_bins(self, historical_data: List[Tuple[float, float]]) -> List[Dict[str, float]]:
+    async def _create_simple_bins(
+        self, historical_data: List[Tuple[float, float]]
+    ) -> List[Dict[str, float]]:
         """Create simple equal-width bins for calibration"""
         try:
             bins = []
@@ -731,20 +802,28 @@ class AdvancedConfidenceTracker:
 
                 # Find data points in this bin
                 bin_data = [
-                    (conf, acc) for conf, acc in historical_data
-                    if bin_min <= conf < bin_max or (i == self.confidence_bins - 1 and conf <= bin_max)
+                    (conf, acc)
+                    for conf, acc in historical_data
+                    if bin_min <= conf < bin_max
+                    or (i == self.confidence_bins - 1 and conf <= bin_max)
                 ]
 
                 if bin_data:
                     bin_accuracies = [x[1] for x in bin_data]
-                    bins.append({
-                        'confidence_min': bin_min,
-                        'confidence_max': bin_max,
-                        'confidence_mean': (bin_min + bin_max) / 2,
-                        'accuracy_mean': mean(bin_accuracies),
-                        'accuracy_std': stdev(bin_accuracies) if len(bin_accuracies) > 1 else 0.0,
-                        'sample_count': len(bin_data)
-                    })
+                    bins.append(
+                        {
+                            "confidence_min": bin_min,
+                            "confidence_max": bin_max,
+                            "confidence_mean": (bin_min + bin_max) / 2,
+                            "accuracy_mean": mean(bin_accuracies),
+                            "accuracy_std": (
+                                stdev(bin_accuracies)
+                                if len(bin_accuracies) > 1
+                                else 0.0
+                            ),
+                            "sample_count": len(bin_data),
+                        }
+                    )
 
             return bins
 
@@ -752,14 +831,16 @@ class AdvancedConfidenceTracker:
             logger.error("Failed to create simple bins", error=str(e))
             return []
 
-    async def _apply_calibration_model(self, raw_confidence: float, calibration_key: str) -> float:
+    async def _apply_calibration_model(
+        self, raw_confidence: float, calibration_key: str
+    ) -> float:
         """Apply calibration model to raw confidence"""
         try:
             if calibration_key not in self.calibration_models:
                 return raw_confidence
 
             calibration_model = self.calibration_models[calibration_key]
-            bins = calibration_model['bins']
+            bins = calibration_model["bins"]
 
             if not bins:
                 return raw_confidence
@@ -767,29 +848,33 @@ class AdvancedConfidenceTracker:
             # Find the appropriate bin
             target_bin = None
             for bin_data in bins:
-                if bin_data['confidence_min'] <= raw_confidence <= bin_data['confidence_max']:
+                if (
+                    bin_data["confidence_min"]
+                    <= raw_confidence
+                    <= bin_data["confidence_max"]
+                ):
                     target_bin = bin_data
                     break
 
             if target_bin is None:
                 # Use closest bin
                 distances = [
-                    abs(raw_confidence - bin_data['confidence_mean'])
+                    abs(raw_confidence - bin_data["confidence_mean"])
                     for bin_data in bins
                 ]
                 closest_idx = distances.index(min(distances))
                 target_bin = bins[closest_idx]
 
             # Interpolate within the bin if possible
-            calibrated_confidence = target_bin['accuracy_mean']
+            calibrated_confidence = target_bin["accuracy_mean"]
 
             # Apply smoothing based on sample count
-            if target_bin['sample_count'] < 10:
+            if target_bin["sample_count"] < 10:
                 # Blend with raw confidence for low sample counts
-                smoothing_factor = target_bin['sample_count'] / 10.0
+                smoothing_factor = target_bin["sample_count"] / 10.0
                 calibrated_confidence = (
-                    smoothing_factor * calibrated_confidence +
-                    (1 - smoothing_factor) * raw_confidence
+                    smoothing_factor * calibrated_confidence
+                    + (1 - smoothing_factor) * raw_confidence
                 )
 
             return max(0.0, min(1.0, calibrated_confidence))
@@ -799,9 +884,7 @@ class AdvancedConfidenceTracker:
             return raw_confidence
 
     async def _calculate_calibration_error(
-        self,
-        profile: ModelConfidenceProfile,
-        prediction_type: PredictionType
+        self, profile: ModelConfidenceProfile, prediction_type: PredictionType
     ) -> float:
         """Calculate calibration error (reliability - resolution)"""
         try:
@@ -810,19 +893,19 @@ class AdvancedConfidenceTracker:
             if calibration_key not in self.calibration_models:
                 return 0.0
 
-            bins = self.calibration_models[calibration_key]['bins']
+            bins = self.calibration_models[calibration_key]["bins"]
             if not bins:
                 return 0.0
 
             # Calculate Expected Calibration Error (ECE)
             ece = 0.0
-            total_samples = sum(bin_data['sample_count'] for bin_data in bins)
+            total_samples = sum(bin_data["sample_count"] for bin_data in bins)
 
             for bin_data in bins:
-                if bin_data['sample_count'] > 0:
-                    bin_weight = bin_data['sample_count'] / total_samples
+                if bin_data["sample_count"] > 0:
+                    bin_weight = bin_data["sample_count"] / total_samples
                     confidence_accuracy_diff = abs(
-                        bin_data['confidence_mean'] - bin_data['accuracy_mean']
+                        bin_data["confidence_mean"] - bin_data["accuracy_mean"]
                     )
                     ece += bin_weight * confidence_accuracy_diff
 
@@ -836,7 +919,7 @@ class AdvancedConfidenceTracker:
         self,
         metrics: ConfidenceMetrics,
         market_context: Optional[Dict[str, Any]],
-        profile: ModelConfidenceProfile
+        profile: ModelConfidenceProfile,
     ) -> ConfidenceMetrics:
         """Apply dynamic adjustments to calibrated confidence"""
         try:
@@ -849,29 +932,31 @@ class AdvancedConfidenceTracker:
                 if recent_trend > 0.1:  # Improving performance
                     trend_adjustment = min(0.1, recent_trend / 2)
                     adjusted_confidence += trend_adjustment
-                    adjustment_factors['trend_boost'] = trend_adjustment
+                    adjustment_factors["trend_boost"] = trend_adjustment
                 elif recent_trend < -0.1:  # Declining performance
                     trend_adjustment = max(-0.15, recent_trend / 2)
                     adjusted_confidence += trend_adjustment
-                    adjustment_factors['trend_penalty'] = trend_adjustment
+                    adjustment_factors["trend_penalty"] = trend_adjustment
 
             # Market volatility adjustment
             if market_context:
-                volatility = market_context.get('volatility', 0.5)
+                volatility = market_context.get("volatility", 0.5)
                 if volatility > 0.8:  # High volatility
                     volatility_adjustment = -0.05
                     adjusted_confidence += volatility_adjustment
-                    adjustment_factors['high_volatility_penalty'] = volatility_adjustment
+                    adjustment_factors["high_volatility_penalty"] = (
+                        volatility_adjustment
+                    )
                 elif volatility < 0.2:  # Low volatility
                     volatility_adjustment = 0.03
                     adjusted_confidence += volatility_adjustment
-                    adjustment_factors['low_volatility_boost'] = volatility_adjustment
+                    adjustment_factors["low_volatility_boost"] = volatility_adjustment
 
             # Model confidence threshold adjustment
             if adjusted_confidence < profile.confidence_threshold:
                 threshold_adjustment = -0.05
                 adjusted_confidence += threshold_adjustment
-                adjustment_factors['below_threshold_penalty'] = threshold_adjustment
+                adjustment_factors["below_threshold_penalty"] = threshold_adjustment
 
             # Ensure confidence remains in valid range
             adjusted_confidence = max(0.0, min(1.0, adjusted_confidence))
@@ -883,7 +968,7 @@ class AdvancedConfidenceTracker:
                     adjusted_confidence=adjusted_confidence,
                     adjustment_reason="Dynamic market and performance adjustments",
                     adjustment_factors=adjustment_factors,
-                    market_conditions=market_context or {}
+                    market_conditions=market_context or {},
                 )
                 self.confidence_adjustments.append(adjustment)
 
@@ -896,14 +981,16 @@ class AdvancedConfidenceTracker:
             logger.warning("Failed to apply dynamic adjustments", error=str(e))
             return metrics
 
-    async def _get_or_create_model_profile(self, model_id: str) -> ModelConfidenceProfile:
+    async def _get_or_create_model_profile(
+        self, model_id: str
+    ) -> ModelConfidenceProfile:
         """Get existing model profile or create a new one"""
         try:
             if model_id not in self.model_profiles:
                 # Create new profile
                 profile = ModelConfidenceProfile(
                     model_id=model_id,
-                    model_type=ModelType.TRANSFORMER  # Default, should be updated
+                    model_type=ModelType.TRANSFORMER,  # Default, should be updated
                 )
                 self.model_profiles[model_id] = profile
 
@@ -912,43 +999,41 @@ class AdvancedConfidenceTracker:
             return self.model_profiles[model_id]
 
         except Exception as e:
-            raise ConfidenceTrackingError(f"Failed to get/create model profile: {str(e)}")
+            raise ConfidenceTrackingError(
+                f"Failed to get/create model profile: {str(e)}"
+            )
 
     async def _record_prediction_for_learning(
-        self,
-        prediction: AIPrediction,
-        metrics: ConfidenceMetrics
+        self, prediction: AIPrediction, metrics: ConfidenceMetrics
     ) -> None:
         """Record prediction data for future learning"""
         try:
             prediction_record = {
-                'prediction_id': prediction.prediction_id,
-                'model_id': prediction.model_id,
-                'prediction_type': prediction.prediction_type.value,
-                'confidence_score': prediction.confidence_score,
-                'calibrated_confidence': metrics.calibrated_confidence,
-                'reliability_score': metrics.reliability_score,
-                'timestamp': datetime.utcnow(),
-                'expiry_time': prediction.expiry_time,
-                'prediction_value': prediction.prediction_value,
-                'input_features': prediction.input_features,
-                'market_context': prediction.market_context,
-                'outcome_accuracy': None,  # Will be updated when outcome is known
-                'outcome_determined': False
+                "prediction_id": prediction.prediction_id,
+                "model_id": prediction.model_id,
+                "prediction_type": prediction.prediction_type.value,
+                "confidence_score": prediction.confidence_score,
+                "calibrated_confidence": metrics.calibrated_confidence,
+                "reliability_score": metrics.reliability_score,
+                "timestamp": datetime.utcnow(),
+                "expiry_time": prediction.expiry_time,
+                "prediction_value": prediction.prediction_value,
+                "input_features": prediction.input_features,
+                "market_context": prediction.market_context,
+                "outcome_accuracy": None,  # Will be updated when outcome is known
+                "outcome_determined": False,
             }
 
             self.prediction_history.append(prediction_record)
 
             # Update global metrics
-            self.global_metrics['total_predictions'] += 1
+            self.global_metrics["total_predictions"] += 1
 
         except Exception as e:
             logger.error("Failed to record prediction for learning", error=str(e))
 
     async def _update_model_profile(
-        self,
-        profile: ModelConfidenceProfile,
-        metrics: ConfidenceMetrics
+        self, profile: ModelConfidenceProfile, metrics: ConfidenceMetrics
     ) -> None:
         """Update model profile with new prediction metrics"""
         try:
@@ -961,8 +1046,8 @@ class AdvancedConfidenceTracker:
             else:
                 alpha = profile.learning_rate
                 profile.overall_confidence = (
-                    (1 - alpha) * profile.overall_confidence +
-                    alpha * metrics.calibrated_confidence
+                    (1 - alpha) * profile.overall_confidence
+                    + alpha * metrics.calibrated_confidence
                 )
 
             # Update type-specific confidence
@@ -974,7 +1059,7 @@ class AdvancedConfidenceTracker:
                     calibrated_confidence=metrics.calibrated_confidence,
                     reliability_score=metrics.reliability_score,
                     prediction_count=1,
-                    accuracy_rate=0.0
+                    accuracy_rate=0.0,
                 )
             else:
                 type_metrics = profile.type_confidence[pred_type]
@@ -983,12 +1068,12 @@ class AdvancedConfidenceTracker:
                 # Update running averages
                 alpha = profile.learning_rate
                 type_metrics.calibrated_confidence = (
-                    (1 - alpha) * type_metrics.calibrated_confidence +
-                    alpha * metrics.calibrated_confidence
+                    (1 - alpha) * type_metrics.calibrated_confidence
+                    + alpha * metrics.calibrated_confidence
                 )
                 type_metrics.reliability_score = (
-                    (1 - alpha) * type_metrics.reliability_score +
-                    alpha * metrics.reliability_score
+                    (1 - alpha) * type_metrics.reliability_score
+                    + alpha * metrics.reliability_score
                 )
 
         except Exception as e:
@@ -998,7 +1083,7 @@ class AdvancedConfidenceTracker:
         self,
         prediction_id: str,
         actual_outcome: Dict[str, Any],
-        outcome_accuracy: float
+        outcome_accuracy: float,
     ) -> None:
         """
         Update prediction outcome for learning and calibration
@@ -1014,27 +1099,32 @@ class AdvancedConfidenceTracker:
         try:
             # Validate input
             if not (0.0 <= outcome_accuracy <= 1.0):
-                raise ConfidenceTrackingError("Outcome accuracy must be between 0.0 and 1.0")
+                raise ConfidenceTrackingError(
+                    "Outcome accuracy must be between 0.0 and 1.0"
+                )
 
             # Find prediction record
             prediction_record = None
             for record in self.prediction_history:
-                if record.get('prediction_id') == prediction_id:
+                if record.get("prediction_id") == prediction_id:
                     prediction_record = record
                     break
 
             if not prediction_record:
-                logger.warning("Prediction record not found for outcome update", prediction_id=prediction_id)
+                logger.warning(
+                    "Prediction record not found for outcome update",
+                    prediction_id=prediction_id,
+                )
                 return
 
             # Update outcome data
-            prediction_record['actual_outcome'] = actual_outcome
-            prediction_record['outcome_accuracy'] = outcome_accuracy
-            prediction_record['outcome_determined'] = True
-            prediction_record['outcome_timestamp'] = datetime.utcnow()
+            prediction_record["actual_outcome"] = actual_outcome
+            prediction_record["outcome_accuracy"] = outcome_accuracy
+            prediction_record["outcome_determined"] = True
+            prediction_record["outcome_timestamp"] = datetime.utcnow()
 
             # Update model profile
-            model_id = prediction_record['model_id']
+            model_id = prediction_record["model_id"]
             if model_id in self.model_profiles:
                 profile = self.model_profiles[model_id]
 
@@ -1044,9 +1134,8 @@ class AdvancedConfidenceTracker:
                 else:
                     alpha = profile.learning_rate
                     profile.overall_accuracy = (
-                        (1 - alpha) * profile.overall_accuracy +
-                        alpha * outcome_accuracy
-                    )
+                        1 - alpha
+                    ) * profile.overall_accuracy + alpha * outcome_accuracy
 
                 # Add to recent performance tracking
                 profile.recent_performance.append(outcome_accuracy)
@@ -1060,7 +1149,7 @@ class AdvancedConfidenceTracker:
                     profile.performance_trend = second_half_avg - first_half_avg
 
                 # Update type-specific accuracy
-                pred_type_str = prediction_record['prediction_type']
+                pred_type_str = prediction_record["prediction_type"]
                 for pred_type, type_metrics in profile.type_confidence.items():
                     if pred_type.value == pred_type_str:
                         if type_metrics.prediction_count == 1:
@@ -1068,13 +1157,13 @@ class AdvancedConfidenceTracker:
                         else:
                             alpha = profile.learning_rate
                             type_metrics.accuracy_rate = (
-                                (1 - alpha) * type_metrics.accuracy_rate +
-                                alpha * outcome_accuracy
+                                (1 - alpha) * type_metrics.accuracy_rate
+                                + alpha * outcome_accuracy
                             )
                         break
 
             # Update global metrics
-            self.global_metrics['total_correct'] += (1 if outcome_accuracy > 0.5 else 0)
+            self.global_metrics["total_correct"] += 1 if outcome_accuracy > 0.5 else 0
 
             # Trigger calibration update if needed
             await self._check_calibration_update_needed(model_id)
@@ -1083,12 +1172,14 @@ class AdvancedConfidenceTracker:
                 "Prediction outcome updated",
                 prediction_id=prediction_id,
                 outcome_accuracy=outcome_accuracy,
-                model_id=model_id
+                model_id=model_id,
             )
 
         except Exception as e:
             await self._handle_tracking_error(e, prediction_id)
-            raise ConfidenceTrackingError(f"Failed to update prediction outcome: {str(e)}")
+            raise ConfidenceTrackingError(
+                f"Failed to update prediction outcome: {str(e)}"
+            )
 
     async def _check_calibration_update_needed(self, model_id: str) -> None:
         """Check if calibration model needs updating"""
@@ -1101,7 +1192,7 @@ class AdvancedConfidenceTracker:
             # Check if enough new data since last calibration
             predictions_since_calibration = 0
             for record in reversed(list(self.prediction_history)):
-                if record.get('model_id') == model_id:
+                if record.get("model_id") == model_id:
                     predictions_since_calibration += 1
                     if predictions_since_calibration >= self.calibration_window // 4:
                         break
@@ -1116,16 +1207,16 @@ class AdvancedConfidenceTracker:
                             "Failed to update calibration model",
                             model_id=model_id,
                             prediction_type=pred_type.value,
-                            error=str(e)
+                            error=str(e),
                         )
 
-                self.global_metrics['last_calibration'] = datetime.utcnow()
-                self.global_metrics['learning_iterations'] += 1
+                self.global_metrics["last_calibration"] = datetime.utcnow()
+                self.global_metrics["learning_iterations"] += 1
 
                 logger.info(
                     "Calibration models updated",
                     model_id=model_id,
-                    new_predictions=predictions_since_calibration
+                    new_predictions=predictions_since_calibration,
                 )
 
         except Exception as e:
@@ -1152,36 +1243,36 @@ class AdvancedConfidenceTracker:
 
             # Basic profile information
             summary = {
-                'model_id': model_id,
-                'model_type': profile.model_type.value,
-                'prediction_count': profile.prediction_count,
-                'overall_accuracy': profile.overall_accuracy,
-                'overall_confidence': profile.overall_confidence,
-                'performance_trend': profile.performance_trend
+                "model_id": model_id,
+                "model_type": profile.model_type.value,
+                "prediction_count": profile.prediction_count,
+                "overall_accuracy": profile.overall_accuracy,
+                "overall_confidence": profile.overall_confidence,
+                "performance_trend": profile.performance_trend,
             }
 
             # Type-specific confidence
             type_confidence_summary = {}
             for pred_type, metrics in profile.type_confidence.items():
                 type_confidence_summary[pred_type.value] = {
-                    'prediction_count': metrics.prediction_count,
-                    'accuracy_rate': metrics.accuracy_rate,
-                    'calibrated_confidence': metrics.calibrated_confidence,
-                    'reliability_score': metrics.reliability_score,
-                    'calibration_error': metrics.calibration_error
+                    "prediction_count": metrics.prediction_count,
+                    "accuracy_rate": metrics.accuracy_rate,
+                    "calibrated_confidence": metrics.calibrated_confidence,
+                    "reliability_score": metrics.reliability_score,
+                    "calibration_error": metrics.calibration_error,
                 }
 
-            summary['type_confidence'] = type_confidence_summary
+            summary["type_confidence"] = type_confidence_summary
 
             # Recent performance
             if profile.recent_performance:
                 recent_perf = list(profile.recent_performance)
-                summary['recent_performance'] = {
-                    'count': len(recent_perf),
-                    'average': mean(recent_perf),
-                    'median': median(recent_perf),
-                    'std_dev': stdev(recent_perf) if len(recent_perf) > 1 else 0.0,
-                    'trend': profile.performance_trend
+                summary["recent_performance"] = {
+                    "count": len(recent_perf),
+                    "average": mean(recent_perf),
+                    "median": median(recent_perf),
+                    "std_dev": stdev(recent_perf) if len(recent_perf) > 1 else 0.0,
+                    "trend": profile.performance_trend,
                 }
 
             # Calibration information
@@ -1191,25 +1282,27 @@ class AdvancedConfidenceTracker:
                 if calibration_key in self.calibration_models:
                     cal_model = self.calibration_models[calibration_key]
                     calibration_info[pred_type.value] = {
-                        'method': cal_model['method'].value,
-                        'bins': len(cal_model['bins']),
-                        'data_points': cal_model['data_points'],
-                        'created_at': cal_model['created_at'].isoformat()
+                        "method": cal_model["method"].value,
+                        "bins": len(cal_model["bins"]),
+                        "data_points": cal_model["data_points"],
+                        "created_at": cal_model["created_at"].isoformat(),
                     }
 
-            summary['calibration_models'] = calibration_info
+            summary["calibration_models"] = calibration_info
 
             # Error tracking
-            summary['error_tracking'] = {
-                'error_count': profile.error_count,
-                'last_error': profile.last_error,
-                'recovery_attempts': profile.recovery_attempts
+            summary["error_tracking"] = {
+                "error_count": profile.error_count,
+                "last_error": profile.last_error,
+                "recovery_attempts": profile.recovery_attempts,
             }
 
             return summary
 
         except Exception as e:
-            raise ConfidenceTrackingError(f"Failed to generate model confidence summary: {str(e)}")
+            raise ConfidenceTrackingError(
+                f"Failed to generate model confidence summary: {str(e)}"
+            )
 
     async def get_global_confidence_metrics(self) -> Dict[str, Any]:
         """
@@ -1221,15 +1314,15 @@ class AdvancedConfidenceTracker:
         try:
             # Calculate current global accuracy
             recent_predictions = [
-                record for record in list(self.prediction_history)[-1000:]
-                if record.get('outcome_determined', False)
+                record
+                for record in list(self.prediction_history)[-1000:]
+                if record.get("outcome_determined", False)
             ]
 
             global_accuracy = 0.0
             if recent_predictions:
                 total_accuracy = sum(
-                    record.get('outcome_accuracy', 0.0)
-                    for record in recent_predictions
+                    record.get("outcome_accuracy", 0.0) for record in recent_predictions
                 )
                 global_accuracy = total_accuracy / len(recent_predictions)
 
@@ -1240,28 +1333,28 @@ class AdvancedConfidenceTracker:
             model_performance = {}
             for model_id, profile in self.model_profiles.items():
                 model_performance[model_id] = {
-                    'accuracy': profile.overall_accuracy,
-                    'confidence': profile.overall_confidence,
-                    'prediction_count': profile.prediction_count,
-                    'trend': profile.performance_trend
+                    "accuracy": profile.overall_accuracy,
+                    "confidence": profile.overall_confidence,
+                    "prediction_count": profile.prediction_count,
+                    "trend": profile.performance_trend,
                 }
 
             return {
-                'global_metrics': self.global_metrics,
-                'current_global_accuracy': global_accuracy,
-                'calibration_quality': calibration_quality,
-                'active_models': len(self.model_profiles),
-                'total_predictions_tracked': len(self.prediction_history),
-                'calibration_models_count': len(self.calibration_models),
-                'model_performance': model_performance,
-                'health_status': self.health_status,
-                'error_counts': dict(self.error_counts),
-                'last_updated': datetime.utcnow().isoformat()
+                "global_metrics": self.global_metrics,
+                "current_global_accuracy": global_accuracy,
+                "calibration_quality": calibration_quality,
+                "active_models": len(self.model_profiles),
+                "total_predictions_tracked": len(self.prediction_history),
+                "calibration_models_count": len(self.calibration_models),
+                "model_performance": model_performance,
+                "health_status": self.health_status,
+                "error_counts": dict(self.error_counts),
+                "last_updated": datetime.utcnow().isoformat(),
             }
 
         except Exception as e:
             logger.error("Failed to get global confidence metrics", error=str(e))
-            return {'error': str(e), 'timestamp': datetime.utcnow().isoformat()}
+            return {"error": str(e), "timestamp": datetime.utcnow().isoformat()}
 
     async def _calculate_global_calibration_quality(self) -> float:
         """Calculate overall calibration quality across all models"""
@@ -1273,22 +1366,24 @@ class AdvancedConfidenceTracker:
             model_count = 0
 
             for calibration_key, cal_model in self.calibration_models.items():
-                bins = cal_model.get('bins', [])
+                bins = cal_model.get("bins", [])
                 if not bins:
                     continue
 
                 # Calculate Expected Calibration Error for this model
                 ece = 0.0
-                total_samples = sum(bin_data.get('sample_count', 0) for bin_data in bins)
+                total_samples = sum(
+                    bin_data.get("sample_count", 0) for bin_data in bins
+                )
 
                 if total_samples > 0:
                     for bin_data in bins:
-                        sample_count = bin_data.get('sample_count', 0)
+                        sample_count = bin_data.get("sample_count", 0)
                         if sample_count > 0:
                             bin_weight = sample_count / total_samples
                             confidence_accuracy_diff = abs(
-                                bin_data.get('confidence_mean', 0.5) -
-                                bin_data.get('accuracy_mean', 0.5)
+                                bin_data.get("confidence_mean", 0.5)
+                                - bin_data.get("accuracy_mean", 0.5)
                             )
                             ece += bin_weight * confidence_accuracy_diff
 
@@ -1300,7 +1395,9 @@ class AdvancedConfidenceTracker:
             return total_quality / model_count if model_count > 0 else 0.0
 
         except Exception as e:
-            logger.warning("Failed to calculate global calibration quality", error=str(e))
+            logger.warning(
+                "Failed to calculate global calibration quality", error=str(e)
+            )
             return 0.0
 
     async def _handle_tracking_error(self, error: Exception, context: str = "") -> None:
@@ -1314,7 +1411,7 @@ class AdvancedConfidenceTracker:
                 error_type=error_type,
                 error_message=str(error),
                 context=context,
-                error_count=self.error_counts[error_type]
+                error_count=self.error_counts[error_type],
             )
 
             # Update health status based on error frequency
@@ -1331,20 +1428,23 @@ class AdvancedConfidenceTracker:
                 await self._recover_from_metrics_error(context)
 
         except Exception as recovery_error:
-            logger.error("Failed to handle tracking error", recovery_error=str(recovery_error))
+            logger.error(
+                "Failed to handle tracking error", recovery_error=str(recovery_error)
+            )
 
     async def _recover_from_calibration_error(self, context: str) -> None:
         """Recover from calibration errors"""
         try:
             # Clear problematic calibration models
             problematic_keys = [
-                key for key in self.calibration_models.keys()
-                if context in key
+                key for key in self.calibration_models.keys() if context in key
             ]
 
             for key in problematic_keys:
                 del self.calibration_models[key]
-                logger.info("Cleared problematic calibration model", calibration_key=key)
+                logger.info(
+                    "Cleared problematic calibration model", calibration_key=key
+                )
 
         except Exception as e:
             logger.error("Failed to recover from calibration error", error=str(e))
@@ -1361,10 +1461,12 @@ class AdvancedConfidenceTracker:
                 if profile.recovery_attempts > 5:
                     # Reset profile if too many recovery attempts
                     self.model_profiles[context] = ModelConfidenceProfile(
-                        model_id=context,
-                        model_type=profile.model_type
+                        model_id=context, model_type=profile.model_type
                     )
-                    logger.info("Reset model profile after multiple recovery attempts", model_id=context)
+                    logger.info(
+                        "Reset model profile after multiple recovery attempts",
+                        model_id=context,
+                    )
 
         except Exception as e:
             logger.error("Failed to recover from metrics error", error=str(e))
@@ -1393,7 +1495,9 @@ class AdvancedConfidenceTracker:
 
             # Check calibration models
             if len(self.calibration_models) == 0 and len(self.model_profiles) > 0:
-                issues.append("No calibration models built despite having model profiles")
+                issues.append(
+                    "No calibration models built despite having model profiles"
+                )
                 health_status = "degraded"
 
             # Check error rates
@@ -1407,27 +1511,27 @@ class AdvancedConfidenceTracker:
 
             # Performance metrics
             performance_metrics = {
-                'prediction_history_size': len(self.prediction_history),
-                'active_model_profiles': len(self.model_profiles),
-                'calibration_models': len(self.calibration_models),
-                'total_errors': total_errors,
-                'error_breakdown': dict(self.error_counts),
-                'global_metrics': self.global_metrics
+                "prediction_history_size": len(self.prediction_history),
+                "active_model_profiles": len(self.model_profiles),
+                "calibration_models": len(self.calibration_models),
+                "total_errors": total_errors,
+                "error_breakdown": dict(self.error_counts),
+                "global_metrics": self.global_metrics,
             }
 
             return {
-                'status': health_status,
-                'timestamp': datetime.utcnow().isoformat(),
-                'issues': issues,
-                'performance_metrics': performance_metrics,
-                'system_health': self.health_status
+                "status": health_status,
+                "timestamp": datetime.utcnow().isoformat(),
+                "issues": issues,
+                "performance_metrics": performance_metrics,
+                "system_health": self.health_status,
             }
 
         except Exception as e:
             return {
-                'status': 'unhealthy',
-                'timestamp': datetime.utcnow().isoformat(),
-                'error': str(e)
+                "status": "unhealthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e),
             }
 
 
@@ -1439,7 +1543,7 @@ confidence_tracker = AdvancedConfidenceTracker()
 async def track_prediction_confidence(
     prediction: AIPrediction,
     market_context: Optional[Dict[str, Any]] = None,
-    additional_features: Optional[Dict[str, Any]] = None
+    additional_features: Optional[Dict[str, Any]] = None,
 ) -> ConfidenceMetrics:
     """Track confidence for a prediction"""
     return await confidence_tracker.track_prediction_confidence(
@@ -1448,9 +1552,7 @@ async def track_prediction_confidence(
 
 
 async def update_prediction_outcome(
-    prediction_id: str,
-    actual_outcome: Dict[str, Any],
-    outcome_accuracy: float
+    prediction_id: str, actual_outcome: Dict[str, Any], outcome_accuracy: float
 ) -> None:
     """Update prediction outcome for learning"""
     await confidence_tracker.update_prediction_outcome(
@@ -1486,7 +1588,7 @@ async def example_usage():
         prediction_value={"direction": "up", "confidence": 0.75},
         confidence_score=0.75,
         input_features={"rsi": 65, "macd": 0.1, "volume_ratio": 1.2},
-        market_context={"trend": "bullish", "volatility": 0.4}
+        market_context={"trend": "bullish", "volatility": 0.4},
     )
 
     # Track confidence
@@ -1497,20 +1599,22 @@ async def example_usage():
                 "trend": "bullish",
                 "volatility": 0.4,
                 "market_hours": "market_open",
-                "volume_ratio": 1.2
-            }
+                "volume_ratio": 1.2,
+            },
         )
 
         print("Confidence Metrics:")
         print(f"  Raw Confidence: {confidence_metrics.raw_confidence:.3f}")
-        print(f"  Calibrated Confidence: {confidence_metrics.calibrated_confidence:.3f}")
+        print(
+            f"  Calibrated Confidence: {confidence_metrics.calibrated_confidence:.3f}"
+        )
         print(f"  Reliability Score: {confidence_metrics.reliability_score:.3f}")
 
         # Simulate outcome update later
         await update_prediction_outcome(
             example_prediction.prediction_id,
             {"direction": "up", "actual_price_change": 0.05},
-            outcome_accuracy=0.9  # High accuracy
+            outcome_accuracy=0.9,  # High accuracy
         )
 
         print("Outcome updated successfully")

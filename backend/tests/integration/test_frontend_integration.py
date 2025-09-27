@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 class WebSocketMessageType(Enum):
     """WebSocket message type enumeration"""
+
     AUTH_REQUEST = "auth_request"
     AUTH_RESPONSE = "auth_response"
     SUBSCRIBE = "subscribe"
@@ -48,6 +49,7 @@ class WebSocketMessageType(Enum):
 
 class ConnectionState(Enum):
     """WebSocket connection state enumeration"""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -59,6 +61,7 @@ class ConnectionState(Enum):
 
 class SubscriptionType(Enum):
     """WebSocket subscription type enumeration"""
+
     MARKET_DATA = "market_data"
     PORTFOLIO = "portfolio"
     TRADE_SIGNALS = "trade_signals"
@@ -68,31 +71,37 @@ class SubscriptionType(Enum):
 
 class WebSocketError(Exception):
     """Base exception for WebSocket-related errors"""
+
     pass
 
 
 class ConnectionError(WebSocketError):
     """Raised when WebSocket connection fails"""
+
     pass
 
 
 class AuthenticationError(WebSocketError):
     """Raised when WebSocket authentication fails"""
+
     pass
 
 
 class SubscriptionError(WebSocketError):
     """Raised when subscription management fails"""
+
     pass
 
 
 class MessageDeliveryError(WebSocketError):
     """Raised when message delivery fails"""
+
     pass
 
 
 class NetworkError(WebSocketError):
     """Raised when network communication fails"""
+
     pass
 
 
@@ -112,7 +121,7 @@ class MockWebSocketServer:
             "active_connections": 0,
             "messages_sent": 0,
             "messages_received": 0,
-            "errors": 0
+            "errors": 0,
         }
 
     async def start(self):
@@ -135,7 +144,7 @@ class MockWebSocketServer:
             "websocket": websocket,
             "connected_at": datetime.now(),
             "last_activity": datetime.now(),
-            "state": ConnectionState.CONNECTED
+            "state": ConnectionState.CONNECTED,
         }
         self.message_queue[client_id] = []
         self.server_stats["total_connections"] += 1
@@ -169,7 +178,9 @@ class MockWebSocketServer:
             elif message_type == WebSocketMessageType.HEARTBEAT:
                 await self._handle_heartbeat(client_id, data)
             else:
-                await self._send_error(client_id, f"Unknown message type: {message_type}")
+                await self._send_error(
+                    client_id, f"Unknown message type: {message_type}"
+                )
 
         except json.JSONDecodeError:
             await self._send_error(client_id, "Invalid JSON format")
@@ -187,7 +198,9 @@ class MockWebSocketServer:
             # Mock authentication validation
             if token == "valid_test_token" and user_id:
                 self.authenticated_clients.add(client_id)
-                self.connected_clients[client_id]["state"] = ConnectionState.AUTHENTICATED
+                self.connected_clients[client_id][
+                    "state"
+                ] = ConnectionState.AUTHENTICATED
                 self.connected_clients[client_id]["user_id"] = user_id
 
                 response = {
@@ -195,7 +208,7 @@ class MockWebSocketServer:
                     "status": "success",
                     "message": "Authentication successful",
                     "client_id": client_id,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
                 await self._send_message(client_id, response)
             else:
@@ -203,7 +216,7 @@ class MockWebSocketServer:
                     "type": WebSocketMessageType.AUTH_RESPONSE.value,
                     "status": "error",
                     "message": "Authentication failed",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
                 await self._send_message(client_id, response)
 
@@ -214,7 +227,9 @@ class MockWebSocketServer:
         """Handle subscription requests"""
         try:
             if client_id not in self.authenticated_clients:
-                await self._send_error(client_id, "Authentication required for subscriptions")
+                await self._send_error(
+                    client_id, "Authentication required for subscriptions"
+                )
                 return
 
             subscription_type = SubscriptionType(data.get("subscription_type"))
@@ -226,7 +241,7 @@ class MockWebSocketServer:
             self.client_subscriptions[client_id][subscription_type] = {
                 "symbols": symbols,
                 "subscribed_at": datetime.now(),
-                "active": True
+                "active": True,
             }
 
             self.connected_clients[client_id]["state"] = ConnectionState.SUBSCRIBED
@@ -236,7 +251,7 @@ class MockWebSocketServer:
                 "message": f"Subscribed to {subscription_type.value}",
                 "subscription_type": subscription_type.value,
                 "symbols": symbols,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             await self._send_message(client_id, response)
 
@@ -250,19 +265,23 @@ class MockWebSocketServer:
         try:
             subscription_type = SubscriptionType(data.get("subscription_type"))
 
-            if (client_id in self.client_subscriptions and
-                subscription_type in self.client_subscriptions[client_id]):
+            if (
+                client_id in self.client_subscriptions
+                and subscription_type in self.client_subscriptions[client_id]
+            ):
                 del self.client_subscriptions[client_id][subscription_type]
 
                 response = {
                     "type": WebSocketMessageType.ACK.value,
                     "message": f"Unsubscribed from {subscription_type.value}",
                     "subscription_type": subscription_type.value,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
                 await self._send_message(client_id, response)
             else:
-                await self._send_error(client_id, f"Not subscribed to {subscription_type.value}")
+                await self._send_error(
+                    client_id, f"Not subscribed to {subscription_type.value}"
+                )
 
         except ValueError as e:
             await self._send_error(client_id, f"Invalid subscription type: {str(e)}")
@@ -275,7 +294,7 @@ class MockWebSocketServer:
             "type": WebSocketMessageType.HEARTBEAT.value,
             "message": "pong",
             "server_time": datetime.now().isoformat(),
-            "client_id": client_id
+            "client_id": client_id,
         }
         await self._send_message(client_id, response)
 
@@ -296,7 +315,7 @@ class MockWebSocketServer:
         error_response = {
             "type": WebSocketMessageType.ERROR.value,
             "message": error_message,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
         await self._send_message(client_id, error_response)
         self.server_stats["errors"] += 1
@@ -326,12 +345,14 @@ class MockWebSocketServer:
             "type": WebSocketMessageType.MARKET_DATA.value,
             "symbol": symbol,
             "data": data,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         for client_id, subscriptions in self.client_subscriptions.items():
-            if (SubscriptionType.MARKET_DATA in subscriptions and
-                symbol in subscriptions[SubscriptionType.MARKET_DATA]["symbols"]):
+            if (
+                SubscriptionType.MARKET_DATA in subscriptions
+                and symbol in subscriptions[SubscriptionType.MARKET_DATA]["symbols"]
+            ):
                 await self._send_message(client_id, message)
 
     async def broadcast_portfolio_update(self, user_id: str, data: Dict):
@@ -339,7 +360,7 @@ class MockWebSocketServer:
         message = {
             "type": WebSocketMessageType.PORTFOLIO_UPDATE.value,
             "data": data,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Find client by user_id
@@ -403,7 +424,7 @@ class MockWebSocketClient:
                 "token": token,
                 "user_id": user_id,
                 "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             # In real implementation, would send via websocket
@@ -420,8 +441,9 @@ class MockWebSocketClient:
             self.connection_state = ConnectionState.ERROR
             raise AuthenticationError(f"Authentication failed: {str(e)}")
 
-    async def subscribe(self, subscription_type: SubscriptionType,
-                       symbols: List[str] = None):
+    async def subscribe(
+        self, subscription_type: SubscriptionType, symbols: List[str] = None
+    ):
         """Subscribe to data streams"""
         if not self.is_authenticated:
             raise SubscriptionError("Must be authenticated before subscribing")
@@ -432,7 +454,7 @@ class MockWebSocketClient:
                 "subscription_type": subscription_type.value,
                 "symbols": symbols or [],
                 "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             # In real implementation, would send via websocket
@@ -451,13 +473,15 @@ class MockWebSocketClient:
                 "type": WebSocketMessageType.UNSUBSCRIBE.value,
                 "subscription_type": subscription_type.value,
                 "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             # In real implementation, would send via websocket
             # For testing, simulate unsubscription
             self.subscriptions.discard(subscription_type)
-            print(f"✅ Client {self.client_id} unsubscribed from {subscription_type.value}")
+            print(
+                f"✅ Client {self.client_id} unsubscribed from {subscription_type.value}"
+            )
 
         except Exception as e:
             raise SubscriptionError(f"Unsubscription failed: {str(e)}")
@@ -469,7 +493,7 @@ class MockWebSocketClient:
                 "type": WebSocketMessageType.HEARTBEAT.value,
                 "message": "ping",
                 "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             # In real implementation, would send via websocket
@@ -481,10 +505,9 @@ class MockWebSocketClient:
 
     async def handle_received_message(self, message: Dict):
         """Handle messages received from server"""
-        self.received_messages.append({
-            "message": message,
-            "received_at": datetime.now()
-        })
+        self.received_messages.append(
+            {"message": message, "received_at": datetime.now()}
+        )
 
         message_type = WebSocketMessageType(message.get("type"))
 
@@ -526,7 +549,9 @@ class MockWebSocketClient:
             await asyncio.sleep(min(self.reconnect_attempts * 2, 10))
 
             await self.connect(server_url)
-            print(f"🔄 Client {self.client_id} reconnected (attempt {self.reconnect_attempts})")
+            print(
+                f"🔄 Client {self.client_id} reconnected (attempt {self.reconnect_attempts})"
+            )
 
         except Exception as e:
             if self.reconnect_attempts < self.max_reconnect_attempts:
@@ -585,7 +610,7 @@ class TestFrontendIntegration:
         websocket_server,
         websocket_client,
         market_data_service,
-        portfolio_service
+        portfolio_service,
     ):
         """Test complete WebSocket communication workflow"""
 
@@ -610,10 +635,7 @@ class TestFrontendIntegration:
             assert websocket_client.connection_state == ConnectionState.AUTHENTICATED
 
             # Step 4: Subscribe to market data
-            await websocket_client.subscribe(
-                SubscriptionType.MARKET_DATA,
-                test_symbols
-            )
+            await websocket_client.subscribe(SubscriptionType.MARKET_DATA, test_symbols)
             assert SubscriptionType.MARKET_DATA in websocket_client.subscriptions
 
             # Step 5: Subscribe to portfolio updates
@@ -625,7 +647,7 @@ class TestFrontendIntegration:
             market_data = {
                 "price": Decimal("2500.00"),
                 "volume": 100000,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             market_data_service.get_real_time_data.return_value = market_data
@@ -638,12 +660,18 @@ class TestFrontendIntegration:
                 "total_value": Decimal("500000.00"),
                 "pnl": Decimal("25000.00"),
                 "positions": [
-                    {"symbol": "RELIANCE", "quantity": 100, "current_value": "250000.00"}
-                ]
+                    {
+                        "symbol": "RELIANCE",
+                        "quantity": 100,
+                        "current_value": "250000.00",
+                    }
+                ],
             }
 
             portfolio_service.get_portfolio_updates.return_value = portfolio_data
-            await websocket_server.broadcast_portfolio_update(test_user_id, portfolio_data)
+            await websocket_server.broadcast_portfolio_update(
+                test_user_id, portfolio_data
+            )
 
             # Step 8: Test heartbeat mechanism
             await websocket_client.send_heartbeat()
@@ -676,10 +704,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_authentication_failure_handling(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client
+        self, mock_db_session, websocket_server, websocket_client
     ):
         """Test handling of WebSocket authentication failures"""
 
@@ -697,8 +722,9 @@ class TestFrontendIntegration:
             with pytest.raises(AuthenticationError) as exc_info:
                 await websocket_client.authenticate(invalid_token, test_user_id)
 
-            assert "Authentication failed" in str(exc_info.value) or \
-                   "Invalid token" in str(exc_info.value)
+            assert "Authentication failed" in str(
+                exc_info.value
+            ) or "Invalid token" in str(exc_info.value)
             assert websocket_client.is_authenticated is False
 
             # Step 3: Verify subscription requires authentication
@@ -726,10 +752,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_connection_resilience_and_reconnection(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client
+        self, mock_db_session, websocket_server, websocket_client
     ):
         """Test WebSocket connection resilience and automatic reconnection"""
 
@@ -767,7 +790,9 @@ class TestFrontendIntegration:
             assert SubscriptionType.MARKET_DATA in websocket_client.subscriptions
 
             # Step 6: Test multiple reconnection attempts failure scenario
-            websocket_client.reconnect_attempts = websocket_client.max_reconnect_attempts
+            websocket_client.reconnect_attempts = (
+                websocket_client.max_reconnect_attempts
+            )
             websocket_client.is_connected = False
 
             with pytest.raises(ConnectionError) as exc_info:
@@ -775,7 +800,9 @@ class TestFrontendIntegration:
 
             assert "Maximum reconnection attempts exceeded" in str(exc_info.value)
 
-            print("✅ WebSocket connection resilience and reconnection working correctly")
+            print(
+                "✅ WebSocket connection resilience and reconnection working correctly"
+            )
 
         except Exception as e:
             pytest.fail(f"Connection resilience test failed: {str(e)}")
@@ -785,11 +812,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_message_queuing_and_delivery_guarantees(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client,
-        market_data_service
+        self, mock_db_session, websocket_server, websocket_client, market_data_service
     ):
         """Test message queuing and delivery guarantees"""
 
@@ -803,7 +826,9 @@ class TestFrontendIntegration:
             await websocket_server.start()
             await websocket_client.connect(server_url)
             await websocket_client.authenticate(test_token, test_user_id)
-            await websocket_client.subscribe(SubscriptionType.MARKET_DATA, [test_symbol])
+            await websocket_client.subscribe(
+                SubscriptionType.MARKET_DATA, [test_symbol]
+            )
 
             # Step 2: Queue multiple messages rapidly
             message_count = 10
@@ -814,7 +839,7 @@ class TestFrontendIntegration:
                     "price": Decimal(f"25{i:02d}.00"),
                     "volume": 100000 + (i * 1000),
                     "sequence": i,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
                 messages_sent.append(market_data)
@@ -828,7 +853,7 @@ class TestFrontendIntegration:
                     "message_id": i,
                     "delivered": True,
                     "delivery_time": datetime.now(),
-                    "latency_ms": 50 + (i * 2)  # Simulate increasing latency
+                    "latency_ms": 50 + (i * 2),  # Simulate increasing latency
                 }
                 delivery_confirmations.append(confirmation)
 
@@ -854,7 +879,7 @@ class TestFrontendIntegration:
                 "price": Decimal("2510.00"),
                 "volume": 105000,
                 "sequence": 5,  # Out of order
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             await websocket_server.broadcast_market_data(test_symbol, out_of_order_data)
@@ -869,10 +894,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_subscription_management(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client
+        self, mock_db_session, websocket_server, websocket_client
     ):
         """Test WebSocket subscription management and selective streaming"""
 
@@ -891,7 +913,7 @@ class TestFrontendIntegration:
                 SubscriptionType.MARKET_DATA,
                 SubscriptionType.PORTFOLIO,
                 SubscriptionType.TRADE_SIGNALS,
-                SubscriptionType.AI_PREDICTIONS
+                SubscriptionType.AI_PREDICTIONS,
             ]
 
             for sub_type in subscription_types:
@@ -904,8 +926,12 @@ class TestFrontendIntegration:
             symbols_batch_1 = ["RELIANCE", "TCS"]
             symbols_batch_2 = ["INFY", "HDFC"]
 
-            await websocket_client.subscribe(SubscriptionType.MARKET_DATA, symbols_batch_1)
-            await websocket_client.subscribe(SubscriptionType.MARKET_DATA, symbols_batch_2)
+            await websocket_client.subscribe(
+                SubscriptionType.MARKET_DATA, symbols_batch_1
+            )
+            await websocket_client.subscribe(
+                SubscriptionType.MARKET_DATA, symbols_batch_2
+            )
 
             # Step 4: Test unsubscription
             await websocket_client.unsubscribe(SubscriptionType.PORTFOLIO)
@@ -931,7 +957,7 @@ class TestFrontendIntegration:
                 invalid_subscription = {
                     "type": WebSocketMessageType.SUBSCRIBE.value,
                     "subscription_type": "invalid_type",
-                    "client_id": websocket_client.client_id
+                    "client_id": websocket_client.client_id,
                 }
                 # This would raise an error in real implementation
                 print("Invalid subscription type handled correctly")
@@ -948,11 +974,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_performance_and_latency_monitoring(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client,
-        market_data_service
+        self, mock_db_session, websocket_server, websocket_client, market_data_service
     ):
         """Test WebSocket performance and latency monitoring"""
 
@@ -968,7 +990,7 @@ class TestFrontendIntegration:
             "message_latencies": [],
             "throughput_messages_per_second": 0,
             "memory_usage": 0,
-            "cpu_usage": 0
+            "cpu_usage": 0,
         }
 
         try:
@@ -985,7 +1007,9 @@ class TestFrontendIntegration:
 
             # Step 3: Measure subscription time
             sub_start = time.time()
-            await websocket_client.subscribe(SubscriptionType.MARKET_DATA, [test_symbol])
+            await websocket_client.subscribe(
+                SubscriptionType.MARKET_DATA, [test_symbol]
+            )
             performance_metrics["subscription_time"] = time.time() - sub_start
 
             # Step 4: Measure message throughput and latency
@@ -999,7 +1023,7 @@ class TestFrontendIntegration:
                     "price": Decimal(f"25{i % 100:02d}.00"),
                     "volume": 100000 + i,
                     "sequence": i,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
                 await websocket_server.broadcast_market_data(test_symbol, market_data)
@@ -1008,8 +1032,9 @@ class TestFrontendIntegration:
                 performance_metrics["message_latencies"].append(message_latency)
 
             throughput_duration = time.time() - throughput_start
-            performance_metrics["throughput_messages_per_second"] = \
+            performance_metrics["throughput_messages_per_second"] = (
                 message_count / throughput_duration
+            )
 
             # Step 5: Validate performance requirements
             assert performance_metrics["connection_time"] < 5.0  # Under 5 seconds
@@ -1017,8 +1042,9 @@ class TestFrontendIntegration:
             assert performance_metrics["subscription_time"] < 1.0  # Under 1 second
 
             # Average message latency under 50ms
-            avg_latency = sum(performance_metrics["message_latencies"]) / \
-                         len(performance_metrics["message_latencies"])
+            avg_latency = sum(performance_metrics["message_latencies"]) / len(
+                performance_metrics["message_latencies"]
+            )
             assert avg_latency < 50.0
 
             # Throughput over 50 messages per second
@@ -1041,7 +1067,7 @@ class TestFrontendIntegration:
                 market_data = {
                     "price": Decimal(f"26{i:02d}.00"),
                     "volume": 200000 + i,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
                 await websocket_server.broadcast_market_data(test_symbol, market_data)
 
@@ -1060,9 +1086,13 @@ class TestFrontendIntegration:
 
             print("✅ WebSocket performance and latency monitoring working correctly")
             print(f"   Connection time: {performance_metrics['connection_time']:.3f}s")
-            print(f"   Authentication time: {performance_metrics['authentication_time']:.3f}s")
+            print(
+                f"   Authentication time: {performance_metrics['authentication_time']:.3f}s"
+            )
             print(f"   Average message latency: {avg_latency:.2f}ms")
-            print(f"   Throughput: {performance_metrics['throughput_messages_per_second']:.1f} msg/s")
+            print(
+                f"   Throughput: {performance_metrics['throughput_messages_per_second']:.1f} msg/s"
+            )
 
         except Exception as e:
             pytest.fail(f"Performance monitoring test failed: {str(e)}")
@@ -1072,10 +1102,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_error_handling_and_recovery(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client
+        self, mock_db_session, websocket_server, websocket_client
     ):
         """Test comprehensive WebSocket error handling and recovery"""
 
@@ -1094,9 +1121,11 @@ class TestFrontendIntegration:
                 "invalid json{",
                 json.dumps({"type": "invalid_message_type"}),
                 json.dumps({"invalid": "structure"}),
-                json.dumps({"type": WebSocketMessageType.SUBSCRIBE.value}),  # Missing required fields
+                json.dumps(
+                    {"type": WebSocketMessageType.SUBSCRIBE.value}
+                ),  # Missing required fields
                 "",  # Empty message
-                None  # Null message
+                None,  # Null message
             ]
 
             error_count = 0
@@ -1110,7 +1139,9 @@ class TestFrontendIntegration:
                         elif message == "":
                             raise ValueError("Empty message")
 
-                        data = json.loads(message) if isinstance(message, str) else message
+                        data = (
+                            json.loads(message) if isinstance(message, str) else message
+                        )
 
                         # Validate message structure
                         if "type" not in data:
@@ -1133,7 +1164,7 @@ class TestFrontendIntegration:
                 ConnectionError("Network connection lost"),
                 TimeoutError("Request timeout"),
                 OSError("Network unreachable"),
-                Exception("Unknown network error")
+                Exception("Unknown network error"),
             ]
 
             for error in network_errors:
@@ -1163,8 +1194,10 @@ class TestFrontendIntegration:
                         await client.connect(server_url)
                         overload_clients.append(client)
                     except ConnectionError as e:
-                        if "server overloaded" in str(e).lower() or \
-                           "connection refused" in str(e).lower():
+                        if (
+                            "server overloaded" in str(e).lower()
+                            or "connection refused" in str(e).lower()
+                        ):
                             print(f"   Server overload protection working: {str(e)}")
                             break
 
@@ -1182,9 +1215,9 @@ class TestFrontendIntegration:
             # Simulate partial service degradation
             degraded_services = {
                 "market_data": False,  # Market data service down
-                "portfolio": True,     # Portfolio service up
+                "portfolio": True,  # Portfolio service up
                 "trade_signals": False,  # Trade signals down
-                "ai_predictions": True   # AI predictions up
+                "ai_predictions": True,  # AI predictions up
             }
 
             for service, available in degraded_services.items():
@@ -1217,10 +1250,7 @@ class TestFrontendIntegration:
 
     @pytest.mark.asyncio
     async def test_websocket_security_and_data_validation(
-        self,
-        mock_db_session,
-        websocket_server,
-        websocket_client
+        self, mock_db_session, websocket_server, websocket_client
     ):
         """Test WebSocket security measures and data validation"""
 
@@ -1239,58 +1269,66 @@ class TestFrontendIntegration:
                 {
                     "name": "expired_token",
                     "token": "expired_test_token",
-                    "expected_error": "token expired"
+                    "expected_error": "token expired",
                 },
                 {
                     "name": "malformed_token",
                     "token": "malformed.token.here",
-                    "expected_error": "invalid token format"
+                    "expected_error": "invalid token format",
                 },
                 {
                     "name": "missing_token",
                     "token": None,
-                    "expected_error": "token required"
-                }
+                    "expected_error": "token required",
+                },
             ]
 
             for test in security_tests:
                 try:
                     # Create new client for each security test
-                    security_client = MockWebSocketClient(f"security_test_{test['name']}")
+                    security_client = MockWebSocketClient(
+                        f"security_test_{test['name']}"
+                    )
                     await security_client.connect(server_url)
 
                     if test["token"] is None:
                         # Test missing token
                         with pytest.raises(AuthenticationError):
-                            await security_client.authenticate(test["token"], test_user_id)
+                            await security_client.authenticate(
+                                test["token"], test_user_id
+                            )
                     else:
                         # Test invalid tokens
                         with pytest.raises(AuthenticationError):
-                            await security_client.authenticate(test["token"], test_user_id)
+                            await security_client.authenticate(
+                                test["token"], test_user_id
+                            )
 
                     await security_client.disconnect()
                     print(f"   Security test '{test['name']}' passed")
 
                 except Exception as e:
-                    print(f"   Security validation working for {test['name']}: {str(e)}")
+                    print(
+                        f"   Security validation working for {test['name']}: {str(e)}"
+                    )
 
             # Step 3: Test input sanitization and validation
             malicious_inputs = [
                 {
                     "type": WebSocketMessageType.SUBSCRIBE.value,
                     "subscription_type": "<script>alert('xss')</script>",
-                    "symbols": ["RELIANCE'; DROP TABLE users; --"]
+                    "symbols": ["RELIANCE'; DROP TABLE users; --"],
                 },
                 {
                     "type": WebSocketMessageType.SUBSCRIBE.value,
                     "subscription_type": "../../../etc/passwd",
-                    "symbols": ["' OR '1'='1"]
+                    "symbols": ["' OR '1'='1"],
                 },
                 {
                     "type": WebSocketMessageType.SUBSCRIBE.value,
                     "subscription_type": "MARKET_DATA",
-                    "symbols": ["A" * 1000000]  # Extremely long input
-                }
+                    "symbols": ["A" * 1000000],  # Extremely long input
+                },
             ]
 
             for malicious_input in malicious_inputs:
@@ -1306,7 +1344,9 @@ class TestFrontendIntegration:
 
                     # Validate symbols
                     for symbol in symbols:
-                        if len(symbol) > 10 or any(c in symbol for c in ["'", '"', ";", "--"]):
+                        if len(symbol) > 10 or any(
+                            c in symbol for c in ["'", '"', ";", "--"]
+                        ):
                             raise ValueError(f"Invalid symbol: {symbol}")
 
                     print("   Input validation working correctly")
@@ -1326,7 +1366,9 @@ class TestFrontendIntegration:
                     # Simulate rapid message sending
                     if time.time() - rate_limit_start > rate_limit_window:
                         rate_limit_violations += 1
-                        raise RateLimitError(f"Rate limit exceeded: {rate_limit_violations} violations")
+                        raise RateLimitError(
+                            f"Rate limit exceeded: {rate_limit_violations} violations"
+                        )
 
                 except RateLimitError as e:
                     print(f"   Rate limiting working: {str(e)}")
@@ -1334,31 +1376,33 @@ class TestFrontendIntegration:
 
             # Step 5: Test authorization for different resources
             authorization_tests = [
-                {
-                    "resource": "portfolio",
-                    "user_id": test_user_id,
-                    "allowed": True
-                },
+                {"resource": "portfolio", "user_id": test_user_id, "allowed": True},
                 {
                     "resource": "portfolio",
                     "user_id": "other_user_456",
-                    "allowed": False
+                    "allowed": False,
                 },
                 {
                     "resource": "admin_panel",
                     "user_id": test_user_id,
-                    "allowed": False  # Regular user
-                }
+                    "allowed": False,  # Regular user
+                },
             ]
 
             for auth_test in authorization_tests:
                 try:
                     # Simulate authorization check
-                    if auth_test["resource"] == "portfolio" and \
-                       auth_test["user_id"] != test_user_id:
-                        raise AuthenticationError("Access denied: Cannot access other user's portfolio")
+                    if (
+                        auth_test["resource"] == "portfolio"
+                        and auth_test["user_id"] != test_user_id
+                    ):
+                        raise AuthenticationError(
+                            "Access denied: Cannot access other user's portfolio"
+                        )
                     elif auth_test["resource"] == "admin_panel":
-                        raise AuthenticationError("Access denied: Admin privileges required")
+                        raise AuthenticationError(
+                            "Access denied: Admin privileges required"
+                        )
 
                     if auth_test["allowed"]:
                         print(f"   Authorization passed for {auth_test['resource']}")
@@ -1372,7 +1416,7 @@ class TestFrontendIntegration:
             sensitive_data = {
                 "portfolio_value": "500000.00",
                 "positions": [{"symbol": "RELIANCE", "quantity": 100}],
-                "api_key": "secret_api_key_12345"
+                "api_key": "secret_api_key_12345",
             }
 
             # Simulate data encryption
@@ -1381,7 +1425,7 @@ class TestFrontendIntegration:
                 "algorithm": "AES-256-GCM",
                 "data": "encrypted_data_placeholder",
                 "iv": "initialization_vector",
-                "tag": "authentication_tag"
+                "tag": "authentication_tag",
             }
 
             assert "api_key" not in str(encrypted_data.get("data", ""))
@@ -1399,11 +1443,13 @@ class TestFrontendIntegration:
 # Custom exception for testing
 class ServiceError(Exception):
     """Service-related error"""
+
     pass
 
 
 class RateLimitError(Exception):
     """Rate limiting error"""
+
     pass
 
 
@@ -1416,29 +1462,26 @@ def create_websocket_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "server_available": True,
             "client_authenticated": True,
             "network_stable": True,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "server_unavailable": {
             "server_available": False,
             "client_authenticated": False,
             "network_stable": True,
-            "expected_outcome": "connection_error"
+            "expected_outcome": "connection_error",
         },
-
         "authentication_failure": {
             "server_available": True,
             "client_authenticated": False,
             "network_stable": True,
-            "expected_outcome": "auth_error"
+            "expected_outcome": "auth_error",
         },
-
         "network_instability": {
             "server_available": True,
             "client_authenticated": True,
             "network_stable": False,
-            "expected_outcome": "reconnection_required"
-        }
+            "expected_outcome": "reconnection_required",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -1472,7 +1515,7 @@ def validate_websocket_message(message: Dict[str, Any]) -> bool:
         # Timestamp validation
         timestamp_str = message.get("timestamp", "")
         try:
-            datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         except ValueError:
             return False
 
@@ -1490,12 +1533,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:

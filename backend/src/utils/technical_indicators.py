@@ -6,12 +6,8 @@ Supports comprehensive indicator calculations with error handling, validation,
 and performance optimization for real-time trading applications.
 
 Features:
-- All major technical indicators (trend, momentum, volatility, volume)
-- Custom NIRAJ-specific indicators
-- Advanced error handling and data validation
-- Performance optimization with caching
-- Real-time calculation capabilities
-- Confidence scoring and data quality assessment
+- All major technical indicators (trend, momentum, volatility, volume) - Custom NIRAJ-specific indicators - Advanced error handling and data validation - Performance optimization with caching - Real-time calculation capabilities -
+Confidence scoring and data quality assessment
 """
 
 import time
@@ -23,10 +19,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
 import logging
 
-from models.technical_indicator import (
-    IndicatorType,
-    get_default_parameters
-)
+from models.technical_indicator import IndicatorType, get_default_parameters
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class CalculationError(Exception):
     """Custom exception for calculation errors"""
+
     def __init__(self, message: str, indicator_type: str = None, symbol: str = None):
         self.message = message
         self.indicator_type = indicator_type
@@ -43,17 +37,20 @@ class CalculationError(Exception):
 
 class InsufficientDataError(CalculationError):
     """Exception for insufficient data errors"""
+
     pass
 
 
 class InvalidDataError(CalculationError):
     """Exception for invalid data errors"""
+
     pass
 
 
 @dataclass
 class MarketData:
     """Market data structure for calculations"""
+
     timestamp: datetime
     open: Decimal
     high: Decimal
@@ -63,22 +60,27 @@ class MarketData:
     symbol: str = ""
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'MarketData':
+    def from_dict(cls, data: Dict[str, Any]) -> "MarketData":
         """Create MarketData from dictionary"""
         return cls(
-            timestamp=data['timestamp'] if isinstance(data['timestamp'], datetime) else datetime.fromisoformat(data['timestamp']),
-            open=Decimal(str(data['open'])),
-            high=Decimal(str(data['high'])),
-            low=Decimal(str(data['low'])),
-            close=Decimal(str(data['close'])),
-            volume=int(data['volume']),
-            symbol=data.get('symbol', '')
+            timestamp=(
+                data["timestamp"]
+                if isinstance(data["timestamp"], datetime)
+                else datetime.fromisoformat(data["timestamp"])
+            ),
+            open=Decimal(str(data["open"])),
+            high=Decimal(str(data["high"])),
+            low=Decimal(str(data["low"])),
+            close=Decimal(str(data["close"])),
+            volume=int(data["volume"]),
+            symbol=data.get("symbol", ""),
         )
 
 
 @dataclass
 class CalculationResult:
     """Result of indicator calculation"""
+
     value: Optional[Decimal] = None
     values: Optional[Dict[str, Any]] = None
     confidence_score: Optional[Decimal] = None
@@ -92,10 +94,8 @@ class TechnicalIndicatorsCalculator:
     Advanced Technical Indicators Calculator
 
     Provides comprehensive technical analysis calculations with:
-    - Error handling and validation
-    - Performance optimization
-    - Confidence scoring
-    - Real-time capabilities
+    - Error handling and validation - Performance optimization - Confidence scoring -
+    Real-time capabilities
     """
 
     def __init__(self, cache_enabled: bool = True, max_cache_size: int = 1000):
@@ -118,7 +118,7 @@ class TechnicalIndicatorsCalculator:
         data: List[MarketData],
         parameters: Optional[Dict[str, Any]] = None,
         symbol: str = "",
-        use_cache: bool = True
+        use_cache: bool = True,
     ) -> CalculationResult:
         """
         Calculate technical indicator
@@ -159,7 +159,9 @@ class TechnicalIndicatorsCalculator:
             result = self._calculate_indicator_impl(indicator_type, data, parameters)
 
             # Calculate confidence score
-            result.confidence_score = self._calculate_confidence_score(data, indicator_type, result)
+            result.confidence_score = self._calculate_confidence_score(
+                data, indicator_type, result
+            )
 
             # Add calculation time
             result.calculation_time_ms = int((time.time() - start_time) * 1000)
@@ -173,14 +175,20 @@ class TechnicalIndicatorsCalculator:
             return result
 
         except Exception as e:
-            logger.error(f"Indicator calculation failed: {indicator_type.value} - {str(e)}")
-            raise CalculationError(f"Failed to calculate {indicator_type.value}: {str(e)}", indicator_type.value, symbol)
+            logger.error(
+                f"Indicator calculation failed: {indicator_type.value} - {str(e)}"
+            )
+            raise CalculationError(
+                f"Failed to calculate {indicator_type.value}: {str(e)}",
+                indicator_type.value,
+                symbol,
+            )
 
     def _calculate_indicator_impl(
         self,
         indicator_type: IndicatorType,
         data: List[MarketData],
-        parameters: Dict[str, Any]
+        parameters: Dict[str, Any],
     ) -> CalculationResult:
         """Internal indicator calculation implementation"""
         if indicator_type in [IndicatorType.SMA, IndicatorType.EMA]:
@@ -232,9 +240,13 @@ class TechnicalIndicatorsCalculator:
         elif indicator_type == IndicatorType.MARKET_SENTIMENT:
             return self._calculate_market_sentiment(data, parameters)
         else:
-            raise CalculationError(f"Unsupported indicator type: {indicator_type.value}")
+            raise CalculationError(
+                f"Unsupported indicator type: {indicator_type.value}"
+            )
 
-    def _validate_data(self, data: List[MarketData], indicator_type: IndicatorType) -> None:
+    def _validate_data(
+        self, data: List[MarketData], indicator_type: IndicatorType
+    ) -> None:
         """Validate input data"""
         if not data:
             raise InsufficientDataError("No data provided for calculation")
@@ -291,10 +303,10 @@ class TechnicalIndicatorsCalculator:
         self,
         indicator_type: IndicatorType,
         data: List[MarketData],
-        parameters: Dict[str, Any]
+        parameters: Dict[str, Any],
     ) -> CalculationResult:
         """Calculate Simple or Exponential Moving Average"""
-        period = parameters.get('period', 20)
+        period = parameters.get("period", 20)
         prices = [point.close for point in data[-period:]]
 
         if indicator_type == IndicatorType.SMA:
@@ -311,17 +323,21 @@ class TechnicalIndicatorsCalculator:
             value = ema
 
         return CalculationResult(
-            value=Decimal(str(value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=len(prices)
+            value=Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            data_points_used=len(prices),
         )
 
-    def _calculate_rsi(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_rsi(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Relative Strength Index"""
-        period = parameters.get('period', 14)
+        period = parameters.get("period", 14)
         prices = [point.close for point in data]
 
         if len(prices) < period + 1:
-            raise InsufficientDataError(f"RSI requires at least {period + 1} data points")
+            raise InsufficientDataError(
+                f"RSI requires at least {period + 1} data points"
+            )
 
         # Calculate price changes
         changes = []
@@ -342,20 +358,24 @@ class TechnicalIndicatorsCalculator:
             rsi = 100 - (100 / (1 + rs))
 
         return CalculationResult(
-            value=Decimal(str(rsi)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=len(changes)
+            value=Decimal(str(rsi)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            data_points_used=len(changes),
         )
 
-    def _calculate_macd(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_macd(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate MACD (Moving Average Convergence Divergence)"""
-        fast_period = parameters.get('fast_period', 12)
-        slow_period = parameters.get('slow_period', 26)
-        signal_period = parameters.get('signal_period', 9)
+        fast_period = parameters.get("fast_period", 12)
+        slow_period = parameters.get("slow_period", 26)
+        signal_period = parameters.get("signal_period", 9)
 
         prices = [point.close for point in data]
 
         if len(prices) < slow_period:
-            raise InsufficientDataError(f"MACD requires at least {slow_period} data points")
+            raise InsufficientDataError(
+                f"MACD requires at least {slow_period} data points"
+            )
 
         # Calculate EMAs
         fast_ema = self._calculate_ema_values(prices, fast_period)
@@ -377,25 +397,29 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             values={
-                'macd': float(latest_macd),
-                'signal': float(latest_signal),
-                'histogram': float(latest_histogram),
-                'macd_line': [float(x) for x in macd_line],
-                'signal_line': [float(x) for x in signal_line],
-                'histogram_series': [float(x) for x in histogram]
+                "macd": float(latest_macd),
+                "signal": float(latest_signal),
+                "histogram": float(latest_histogram),
+                "macd_line": [float(x) for x in macd_line],
+                "signal_line": [float(x) for x in signal_line],
+                "histogram_series": [float(x) for x in histogram],
             },
-            data_points_used=len(prices)
+            data_points_used=len(prices),
         )
 
-    def _calculate_bollinger_bands(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_bollinger_bands(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Bollinger Bands"""
-        period = parameters.get('period', 20)
-        std_dev_multiplier = parameters.get('std_dev', 2.0)
+        period = parameters.get("period", 20)
+        std_dev_multiplier = parameters.get("std_dev", 2.0)
 
         prices = [point.close for point in data[-period:]]
 
         if len(prices) < period:
-            raise InsufficientDataError(f"Bollinger Bands require at least {period} data points")
+            raise InsufficientDataError(
+                f"Bollinger Bands require at least {period} data points"
+            )
 
         # Calculate SMA (middle band)
         middle_band = sum(prices) / len(prices)
@@ -417,34 +441,42 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             values={
-                'upper': float(upper_band),
-                'middle': float(middle_band),
-                'lower': float(lower_band),
-                'percent_b': percent_b,
-                'bandwidth': (upper_band - lower_band) / middle_band if middle_band != 0 else 0,
-                'std_dev': std_dev
+                "upper": float(upper_band),
+                "middle": float(middle_band),
+                "lower": float(lower_band),
+                "percent_b": percent_b,
+                "bandwidth": (
+                    (upper_band - lower_band) / middle_band if middle_band != 0 else 0
+                ),
+                "std_dev": std_dev,
             },
-            data_points_used=len(prices)
+            data_points_used=len(prices),
         )
 
-    def _calculate_stochastic(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_stochastic(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Stochastic Oscillator"""
-        k_period = parameters.get('k_period', 14)
-        d_period = parameters.get('d_period', 3)
+        k_period = parameters.get("k_period", 14)
+        d_period = parameters.get("d_period", 3)
 
         if len(data) < k_period:
-            raise InsufficientDataError(f"Stochastic requires at least {k_period} data points")
+            raise InsufficientDataError(
+                f"Stochastic requires at least {k_period} data points"
+            )
 
         # Calculate %K
         k_values = []
         for i in range(k_period - 1, len(data)):
-            period_data = data[i - k_period + 1:i + 1]
+            period_data = data[i - k_period + 1 : i + 1]
             highest_high = max(point.high for point in period_data)
             lowest_low = min(point.low for point in period_data)
             current_close = float(data[i].close)
 
             if highest_high != lowest_low:
-                k_value = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
+                k_value = (
+                    (current_close - lowest_low) / (highest_high - lowest_low)
+                ) * 100
             else:
                 k_value = 50  # Neutral value when range is zero
 
@@ -453,25 +485,29 @@ class TechnicalIndicatorsCalculator:
         # Calculate %D (SMA of %K)
         d_values = []
         for i in range(d_period - 1, len(k_values)):
-            d_value = sum(k_values[i - d_period + 1:i + 1]) / d_period
+            d_value = sum(k_values[i - d_period + 1 : i + 1]) / d_period
             d_values.append(d_value)
 
         return CalculationResult(
             values={
-                'k_percent': k_values[-1] if k_values else 50,
-                'd_percent': d_values[-1] if d_values else 50,
-                'k_values': k_values,
-                'd_values': d_values
+                "k_percent": k_values[-1] if k_values else 50,
+                "d_percent": d_values[-1] if d_values else 50,
+                "k_values": k_values,
+                "d_values": d_values,
             },
-            data_points_used=len(data)
+            data_points_used=len(data),
         )
 
-    def _calculate_atr(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_atr(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Average True Range"""
-        period = parameters.get('period', 14)
+        period = parameters.get("period", 14)
 
         if len(data) < period + 1:
-            raise InsufficientDataError(f"ATR requires at least {period + 1} data points")
+            raise InsufficientDataError(
+                f"ATR requires at least {period + 1} data points"
+            )
 
         # Calculate True Range for each period
         true_ranges = []
@@ -490,16 +526,20 @@ class TechnicalIndicatorsCalculator:
         atr = sum(true_ranges[-period:]) / period
 
         return CalculationResult(
-            value=Decimal(str(atr)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=len(true_ranges)
+            value=Decimal(str(atr)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            data_points_used=len(true_ranges),
         )
 
-    def _calculate_adx(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_adx(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Average Directional Index"""
-        period = parameters.get('period', 14)
+        period = parameters.get("period", 14)
 
         if len(data) < period + 1:
-            raise InsufficientDataError(f"ADX requires at least {period + 1} data points")
+            raise InsufficientDataError(
+                f"ADX requires at least {period + 1} data points"
+            )
 
         # Calculate Directional Movement
         dm_plus = []
@@ -537,22 +577,24 @@ class TechnicalIndicatorsCalculator:
         di_minus = (avg_dm_minus / avg_tr) * 100 if avg_tr != 0 else 0
 
         # Calculate DX
-        dx = (abs(di_plus - di_minus) / (di_plus + di_minus)) * 100 if (di_plus + di_minus) != 0 else 0
+        dx = (
+            (abs(di_plus - di_minus) / (di_plus + di_minus)) * 100
+            if (di_plus + di_minus) != 0
+            else 0
+        )
 
         # ADX is smoothed DX (typically using Wilder's smoothing)
         adx = dx  # Simplified version
 
         return CalculationResult(
-            value=Decimal(str(adx)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            values={
-                'di_plus': di_plus,
-                'di_minus': di_minus,
-                'dx': dx
-            },
-            data_points_used=len(data)
+            value=Decimal(str(adx)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            values={"di_plus": di_plus, "di_minus": di_minus, "dx": dx},
+            data_points_used=len(data),
         )
 
-    def _calculate_obv(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_obv(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate On-Balance Volume"""
         if len(data) < 2:
             raise InsufficientDataError("OBV requires at least 2 data points")
@@ -575,14 +617,13 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             value=Decimal(str(obv_values[-1])),
-            values={
-                'obv': obv_values[-1],
-                'obv_values': obv_values
-            },
-            data_points_used=len(data)
+            values={"obv": obv_values[-1], "obv_values": obv_values},
+            data_points_used=len(data),
         )
 
-    def _calculate_vwap(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_vwap(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Volume Weighted Average Price"""
         if len(data) < 1:
             raise InsufficientDataError("VWAP requires at least 1 data point")
@@ -592,7 +633,9 @@ class TechnicalIndicatorsCalculator:
         volume_sum = 0
 
         for point in data:
-            typical_price = (float(point.high) + float(point.low) + float(point.close)) / 3
+            typical_price = (
+                float(point.high) + float(point.low) + float(point.close)
+            ) / 3
             price_volume_sum += typical_price * point.volume
             volume_sum += point.volume
 
@@ -602,16 +645,18 @@ class TechnicalIndicatorsCalculator:
             vwap = price_volume_sum / volume_sum
 
         return CalculationResult(
-            value=Decimal(str(vwap)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            value=Decimal(str(vwap)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             values={
-                'vwap': vwap,
-                'price_volume_sum': price_volume_sum,
-                'volume_sum': volume_sum
+                "vwap": vwap,
+                "price_volume_sum": price_volume_sum,
+                "volume_sum": volume_sum,
             },
-            data_points_used=len(data)
+            data_points_used=len(data),
         )
 
-    def _calculate_ad_line(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_ad_line(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Accumulation/Distribution Line (A/D Line)"""
         if len(data) < 2:
             raise InsufficientDataError("A/D Line requires at least 2 data points")
@@ -625,7 +670,9 @@ class TechnicalIndicatorsCalculator:
             if current.high == current.low:
                 mfm = 0  # Avoid division by zero
             else:
-                mfm = ((current.close - current.low) - (current.high - current.close)) / (current.high - current.low)
+                mfm = (
+                    (current.close - current.low) - (current.high - current.close)
+                ) / (current.high - current.low)
 
             # Calculate Money Flow Volume
             mfv = mfm * current.volume
@@ -635,19 +682,20 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             value=Decimal(str(ad_values[-1])),
-            values={
-                'ad_line': ad_values[-1],
-                'ad_values': ad_values
-            },
-            data_points_used=len(data)
+            values={"ad_line": ad_values[-1], "ad_values": ad_values},
+            data_points_used=len(data),
         )
 
-    def _calculate_chaikin_mf(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_chaikin_mf(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Chaikin Money Flow (CMF)"""
-        period = parameters.get('period', 21)
+        period = parameters.get("period", 21)
 
         if len(data) < period:
-            raise InsufficientDataError(f"Chaikin MF requires at least {period} data points")
+            raise InsufficientDataError(
+                f"Chaikin MF requires at least {period} data points"
+            )
 
         # Get the relevant period data
         period_data = data[-period:]
@@ -660,7 +708,9 @@ class TechnicalIndicatorsCalculator:
             if point.high == point.low:
                 mfm = 0
             else:
-                mfm = ((point.close - point.low) - (point.high - point.close)) / (point.high - point.low)
+                mfm = ((point.close - point.low) - (point.high - point.close)) / (
+                    point.high - point.low
+                )
 
             # Money Flow Volume
             mfv = mfm * point.volume
@@ -676,16 +726,20 @@ class TechnicalIndicatorsCalculator:
             chaikin_mf = total_mfv / total_volume
 
         return CalculationResult(
-            value=Decimal(str(chaikin_mf)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            value=Decimal(str(chaikin_mf)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
             values={
-                'chaikin_mf': chaikin_mf,
-                'total_mfv': total_mfv,
-                'total_volume': total_volume
+                "chaikin_mf": chaikin_mf,
+                "total_mfv": total_mfv,
+                "total_volume": total_volume,
             },
-            data_points_used=len(period_data)
+            data_points_used=len(period_data),
         )
 
-    def _calculate_pivot_points(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_pivot_points(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Pivot Points"""
         if not data:
             raise InsufficientDataError("No data for pivot points calculation")
@@ -710,25 +764,29 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             values={
-                'pivot': pivot,
-                'r1': r1,
-                'r2': r2,
-                'r3': r3,
-                's1': s1,
-                's2': s2,
-                's3': s3
+                "pivot": pivot,
+                "r1": r1,
+                "r2": r2,
+                "r3": r3,
+                "s1": s1,
+                "s2": s2,
+                "s3": s3,
             },
-            data_points_used=1
+            data_points_used=1,
         )
 
-    def _calculate_fibonacci_retracement(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_fibonacci_retracement(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Fibonacci Retracement levels"""
         if len(data) < 2:
-            raise InsufficientDataError("Fibonacci Retracement requires at least 2 data points")
+            raise InsufficientDataError(
+                "Fibonacci Retracement requires at least 2 data points"
+            )
 
         # Find the swing high and low (simplified - uses recent high/low)
-        period = parameters.get('period', 20)
-        period_data = data[-min(period, len(data)):]
+        period = parameters.get("period", 20)
+        period_data = data[-min(period, len(data)) :]
 
         swing_high = max(point.high for point in period_data)
         swing_low = min(point.low for point in period_data)
@@ -741,47 +799,51 @@ class TechnicalIndicatorsCalculator:
             current_price = float(data[-1].close)
             return CalculationResult(
                 values={
-                    'swing_high': float(swing_high),
-                    'swing_low': float(swing_low),
-                    'fib_0.0': current_price,
-                    'fib_0.236': current_price,
-                    'fib_0.382': current_price,
-                    'fib_0.5': current_price,
-                    'fib_0.618': current_price,
-                    'fib_0.786': current_price,
-                    'fib_1.0': current_price
+                    "swing_high": float(swing_high),
+                    "swing_low": float(swing_low),
+                    "fib_0.0": current_price,
+                    "fib_0.236": current_price,
+                    "fib_0.382": current_price,
+                    "fib_0.5": current_price,
+                    "fib_0.618": current_price,
+                    "fib_0.786": current_price,
+                    "fib_1.0": current_price,
                 },
-                data_points_used=len(period_data)
+                data_points_used=len(period_data),
             )
 
         # Calculate Fibonacci retracement levels
         # Standard Fibonacci ratios: 0.236, 0.382, 0.5, 0.618, 0.786
         fib_levels = {
-            'fib_0.0': float(swing_low),  # 0% retracement
-            'fib_0.236': float(swing_low + (price_range * 0.236)),  # 23.6%
-            'fib_0.382': float(swing_low + (price_range * 0.382)),  # 38.2%
-            'fib_0.5': float(swing_low + (price_range * 0.5)),      # 50%
-            'fib_0.618': float(swing_low + (price_range * 0.618)),  # 61.8%
-            'fib_0.786': float(swing_low + (price_range * 0.786)),  # 78.6%
-            'fib_1.0': float(swing_high)  # 100% retracement (swing high)
+            "fib_0.0": float(swing_low),  # 0% retracement
+            "fib_0.236": float(swing_low + (price_range * 0.236)),  # 23.6%
+            "fib_0.382": float(swing_low + (price_range * 0.382)),  # 38.2%
+            "fib_0.5": float(swing_low + (price_range * 0.5)),  # 50%
+            "fib_0.618": float(swing_low + (price_range * 0.618)),  # 61.8%
+            "fib_0.786": float(swing_low + (price_range * 0.786)),  # 78.6%
+            "fib_1.0": float(swing_high),  # 100% retracement (swing high)
         }
 
         return CalculationResult(
             values={
-                'swing_high': float(swing_high),
-                'swing_low': float(swing_low),
-                'price_range': price_range,
-                **fib_levels
+                "swing_high": float(swing_high),
+                "swing_low": float(swing_low),
+                "price_range": price_range,
+                **fib_levels,
             },
-            data_points_used=len(period_data)
+            data_points_used=len(period_data),
         )
 
-    def _calculate_predator_signal(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_predator_signal(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate NIRAJ Predator Signal"""
-        lookback_period = parameters.get('lookback_period', 20)
+        lookback_period = parameters.get("lookback_period", 20)
 
         if len(data) < lookback_period:
-            raise InsufficientDataError(f"Predator signal requires at least {lookback_period} data points")
+            raise InsufficientDataError(
+                f"Predator signal requires at least {lookback_period} data points"
+            )
 
         recent_data = data[-lookback_period:]
 
@@ -801,7 +863,13 @@ class TechnicalIndicatorsCalculator:
         order_flow = self._calculate_order_flow(recent_data)
 
         # Combine factors into predator score
-        predator_score = (price_momentum * 0.25) + (volume_strength * 0.25) + (volatility_factor * 0.20) + (spread_factor * 0.15) + (order_flow * 0.15)
+        predator_score = (
+            (price_momentum * 0.25)
+            + (volume_strength * 0.25)
+            + (volatility_factor * 0.20)
+            + (spread_factor * 0.15)
+            + (order_flow * 0.15)
+        )
 
         # Normalize to 0-100 scale
         predator_score = max(0, min(100, predator_score))
@@ -819,20 +887,24 @@ class TechnicalIndicatorsCalculator:
             signal_strength = "STRONG_SELL"
 
         return CalculationResult(
-            value=Decimal(str(predator_score)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            value=Decimal(str(predator_score)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
             values={
-                'predator_score': predator_score,
-                'signal_strength': signal_strength,
-                'price_momentum': price_momentum,
-                'volume_strength': volume_strength,
-                'volatility_factor': volatility_factor,
-                'spread_factor': spread_factor,
-                'order_flow': order_flow
+                "predator_score": predator_score,
+                "signal_strength": signal_strength,
+                "price_momentum": price_momentum,
+                "volume_strength": volume_strength,
+                "volatility_factor": volatility_factor,
+                "spread_factor": spread_factor,
+                "order_flow": order_flow,
             },
-            data_points_used=len(recent_data)
+            data_points_used=len(recent_data),
         )
 
-    def _calculate_bank_nifty_divergence(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_bank_nifty_divergence(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Bank Nifty Divergence"""
         # This would require Bank Nifty data comparison
         # Simplified implementation for now
@@ -840,20 +912,21 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             value=Decimal(str(divergence_score)),
-            values={
-                'divergence_score': divergence_score,
-                'divergence_type': 'neutral'
-            },
-            data_points_used=len(data)
+            values={"divergence_score": divergence_score, "divergence_type": "neutral"},
+            data_points_used=len(data),
         )
 
-    def _calculate_fear_greed_index(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_fear_greed_index(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Fear & Greed Index"""
-        sentiment_weight = parameters.get('sentiment_weight', 0.4)
-        volume_weight = parameters.get('volume_weight', 0.6)
+        sentiment_weight = parameters.get("sentiment_weight", 0.4)
+        volume_weight = parameters.get("volume_weight", 0.6)
 
         if len(data) < 5:
-            raise InsufficientDataError("Fear & Greed Index requires at least 5 data points")
+            raise InsufficientDataError(
+                "Fear & Greed Index requires at least 5 data points"
+            )
 
         # Calculate volatility component (simplified)
         prices = [float(point.close) for point in data[-5:]]
@@ -864,22 +937,30 @@ class TechnicalIndicatorsCalculator:
         volume_score = 50  # Neutral for now (would need market comparison)
 
         # Combine components
-        fear_greed_score = ((100 - volatility_score) * sentiment_weight) + (volume_score * volume_weight)
-
-        return CalculationResult(
-            value=Decimal(str(fear_greed_score)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            values={
-                'fear_greed_score': fear_greed_score,
-                'volatility_component': volatility_score,
-                'volume_component': volume_score
-            },
-            data_points_used=len(data)
+        fear_greed_score = ((100 - volatility_score) * sentiment_weight) + (
+            volume_score * volume_weight
         )
 
-    def _calculate_market_sentiment(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+        return CalculationResult(
+            value=Decimal(str(fear_greed_score)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+            values={
+                "fear_greed_score": fear_greed_score,
+                "volatility_component": volatility_score,
+                "volume_component": volume_score,
+            },
+            data_points_used=len(data),
+        )
+
+    def _calculate_market_sentiment(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Market Sentiment"""
         if len(data) < 5:
-            raise InsufficientDataError("Market sentiment requires at least 5 data points")
+            raise InsufficientDataError(
+                "Market sentiment requires at least 5 data points"
+            )
 
         # Calculate recent price trend
         recent_prices = [float(point.close) for point in data[-5:]]
@@ -887,7 +968,11 @@ class TechnicalIndicatorsCalculator:
 
         # Calculate volume trend
         recent_volumes = [point.volume for point in data[-5:]]
-        volume_trend = (statistics.mean(recent_volumes[-3:]) - statistics.mean(recent_volumes[:2])) / statistics.mean(recent_volumes[:2]) * 100
+        volume_trend = (
+            (statistics.mean(recent_volumes[-3:]) - statistics.mean(recent_volumes[:2]))
+            / statistics.mean(recent_volumes[:2])
+            * 100
+        )
 
         # Combine factors for sentiment score (0-100)
         sentiment_score = 50 + (price_trend * 0.4) + (volume_trend * 0.6)
@@ -895,29 +980,35 @@ class TechnicalIndicatorsCalculator:
 
         # Determine sentiment trend
         if sentiment_score >= 70:
-            trend = 'bullish'
+            trend = "bullish"
         elif sentiment_score <= 30:
-            trend = 'bearish'
+            trend = "bearish"
         else:
-            trend = 'neutral'
+            trend = "neutral"
 
         return CalculationResult(
-            value=Decimal(str(sentiment_score)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            value=Decimal(str(sentiment_score)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
             values={
-                'sentiment_score': sentiment_score,
-                'sentiment_trend': trend,
-                'price_trend': price_trend,
-                'volume_trend': volume_trend
+                "sentiment_score": sentiment_score,
+                "sentiment_trend": trend,
+                "price_trend": price_trend,
+                "volume_trend": volume_trend,
             },
-            data_points_used=len(data)
+            data_points_used=len(data),
         )
 
-    def _calculate_williams_r(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_williams_r(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Williams %R"""
-        period = parameters.get('period', 14)
+        period = parameters.get("period", 14)
 
         if len(data) < period:
-            raise InsufficientDataError(f"Williams %R requires at least {period} data points")
+            raise InsufficientDataError(
+                f"Williams %R requires at least {period} data points"
+            )
 
         # Get the relevant period data
         period_data = data[-period:]
@@ -931,19 +1022,27 @@ class TechnicalIndicatorsCalculator:
         if highest_high == lowest_low:
             williams_r = -50  # Neutral value when range is zero
         else:
-            williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
+            williams_r = (
+                (highest_high - current_close) / (highest_high - lowest_low)
+            ) * -100
 
         return CalculationResult(
-            value=Decimal(str(williams_r)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=len(period_data)
+            value=Decimal(str(williams_r)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+            data_points_used=len(period_data),
         )
 
-    def _calculate_roc(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_roc(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Rate of Change (ROC)"""
-        period = parameters.get('period', 12)
+        period = parameters.get("period", 12)
 
         if len(data) < period + 1:
-            raise InsufficientDataError(f"ROC requires at least {period + 1} data points")
+            raise InsufficientDataError(
+                f"ROC requires at least {period + 1} data points"
+            )
 
         # Calculate ROC: ((current - previous) / previous) * 100
         current_price = float(data[-1].close)
@@ -955,23 +1054,29 @@ class TechnicalIndicatorsCalculator:
             roc = ((current_price - previous_price) / previous_price) * 100
 
         return CalculationResult(
-            value=Decimal(str(roc)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=period + 1
+            value=Decimal(str(roc)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            data_points_used=period + 1,
         )
 
-    def _calculate_mfi(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_mfi(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Money Flow Index (MFI)"""
-        period = parameters.get('period', 14)
+        period = parameters.get("period", 14)
 
         if len(data) < period + 1:
-            raise InsufficientDataError(f"MFI requires at least {period + 1} data points")
+            raise InsufficientDataError(
+                f"MFI requires at least {period + 1} data points"
+            )
 
         # Calculate typical prices and raw money flow
         typical_prices = []
         money_flows = []
 
-        for point in data[-(period + 1):]:  # Include one extra for comparison
-            typical_price = (float(point.high) + float(point.low) + float(point.close)) / 3
+        for point in data[-(period + 1) :]:  # Include one extra for comparison
+            typical_price = (
+                float(point.high) + float(point.low) + float(point.close)
+            ) / 3
             typical_prices.append(typical_price)
             money_flows.append(typical_price * point.volume)
 
@@ -994,21 +1099,28 @@ class TechnicalIndicatorsCalculator:
             mfi = 100 - (100 / (1 + money_flow_ratio))
 
         return CalculationResult(
-            value=Decimal(str(mfi)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-            data_points_used=len(typical_prices)
+            value=Decimal(str(mfi)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            data_points_used=len(typical_prices),
         )
 
-    def _calculate_keltner_channel(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_keltner_channel(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Keltner Channel"""
-        period = parameters.get('period', 20)
-        atr_period = parameters.get('atr_period', 10)
-        multiplier = parameters.get('multiplier', 2.0)
+        period = parameters.get("period", 20)
+        atr_period = parameters.get("atr_period", 10)
+        multiplier = parameters.get("multiplier", 2.0)
 
         if len(data) < max(period, atr_period) + 1:
-            raise InsufficientDataError(f"Keltner Channel requires at least {max(period, atr_period) + 1} data points")
+            raise InsufficientDataError(
+                f"Keltner Channel requires at least {max(period, atr_period) + 1} data points"
+            )
 
         # Calculate EMA of typical price (middle line)
-        typical_prices = [(float(point.high) + float(point.low) + float(point.close)) / 3 for point in data]
+        typical_prices = [
+            (float(point.high) + float(point.low) + float(point.close)) / 3
+            for point in data
+        ]
         middle_line = self._calculate_ema_values(typical_prices, period)
 
         if not middle_line:
@@ -1042,20 +1154,24 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             values={
-                'upper': float(upper_band),
-                'middle': float(latest_middle),
-                'lower': float(lower_band),
-                'atr': float(latest_atr)
+                "upper": float(upper_band),
+                "middle": float(latest_middle),
+                "lower": float(lower_band),
+                "atr": float(latest_atr),
             },
-            data_points_used=len(data)
+            data_points_used=len(data),
         )
 
-    def _calculate_donchian_channel(self, data: List[MarketData], parameters: Dict[str, Any]) -> CalculationResult:
+    def _calculate_donchian_channel(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
         """Calculate Donchian Channel"""
-        period = parameters.get('period', 20)
+        period = parameters.get("period", 20)
 
         if len(data) < period:
-            raise InsufficientDataError(f"Donchian Channel requires at least {period} data points")
+            raise InsufficientDataError(
+                f"Donchian Channel requires at least {period} data points"
+            )
 
         # Get the relevant period data
         period_data = data[-period:]
@@ -1069,11 +1185,11 @@ class TechnicalIndicatorsCalculator:
 
         return CalculationResult(
             values={
-                'upper': float(highest_high),
-                'middle': float(middle_line),
-                'lower': float(lowest_low)
+                "upper": float(highest_high),
+                "middle": float(middle_line),
+                "lower": float(lowest_low),
             },
-            data_points_used=len(period_data)
+            data_points_used=len(period_data),
         )
 
     # Helper methods
@@ -1097,7 +1213,9 @@ class TechnicalIndicatorsCalculator:
             return 0.0
 
         # Calculate short-term and long-term momentum
-        short_term = (prices[-1] - prices[-2]) / prices[-2] * 100 if len(prices) >= 2 else 0
+        short_term = (
+            (prices[-1] - prices[-2]) / prices[-2] * 100 if len(prices) >= 2 else 0
+        )
         long_term = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] != 0 else 0
 
         momentum = (short_term * 0.7) + (long_term * 0.3)
@@ -1123,7 +1241,10 @@ class TechnicalIndicatorsCalculator:
             return 0.0
 
         try:
-            returns = [((prices[i] - prices[i - 1]) / prices[i - 1]) * 100 for i in range(1, len(prices))]
+            returns = [
+                ((prices[i] - prices[i - 1]) / prices[i - 1]) * 100
+                for i in range(1, len(prices))
+            ]
             volatility = statistics.stdev(returns)
             return min(100, volatility * 10)  # Scale appropriately
         except statistics.StatisticsError:
@@ -1135,7 +1256,10 @@ class TechnicalIndicatorsCalculator:
             return 0.0
 
         # Use high-low range as spread proxy
-        spreads = [(float(point.high - point.low) / float(point.close)) * 100 for point in data[-5:]]
+        spreads = [
+            (float(point.high - point.low) / float(point.close)) * 100
+            for point in data[-5:]
+        ]
         avg_spread = statistics.mean(spreads) if spreads else 0
 
         # Lower spread = higher factor (more liquid)
@@ -1171,43 +1295,50 @@ class TechnicalIndicatorsCalculator:
         self,
         data: List[MarketData],
         indicator_type: IndicatorType,
-        result: CalculationResult
+        result: CalculationResult,
     ) -> Decimal:
         """Calculate confidence score for the result"""
-        base_score = Decimal('80')
+        base_score = Decimal("80")
 
         # Adjust based on data quantity
         if result.data_points_used < 10:
-            base_score -= Decimal('20')
+            base_score -= Decimal("20")
         elif result.data_points_used < 20:
-            base_score -= Decimal('10')
+            base_score -= Decimal("10")
 
         # Adjust based on data quality (price consistency)
-        prices = [float(point.close) for point in data[-min(20, len(data)):]]
+        prices = [float(point.close) for point in data[-min(20, len(data)) :]]
         if len(prices) >= 5:
             try:
-                cv = statistics.stdev(prices) / statistics.mean(prices)  # Coefficient of variation
+                cv = statistics.stdev(prices) / statistics.mean(
+                    prices
+                )  # Coefficient of variation
                 if cv > 0.1:  # High volatility reduces confidence
-                    base_score -= Decimal('10')
+                    base_score -= Decimal("10")
             except (statistics.StatisticsError, ZeroDivisionError):
-                base_score -= Decimal('15')
+                base_score -= Decimal("15")
 
         # Adjust based on calculation time (faster = more confidence)
         if result.calculation_time_ms > 100:
-            base_score -= Decimal('5')
+            base_score -= Decimal("5")
 
-        return max(Decimal('0'), min(Decimal('100'), base_score))
+        return max(Decimal("0"), min(Decimal("100"), base_score))
 
     def _get_cache_key(
         self,
         indicator_type: IndicatorType,
         data: List[MarketData],
         parameters: Dict[str, Any],
-        symbol: str
+        symbol: str,
     ) -> str:
         """Generate cache key"""
         # Create a hash of the key components
-        data_hash = hash(tuple((point.timestamp.isoformat(), float(point.close), point.volume) for point in data[-20:]))
+        data_hash = hash(
+            tuple(
+                (point.timestamp.isoformat(), float(point.close), point.volume)
+                for point in data[-20:]
+            )
+        )
         param_hash = hash(frozenset(parameters.items()) if parameters else frozenset())
         return f"{symbol}:{indicator_type.value}:{data_hash}:{param_hash}"
 
@@ -1224,14 +1355,16 @@ class TechnicalIndicatorsCalculator:
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         total_requests = self._cache_hits + self._cache_misses
-        hit_rate = (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
+        hit_rate = (
+            (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
+        )
 
         return {
-            'cache_size': len(self._cache),
-            'cache_hits': self._cache_hits,
-            'cache_misses': self._cache_misses,
-            'hit_rate_percent': hit_rate,
-            'max_cache_size': self.max_cache_size
+            "cache_size": len(self._cache),
+            "cache_hits": self._cache_hits,
+            "cache_misses": self._cache_misses,
+            "hit_rate_percent": hit_rate,
+            "max_cache_size": self.max_cache_size,
         }
 
     def clear_cache(self) -> None:
@@ -1242,7 +1375,9 @@ class TechnicalIndicatorsCalculator:
 
 
 # Factory function for creating calculator instances
-def create_calculator(cache_enabled: bool = True, max_cache_size: int = 1000) -> TechnicalIndicatorsCalculator:
+def create_calculator(
+    cache_enabled: bool = True, max_cache_size: int = 1000
+) -> TechnicalIndicatorsCalculator:
     """
     Create a technical indicators calculator instance
 
@@ -1253,7 +1388,9 @@ def create_calculator(cache_enabled: bool = True, max_cache_size: int = 1000) ->
     Returns:
         TechnicalIndicatorsCalculator: Calculator instance
     """
-    return TechnicalIndicatorsCalculator(cache_enabled=cache_enabled, max_cache_size=max_cache_size)
+    return TechnicalIndicatorsCalculator(
+        cache_enabled=cache_enabled, max_cache_size=max_cache_size
+    )
 
 
 # Utility functions for batch calculations
@@ -1261,7 +1398,7 @@ def calculate_multiple_indicators(
     calculator: TechnicalIndicatorsCalculator,
     indicators: List[Tuple[IndicatorType, Dict[str, Any]]],
     data: List[MarketData],
-    symbol: str = ""
+    symbol: str = "",
 ) -> Dict[IndicatorType, CalculationResult]:
     """
     Calculate multiple indicators efficiently
@@ -1279,20 +1416,23 @@ def calculate_multiple_indicators(
 
     for indicator_type, parameters in indicators:
         try:
-            result = calculator.calculate_indicator(indicator_type, data, parameters, symbol)
+            result = calculator.calculate_indicator(
+                indicator_type, data, parameters, symbol
+            )
             results[indicator_type] = result
         except CalculationError as e:
             logger.warning(f"Failed to calculate {indicator_type.value}: {e.message}")
             # Create error result
             results[indicator_type] = CalculationResult(
-                confidence_score=Decimal('0'),
-                metadata={'error': e.message}
+                confidence_score=Decimal("0"), metadata={"error": e.message}
             )
 
     return results
 
 
-def validate_indicator_parameters(indicator_type: IndicatorType, parameters: Dict[str, Any]) -> List[str]:
+def validate_indicator_parameters(
+    indicator_type: IndicatorType, parameters: Dict[str, Any]
+) -> List[str]:
     """
     Validate parameters for an indicator type
 
@@ -1307,27 +1447,27 @@ def validate_indicator_parameters(indicator_type: IndicatorType, parameters: Dic
 
     try:
         if indicator_type in [IndicatorType.SMA, IndicatorType.EMA]:
-            period = parameters.get('period')
+            period = parameters.get("period")
             if not period or not isinstance(period, int) or period < 1 or period > 200:
                 errors.append("Period must be integer between 1-200")
 
         elif indicator_type == IndicatorType.RSI:
-            period = parameters.get('period', 14)
+            period = parameters.get("period", 14)
             if not isinstance(period, int) or period < 2 or period > 50:
                 errors.append("RSI period must be integer between 2-50")
 
         elif indicator_type == IndicatorType.BOLLINGER_BANDS:
-            period = parameters.get('period', 20)
-            std_dev = parameters.get('std_dev', 2)
+            period = parameters.get("period", 20)
+            std_dev = parameters.get("std_dev", 2)
             if not isinstance(period, int) or period < 5 or period > 100:
                 errors.append("Bollinger period must be integer between 5-100")
             if not isinstance(std_dev, (int, float)) or std_dev < 0.5 or std_dev > 5:
                 errors.append("Bollinger std_dev must be between 0.5-5")
 
         elif indicator_type == IndicatorType.MACD:
-            fast = parameters.get('fast_period', 12)
-            slow = parameters.get('slow_period', 26)
-            signal = parameters.get('signal_period', 9)
+            fast = parameters.get("fast_period", 12)
+            slow = parameters.get("slow_period", 26)
+            signal = parameters.get("signal_period", 9)
             if not all(isinstance(p, int) for p in [fast, slow, signal]):
                 errors.append("MACD periods must be integers")
             elif fast >= slow:
@@ -1336,20 +1476,20 @@ def validate_indicator_parameters(indicator_type: IndicatorType, parameters: Dic
                 errors.append("MACD signal period must be positive")
 
         elif indicator_type == IndicatorType.STOCHASTIC:
-            k_period = parameters.get('k_period', 14)
-            d_period = parameters.get('d_period', 3)
+            k_period = parameters.get("k_period", 14)
+            d_period = parameters.get("d_period", 3)
             if not isinstance(k_period, int) or k_period < 5 or k_period > 50:
                 errors.append("Stochastic K period must be integer between 5-50")
             if not isinstance(d_period, int) or d_period < 2 or d_period > 10:
                 errors.append("Stochastic D period must be integer between 2-10")
 
         elif indicator_type == IndicatorType.ATR:
-            period = parameters.get('period', 14)
+            period = parameters.get("period", 14)
             if not isinstance(period, int) or period < 2 or period > 50:
                 errors.append("ATR period must be integer between 2-50")
 
         elif indicator_type == IndicatorType.ADX:
-            period = parameters.get('period', 14)
+            period = parameters.get("period", 14)
             if not isinstance(period, int) or period < 2 or period > 50:
                 errors.append("ADX period must be integer between 2-50")
 

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 class DataSource(Enum):
     """Data source enumeration"""
+
     ANGEL_ONE = "angel_one"
     DHAN_HQ = "dhan_hq"
     NSE_LIVE = "nse_live"
@@ -34,6 +35,7 @@ class DataSource(Enum):
 
 class DataType(Enum):
     """Data type enumeration"""
+
     TICK = "tick"
     OHLC = "ohlc"
     DEPTH = "depth"
@@ -43,6 +45,7 @@ class DataType(Enum):
 
 class DataQuality(Enum):
     """Data quality enumeration"""
+
     EXCELLENT = "excellent"
     GOOD = "good"
     ACCEPTABLE = "acceptable"
@@ -52,31 +55,37 @@ class DataQuality(Enum):
 
 class DataError(Exception):
     """Base exception for data-related errors"""
+
     pass
 
 
 class DataSourceError(DataError):
     """Raised when data source connection fails"""
+
     pass
 
 
 class DataValidationError(DataError):
     """Raised when data validation fails"""
+
     pass
 
 
 class DataProcessingError(DataError):
     """Raised when data processing fails"""
+
     pass
 
 
 class LatencyError(DataError):
     """Raised when data latency exceeds limits"""
+
     pass
 
 
 class MockMarketData:
     """Mock Market Data model"""
+
     def __init__(self, symbol: str, source: DataSource):
         self.symbol = symbol
         self.source = source
@@ -89,7 +98,7 @@ class MockMarketData:
             "open": Decimal("0.00"),
             "high": Decimal("0.00"),
             "low": Decimal("0.00"),
-            "close": Decimal("0.00")
+            "close": Decimal("0.00"),
         }
         self.quality = DataQuality.GOOD
         self.latency_ms = 0
@@ -97,6 +106,7 @@ class MockMarketData:
 
 class MockTechnicalIndicator:
     """Mock Technical Indicator model"""
+
     def __init__(self, symbol: str, indicator_name: str):
         self.symbol = symbol
         self.indicator_name = indicator_name
@@ -108,6 +118,7 @@ class MockTechnicalIndicator:
 
 class MockDataStream:
     """Mock data stream for real-time data"""
+
     def __init__(self, source: DataSource):
         self.source = source
         self.is_connected = False
@@ -195,7 +206,7 @@ class TestDataFlow:
         data_processing_service,
         websocket_service,
         data_quality_service,
-        storage_service
+        storage_service,
     ):
         """Test complete data flow from ingestion to processing"""
 
@@ -213,7 +224,7 @@ class TestDataFlow:
             "open": Decimal("2480.00"),
             "high": Decimal("2520.00"),
             "low": Decimal("2475.00"),
-            "close": Decimal("2500.00")
+            "close": Decimal("2500.00"),
         }
         raw_data.latency_ms = 50  # 50ms latency
 
@@ -232,7 +243,8 @@ class TestDataFlow:
         data_quality_service.assess_quality.return_value = DataQuality.GOOD
         data_processing_service.normalize_data.return_value = raw_data
         data_processing_service.calculate_indicators.return_value = [
-            rsi_indicator, macd_indicator
+            rsi_indicator,
+            macd_indicator,
         ]
         storage_service.store_tick_data.return_value = {"stored": True}
         websocket_service.subscribe_to_symbol.return_value = True
@@ -256,17 +268,18 @@ class TestDataFlow:
 
             # Step 3: Assess data quality
             quality = await data_quality_service.assess_quality(market_data)
-            assert quality in [DataQuality.EXCELLENT, DataQuality.GOOD,
-                               DataQuality.ACCEPTABLE]
+            assert quality in [
+                DataQuality.EXCELLENT,
+                DataQuality.GOOD,
+                DataQuality.ACCEPTABLE,
+            ]
             market_data.quality = quality
 
             # Step 4: Validate data latency
             assert market_data.latency_ms < 100  # Under 100ms requirement
 
             # Step 5: Normalize and process data
-            normalized_data = await data_processing_service.normalize_data(
-                market_data
-            )
+            normalized_data = await data_processing_service.normalize_data(market_data)
             assert normalized_data.symbol == symbol
 
             # Step 6: Calculate technical indicators
@@ -303,9 +316,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_data_source_connection_failure(
-        self,
-        mock_db_session,
-        data_ingestion_service
+        self, mock_db_session, data_ingestion_service
     ):
         """Test handling of data source connection failures"""
 
@@ -331,10 +342,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_data_validation_failure_recovery(
-        self,
-        mock_db_session,
-        data_ingestion_service,
-        data_quality_service
+        self, mock_db_session, data_ingestion_service, data_quality_service
     ):
         """Test recovery from data validation failures"""
 
@@ -364,8 +372,9 @@ class TestDataFlow:
             with pytest.raises(DataValidationError) as exc_info:
                 await data_ingestion_service.validate_data(invalid_data)
 
-            assert "Invalid price" in str(exc_info.value) or \
-                   "Invalid volume" in str(exc_info.value)
+            assert "Invalid price" in str(exc_info.value) or "Invalid volume" in str(
+                exc_info.value
+            )
 
             # Assess data quality
             quality = await data_quality_service.assess_quality(invalid_data)
@@ -378,10 +387,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_multi_source_data_aggregation(
-        self,
-        mock_db_session,
-        data_ingestion_service,
-        data_processing_service
+        self, mock_db_session, data_ingestion_service, data_processing_service
     ):
         """Test aggregation of data from multiple sources"""
 
@@ -419,9 +425,7 @@ class TestDataFlow:
             assert len(ingested_data) == len(sources)
 
             # Aggregate data from multiple sources
-            aggregated = await data_processing_service.aggregate_data(
-                ingested_data
-            )
+            aggregated = await data_processing_service.aggregate_data(ingested_data)
 
             assert aggregated.symbol == symbol
             assert aggregated.quality == DataQuality.EXCELLENT
@@ -434,10 +438,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_real_time_streaming_performance(
-        self,
-        mock_db_session,
-        websocket_service,
-        data_quality_service
+        self, mock_db_session, websocket_service, data_quality_service
     ):
         """Test real-time streaming performance and latency"""
 
@@ -454,7 +455,7 @@ class TestDataFlow:
             "average_latency_ms": 45,
             "max_latency_ms": 95,
             "dropped_messages": 0,
-            "connection_uptime": 0.999  # 99.9% uptime
+            "connection_uptime": 0.999,  # 99.9% uptime
         }
 
         websocket_service.start_stream.return_value = stream_data
@@ -488,10 +489,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_historical_data_retrieval(
-        self,
-        mock_db_session,
-        data_ingestion_service,
-        storage_service
+        self, mock_db_session, data_ingestion_service, storage_service
     ):
         """Test historical data retrieval and processing"""
 
@@ -510,7 +508,7 @@ class TestDataFlow:
                 "open": data.price - Decimal("10.00"),
                 "high": data.price + Decimal("15.00"),
                 "low": data.price - Decimal("20.00"),
-                "close": data.price
+                "close": data.price,
             }
             historical_data.append(data)
 
@@ -547,9 +545,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_technical_indicator_calculation(
-        self,
-        mock_db_session,
-        data_processing_service
+        self, mock_db_session, data_processing_service
     ):
         """Test technical indicator calculation accuracy"""
 
@@ -561,7 +557,7 @@ class TestDataFlow:
         for i in range(20):  # 20 periods of data
             data = MockMarketData(symbol, DataSource.NSE_LIVE)
             data.price = Decimal(str(base_price + (i * 5) + ((i % 3) * 10)))
-            data.timestamp = datetime.now() - timedelta(minutes=20-i)
+            data.timestamp = datetime.now() - timedelta(minutes=20 - i)
             price_data.append(data)
 
         # Mock indicator calculations
@@ -571,7 +567,7 @@ class TestDataFlow:
             MockTechnicalIndicator(symbol, "SMA_20"),
             MockTechnicalIndicator(symbol, "EMA_12"),
             MockTechnicalIndicator(symbol, "BOLLINGER_UPPER"),
-            MockTechnicalIndicator(symbol, "BOLLINGER_LOWER")
+            MockTechnicalIndicator(symbol, "BOLLINGER_LOWER"),
         ]
 
         # Set realistic values
@@ -586,20 +582,27 @@ class TestDataFlow:
 
         try:
             # Calculate technical indicators
-            calculated_indicators = \
-                await data_processing_service.calculate_indicators(price_data)
+            calculated_indicators = await data_processing_service.calculate_indicators(
+                price_data
+            )
 
             assert len(calculated_indicators) >= 6
 
             # Validate specific indicators
-            rsi = next((i for i in calculated_indicators if i.indicator_name == "RSI"), None)
+            rsi = next(
+                (i for i in calculated_indicators if i.indicator_name == "RSI"), None
+            )
             assert rsi is not None
             assert 0 <= rsi.value <= 100  # RSI range validation
 
-            macd = next((i for i in calculated_indicators if i.indicator_name == "MACD"), None)
+            macd = next(
+                (i for i in calculated_indicators if i.indicator_name == "MACD"), None
+            )
             assert macd is not None
 
-            sma = next((i for i in calculated_indicators if i.indicator_name == "SMA_20"), None)
+            sma = next(
+                (i for i in calculated_indicators if i.indicator_name == "SMA_20"), None
+            )
             assert sma is not None
             assert sma.value > 0
 
@@ -615,10 +618,7 @@ class TestDataFlow:
 
     @pytest.mark.asyncio
     async def test_data_anomaly_detection(
-        self,
-        mock_db_session,
-        data_processing_service,
-        data_quality_service
+        self, mock_db_session, data_processing_service, data_quality_service
     ):
         """Test detection of data anomalies and outliers"""
 
@@ -650,10 +650,18 @@ class TestDataFlow:
 
         # Mock anomaly detection
         detected_anomalies = [
-            {"data_point": anomaly1, "anomaly_type": "price_spike",
-             "severity": "high", "confidence": 0.95},
-            {"data_point": anomaly2, "anomaly_type": "volume_spike",
-             "severity": "medium", "confidence": 0.82}
+            {
+                "data_point": anomaly1,
+                "anomaly_type": "price_spike",
+                "severity": "high",
+                "confidence": 0.95,
+            },
+            {
+                "data_point": anomaly2,
+                "anomaly_type": "volume_spike",
+                "severity": "medium",
+                "confidence": 0.82,
+            },
         ]
 
         data_processing_service.detect_anomalies.return_value = detected_anomalies
@@ -665,14 +673,16 @@ class TestDataFlow:
             assert len(anomalies) >= 2
 
             # Validate anomaly detection
-            price_anomaly = next((a for a in anomalies
-                                  if a["anomaly_type"] == "price_spike"), None)
+            price_anomaly = next(
+                (a for a in anomalies if a["anomaly_type"] == "price_spike"), None
+            )
             assert price_anomaly is not None
             assert price_anomaly["severity"] == "high"
             assert price_anomaly["confidence"] > 0.8
 
-            volume_anomaly = next((a for a in anomalies
-                                   if a["anomaly_type"] == "volume_spike"), None)
+            volume_anomaly = next(
+                (a for a in anomalies if a["anomaly_type"] == "volume_spike"), None
+            )
             assert volume_anomaly is not None
             assert volume_anomaly["confidence"] > 0.7
 
@@ -682,11 +692,7 @@ class TestDataFlow:
             pytest.fail(f"Data anomaly detection failed: {str(e)}")
 
     @pytest.mark.asyncio
-    async def test_data_cleanup_and_maintenance(
-        self,
-        mock_db_session,
-        storage_service
-    ):
+    async def test_data_cleanup_and_maintenance(self, mock_db_session, storage_service):
         """Test data cleanup and maintenance operations"""
 
         # Setup cleanup scenario
@@ -694,7 +700,7 @@ class TestDataFlow:
             "tick_data_retention_days": 7,
             "ohlc_data_retention_days": 365,
             "news_data_retention_days": 30,
-            "cleanup_schedule": "daily"
+            "cleanup_schedule": "daily",
         }
 
         # Mock cleanup results
@@ -703,7 +709,7 @@ class TestDataFlow:
             "ohlc_data_cleaned": 0,  # Keep all OHLC data
             "news_data_cleaned": 50000,  # 50K records
             "storage_freed_mb": 2048,  # 2GB freed
-            "cleanup_duration_seconds": 45
+            "cleanup_duration_seconds": 45,
         }
 
         storage_service.cleanup_old_data.return_value = cleanup_results
@@ -738,29 +744,26 @@ def create_data_test_scenario(scenario_name: str) -> Dict[str, Any]:
             "data_sources_available": True,
             "data_quality": DataQuality.GOOD,
             "latency_ms": 50,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "high_latency": {
             "data_sources_available": True,
             "data_quality": DataQuality.GOOD,
             "latency_ms": 150,  # Exceeds 100ms limit
-            "expected_outcome": "latency_error"
+            "expected_outcome": "latency_error",
         },
-
         "poor_quality": {
             "data_sources_available": True,
             "data_quality": DataQuality.POOR,
             "latency_ms": 50,
-            "expected_outcome": "quality_error"
+            "expected_outcome": "quality_error",
         },
-
         "source_unavailable": {
             "data_sources_available": False,
             "data_quality": DataQuality.INVALID,
             "latency_ms": 0,
-            "expected_outcome": "source_error"
-        }
+            "expected_outcome": "source_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
@@ -797,15 +800,15 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:
         print("Errors:", result.stderr)
-        
+
     print("✅ Market Data Flow Integration Tests Complete!")

@@ -617,7 +617,7 @@ class AngelOneClient:
                 warnings.warn(
                     "Angel One client was not properly closed. Use async context manager or call close() explicitly."
                 )
-        except:
+        except Exception:
             pass
 
     # Continued in next part due to length...
@@ -1221,9 +1221,9 @@ class AngelOneClient:
             "session_id": self.session_id,
             "client_code": self.client_code,
             "is_authenticated": self.is_authenticated,
-            "token_expires_at": self.tokens.expires_at.isoformat()
-            if self.tokens.expires_at
-            else None,
+            "token_expires_at": (
+                self.tokens.expires_at.isoformat() if self.tokens.expires_at else None
+            ),
             "api_calls_in_window": len(self.rate_limiter.calls),
             "rate_limit_max": self.config.rate_limit_calls,
             "rate_limit_window": self.config.rate_limit_window,

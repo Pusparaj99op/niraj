@@ -27,7 +27,9 @@ except ImportError:
         logger = logging.getLogger(name)
         if not logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.setLevel(logging.DEBUG)
@@ -35,12 +37,15 @@ except ImportError:
 
     def log_performance(name: str = None):
         """Simple performance logging decorator fallback"""
+
         def decorator(func):
             return func
+
         return decorator
 
     class LogContext:
         """Simple context manager fallback"""
+
         def __init__(self, **kwargs):
             pass
 
@@ -53,13 +58,15 @@ except ImportError:
 
 class WeatherUnits(str, Enum):
     """Weather data units"""
-    METRIC = "metric"      # Celsius, m/s, mm
+
+    METRIC = "metric"  # Celsius, m/s, mm
     IMPERIAL = "imperial"  # Fahrenheit, mph, inches
-    KELVIN = "kelvin"     # Kelvin, m/s, mm (default)
+    KELVIN = "kelvin"  # Kelvin, m/s, mm (default)
 
 
 class WeatherLang(str, Enum):
     """Supported languages"""
+
     ENGLISH = "en"
     HINDI = "hi"
     MARATHI = "mr"
@@ -86,10 +93,12 @@ class WeatherConfig(BaseModel):
     rate_limit_calls_per_month: int = Field(default=1000000)  # Free tier limit
 
     # Cache settings
-    current_weather_cache_minutes: int = Field(default=10)  # Current weather changes slowly
-    forecast_cache_minutes: int = Field(default=60)        # Forecasts updated hourly
-    alerts_cache_minutes: int = Field(default=5)           # Alerts are time-sensitive
-    historical_cache_minutes: int = Field(default=1440)    # Historical data is static
+    current_weather_cache_minutes: int = Field(
+        default=10
+    )  # Current weather changes slowly
+    forecast_cache_minutes: int = Field(default=60)  # Forecasts updated hourly
+    alerts_cache_minutes: int = Field(default=5)  # Alerts are time-sensitive
+    historical_cache_minutes: int = Field(default=1440)  # Historical data is static
 
     # Default settings
     default_units: WeatherUnits = Field(default=WeatherUnits.METRIC)
@@ -104,6 +113,7 @@ class WeatherConfig(BaseModel):
 
 class WeatherCondition(BaseModel):
     """Weather condition details"""
+
     id: int
     main: str  # Rain, Snow, Clear, etc.
     description: str  # Light rain, heavy snow, etc.
@@ -152,7 +162,7 @@ class CurrentWeather(BaseModel):
     units: WeatherUnits
     raw_data: Dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator('timestamp', 'sunrise', 'sunset', mode='before')
+    @field_validator("timestamp", "sunrise", "sunset", mode="before")
     @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
@@ -184,7 +194,7 @@ class WeatherForecast(BaseModel):
 
     probability_of_precipitation: float  # 0-1
 
-    @field_validator('timestamp', mode='before')
+    @field_validator("timestamp", mode="before")
     @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
@@ -202,7 +212,7 @@ class WeatherAlert(BaseModel):
     description: str
     tags: List[str] = Field(default_factory=list)
 
-    @field_validator('start', 'end', mode='before')
+    @field_validator("start", "end", mode="before")
     @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, (int, float)):
@@ -227,7 +237,9 @@ class WeatherInsights(BaseModel):
 
     # General trading impact
     transportation_disruption_risk: Optional[str] = None  # low, medium, high
-    commodity_price_impact: Dict[str, str] = Field(default_factory=dict)  # commodity -> impact
+    commodity_price_impact: Dict[str, str] = Field(
+        default_factory=dict
+    )  # commodity -> impact
 
     # Alert summary
     active_alerts_count: int = 0
@@ -247,7 +259,7 @@ class LocationQuery(BaseModel):
     state_code: Optional[str] = None  # US state or country subdivision
     country_code: Optional[str] = None  # ISO 3166 country code
 
-    @field_validator('city_name')
+    @field_validator("city_name")
     @classmethod
     def validate_city_name(cls, v):
         if v and len(v.strip()) < 2:
@@ -303,7 +315,9 @@ class WeatherCache:
 
         return self.cache[key]
 
-    def set(self, endpoint: str, query: LocationQuery, data: Any, ttl_minutes: int, **params) -> None:
+    def set(
+        self, endpoint: str, query: LocationQuery, data: Any, ttl_minutes: int, **params
+    ) -> None:
         """Cache data with TTL"""
         key = self._generate_key(endpoint, query, **params)
         self.cache[key] = data
@@ -331,14 +345,16 @@ class WeatherCache:
             "total_entries": len(self.cache),
             "expired_entries": expired_count,
             "active_entries": len(self.cache) - expired_count,
-            "memory_size": len(json.dumps(self.cache, default=str))
+            "memory_size": len(json.dumps(self.cache, default=str)),
         }
 
 
 class RateLimiter:
     """Rate limiting for OpenWeatherMap API"""
 
-    def __init__(self, max_calls_per_minute: int = 50, max_calls_per_month: int = 1000000):
+    def __init__(
+        self, max_calls_per_minute: int = 50, max_calls_per_month: int = 1000000
+    ):
         self.max_calls_per_minute = max_calls_per_minute
         self.max_calls_per_month = max_calls_per_month
 
@@ -347,14 +363,18 @@ class RateLimiter:
 
         # Track calls per month (simplified - in production use persistent storage)
         self.month_calls = 0
-        self.month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        self.month_start = datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
 
     async def wait_if_needed(self) -> None:
         """Wait if rate limit is exceeded"""
         now = time.time()
 
         # Reset monthly counter if new month
-        current_month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        current_month_start = datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
         if current_month_start > self.month_start:
             self.month_calls = 0
             self.month_start = current_month_start
@@ -364,8 +384,9 @@ class RateLimiter:
             raise WeatherError("Monthly API call limit exceeded")
 
         # Clean old calls (older than 1 minute)
-        self.minute_calls = [call_time for call_time in self.minute_calls
-                            if now - call_time < 60]
+        self.minute_calls = [
+            call_time for call_time in self.minute_calls if now - call_time < 60
+        ]
 
         # Check per-minute limit
         if len(self.minute_calls) >= self.max_calls_per_minute:
@@ -375,8 +396,9 @@ class RateLimiter:
                 await asyncio.sleep(wait_time)
                 # Clean again after waiting
                 now = time.time()
-                self.minute_calls = [call_time for call_time in self.minute_calls
-                                   if now - call_time < 60]
+                self.minute_calls = [
+                    call_time for call_time in self.minute_calls if now - call_time < 60
+                ]
 
         # Record this call
         self.minute_calls.append(now)
@@ -397,9 +419,14 @@ class CircuitBreaker:
     async def call(self, func, *args, **kwargs):
         """Execute function with circuit breaker protection"""
         if self.state == "OPEN":
-            if self.last_failure_time and \
-               (datetime.now() - self.last_failure_time).seconds < self.recovery_timeout:
-                raise WeatherError("Circuit breaker OPEN - service temporarily unavailable")
+            if (
+                self.last_failure_time
+                and (datetime.now() - self.last_failure_time).seconds
+                < self.recovery_timeout
+            ):
+                raise WeatherError(
+                    "Circuit breaker OPEN - service temporarily unavailable"
+                )
             else:
                 self.state = "HALF_OPEN"
 
@@ -441,26 +468,31 @@ class WeatherError(Exception):
 
 class AuthenticationError(WeatherError):
     """API authentication errors"""
+
     pass
 
 
 class RateLimitError(WeatherError):
     """Rate limit exceeded errors"""
+
     pass
 
 
 class ValidationError(WeatherError):
     """Request validation errors"""
+
     pass
 
 
 class NetworkError(WeatherError):
     """Network related errors"""
+
     pass
 
 
 class DataNotFoundError(WeatherError):
     """Location/data not found errors"""
+
     pass
 
 
@@ -469,17 +501,8 @@ class WeatherClient:
     Comprehensive OpenWeatherMap API Client for Trading Applications
 
     Features:
-    - Complete weather data integration (current, forecast, historical, alerts)
-    - Advanced error handling with circuit breaker pattern
-    - Intelligent caching with different TTLs per data type
-    - Rate limiting to respect API quotas
-    - Trading-specific insights and analysis
-    - Agricultural and energy market indicators
-    - Multi-location monitoring capabilities
-    - Async operations with connection pooling
-    - Comprehensive logging and monitoring
-    - Automatic retry with exponential backoff
-    - Data validation and sanitization
+    - Complete weather data integration (current, forecast, historical, alerts) - Advanced error handling with circuit breaker pattern - Intelligent caching with different TTLs per data type - Rate limiting to respect API quotas - Trading-specific insights and analysis - Agricultural and energy market indicators - Multi-location monitoring capabilities - Async operations with connection pooling - Comprehensive logging and monitoring - Automatic retry with exponential backoff -
+    Data validation and sanitization
     """
 
     def __init__(self, config: Optional[WeatherConfig] = None):
@@ -499,7 +522,7 @@ class WeatherClient:
         # Rate limiting and resilience
         self.rate_limiter = RateLimiter(
             max_calls_per_minute=self.config.rate_limit_calls_per_minute,
-            max_calls_per_month=self.config.rate_limit_calls_per_month
+            max_calls_per_month=self.config.rate_limit_calls_per_month,
         )
         self.circuit_breaker = CircuitBreaker()
 
@@ -513,7 +536,7 @@ class WeatherClient:
             "cache_misses": 0,
             "errors": 0,
             "locations_queried": set(),
-            "data_types_requested": set()
+            "data_types_requested": set(),
         }
 
         # Trading insights
@@ -527,7 +550,7 @@ class WeatherClient:
             "coffee": ["coffee", "bean"],
             "crude_oil": ["energy", "oil"],
             "natural_gas": ["gas", "energy"],
-            "coal": ["coal", "energy"]
+            "coal": ["coal", "energy"],
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -544,8 +567,8 @@ class WeatherClient:
                 headers={
                     "User-Agent": "NIRAJ-Trading-System/1.0 (Weather Analytics)",
                     "Accept": "application/json",
-                    "Accept-Encoding": "gzip, deflate"
-                }
+                    "Accept-Encoding": "gzip, deflate",
+                },
             )
 
         return self.client
@@ -556,7 +579,7 @@ class WeatherClient:
         query: LocationQuery,
         params: Optional[Dict] = None,
         base_url: Optional[str] = None,
-        cache_ttl: int = 10
+        cache_ttl: int = 10,
     ) -> Dict[str, Any]:
         """
         Make HTTP request with comprehensive error handling
@@ -612,7 +635,7 @@ class WeatherClient:
                 session_id=self.session_id,
                 endpoint=endpoint,
                 location=str(query.city_name or f"{query.latitude},{query.longitude}"),
-                request_id=secrets.token_hex(8)
+                request_id=secrets.token_hex(8),
             ):
                 self.logger.debug(f"Making weather API request to {endpoint}")
 
@@ -626,63 +649,72 @@ class WeatherClient:
                             try:
                                 data = response.json()
                                 # Cache successful response
-                                self.cache.set(endpoint, query, data, cache_ttl, **clean_params)
+                                self.cache.set(
+                                    endpoint, query, data, cache_ttl, **clean_params
+                                )
                                 return data
                             except json.JSONDecodeError as e:
                                 raise WeatherError(f"Invalid JSON response: {e}")
 
                         elif response.status_code == 401:
                             raise AuthenticationError(
-                                "Invalid API key",
-                                status_code=response.status_code
+                                "Invalid API key", status_code=response.status_code
                             )
 
                         elif response.status_code == 404:
                             raise DataNotFoundError(
                                 f"Location not found: {query.city_name or query.zip_code or 'coordinates'}",
-                                status_code=response.status_code
+                                status_code=response.status_code,
                             )
 
                         elif response.status_code == 429:
                             if attempt < self.config.max_retries:
-                                wait_time = (2 ** attempt) * 2
-                                self.logger.warning(f"Rate limit hit, waiting {wait_time}s")
+                                wait_time = (2**attempt) * 2
+                                self.logger.warning(
+                                    f"Rate limit hit, waiting {wait_time}s"
+                                )
                                 await asyncio.sleep(wait_time)
                                 continue
                             raise RateLimitError(
                                 "API rate limit exceeded",
-                                status_code=response.status_code
+                                status_code=response.status_code,
                             )
 
                         elif response.status_code >= 500:
                             if attempt < self.config.max_retries:
-                                wait_time = self.config.retry_delay * (2 ** attempt)
-                                self.logger.warning(f"Server error, retrying in {wait_time}s")
+                                wait_time = self.config.retry_delay * (2**attempt)
+                                self.logger.warning(
+                                    f"Server error, retrying in {wait_time}s"
+                                )
                                 await asyncio.sleep(wait_time)
                                 continue
                             raise WeatherError(
                                 f"Server error: {response.status_code}",
-                                status_code=response.status_code
+                                status_code=response.status_code,
                             )
 
                         else:
                             raise WeatherError(
                                 f"HTTP {response.status_code}: {response.text[:200]}",
-                                status_code=response.status_code
+                                status_code=response.status_code,
                             )
 
                     except httpx.TimeoutException:
                         if attempt < self.config.max_retries:
-                            wait_time = self.config.retry_delay * (2 ** attempt)
-                            self.logger.warning(f"Request timeout, retrying in {wait_time}s")
+                            wait_time = self.config.retry_delay * (2**attempt)
+                            self.logger.warning(
+                                f"Request timeout, retrying in {wait_time}s"
+                            )
                             await asyncio.sleep(wait_time)
                             continue
                         raise NetworkError("Request timeout")
 
                     except httpx.NetworkError as e:
                         if attempt < self.config.max_retries:
-                            wait_time = self.config.retry_delay * (2 ** attempt)
-                            self.logger.warning(f"Network error: {e}, retrying in {wait_time}s")
+                            wait_time = self.config.retry_delay * (2**attempt)
+                            self.logger.warning(
+                                f"Network error: {e}, retrying in {wait_time}s"
+                            )
                             await asyncio.sleep(wait_time)
                             continue
                         raise NetworkError(f"Network error: {e}")
@@ -696,9 +728,12 @@ class WeatherClient:
             self.logger.error(f"Weather API request failed: {e}")
             raise
 
-    def _calculate_insights(self, current: Optional[CurrentWeather],
-                          forecasts: Optional[List[WeatherForecast]] = None,
-                          alerts: Optional[List[WeatherAlert]] = None) -> WeatherInsights:
+    def _calculate_insights(
+        self,
+        current: Optional[CurrentWeather],
+        forecasts: Optional[List[WeatherForecast]] = None,
+        alerts: Optional[List[WeatherAlert]] = None,
+    ) -> WeatherInsights:
         """Calculate trading-relevant weather insights"""
         insights = WeatherInsights()
 
@@ -742,12 +777,16 @@ class WeatherClient:
 
             # Solar power potential
             cloud_factor = (100 - current.cloudiness) / 100
-            uv_factor = min(1.0, (current.uv_index or 0) / 10) if current.uv_index else 0.5
+            uv_factor = (
+                min(1.0, (current.uv_index or 0) / 10) if current.uv_index else 0.5
+            )
             insights.solar_power_potential = (cloud_factor + uv_factor) / 2
 
         # Transportation and commodity impacts
-        severe_weather = any(c.main.lower() in ['thunderstorm', 'snow', 'fog']
-                           for c in current.conditions)
+        severe_weather = any(
+            c.main.lower() in ["thunderstorm", "snow", "fog"]
+            for c in current.conditions
+        )
 
         if severe_weather or current.wind_speed > 15:
             insights.transportation_disruption_risk = "high"
@@ -759,31 +798,37 @@ class WeatherClient:
         # Commodity price impacts
         if self.config.enable_commodity_analysis:
             if insights.crop_stress_index and insights.crop_stress_index > 0.5:
-                insights.commodity_price_impact.update({
-                    "wheat": "bullish",
-                    "corn": "bullish",
-                    "rice": "bullish"
-                })
+                insights.commodity_price_impact.update(
+                    {"wheat": "bullish", "corn": "bullish", "rice": "bullish"}
+                )
 
             if insights.frost_risk:
-                insights.commodity_price_impact.update({
-                    "orange_juice": "bullish",
-                    "coffee": "bullish",
-                    "sugar": "bullish"
-                })
+                insights.commodity_price_impact.update(
+                    {"orange_juice": "bullish", "coffee": "bullish", "sugar": "bullish"}
+                )
 
             if current.temperature > 30:
-                insights.commodity_price_impact.update({
-                    "natural_gas": "bearish",  # Less heating demand
-                    "electricity": "bullish"   # More cooling demand
-                })
+                insights.commodity_price_impact.update(
+                    {
+                        "natural_gas": "bearish",  # Less heating demand
+                        "electricity": "bullish",  # More cooling demand
+                    }
+                )
 
         # Alert analysis
         if alerts:
             insights.active_alerts_count = len(alerts)
-            high_priority = ['Thunderstorm', 'Tornado', 'Hurricane', 'Flood', 'Heat Wave', 'Cold Wave']
+            high_priority = [
+                "Thunderstorm",
+                "Tornado",
+                "Hurricane",
+                "Flood",
+                "Heat Wave",
+                "Cold Wave",
+            ]
             insights.high_priority_alerts = [
-                alert.event for alert in alerts
+                alert.event
+                for alert in alerts
                 if any(priority in alert.event for priority in high_priority)
             ]
 
@@ -796,7 +841,7 @@ class WeatherClient:
         self,
         query: LocationQuery,
         units: Optional[WeatherUnits] = None,
-        language: Optional[WeatherLang] = None
+        language: Optional[WeatherLang] = None,
     ) -> CurrentWeather:
         """
         Get current weather conditions
@@ -811,12 +856,14 @@ class WeatherClient:
         """
         params = {
             "units": (units or self.config.default_units).value,
-            "lang": (language or self.config.default_language).value
+            "lang": (language or self.config.default_language).value,
         }
 
         data = await self._make_request(
-            "weather", query, params,
-            cache_ttl=self.config.current_weather_cache_minutes
+            "weather",
+            query,
+            params,
+            cache_ttl=self.config.current_weather_cache_minutes,
         )
 
         # Convert to standardized model
@@ -826,38 +873,33 @@ class WeatherClient:
             latitude=data["coord"]["lat"],
             longitude=data["coord"]["lon"],
             timezone=data["timezone"],
-
             timestamp=data["dt"],
             temperature=data["main"]["temp"],
             feels_like=data["main"]["feels_like"],
             pressure=data["main"]["pressure"],
             humidity=data["main"]["humidity"],
             visibility=data.get("visibility"),
-
             wind_speed=data["wind"]["speed"],
             wind_direction=data["wind"]["deg"],
             wind_gust=data["wind"].get("gust"),
-
             rain_1h=data.get("rain", {}).get("1h"),
             rain_3h=data.get("rain", {}).get("3h"),
             snow_1h=data.get("snow", {}).get("1h"),
             snow_3h=data.get("snow", {}).get("3h"),
-
             conditions=[
                 WeatherCondition(
                     id=w["id"],
                     main=w["main"],
                     description=w["description"],
-                    icon=w["icon"]
-                ) for w in data["weather"]
+                    icon=w["icon"],
+                )
+                for w in data["weather"]
             ],
             cloudiness=data["clouds"]["all"],
-
             sunrise=data["sys"]["sunrise"],
             sunset=data["sys"]["sunset"],
-
             units=units or self.config.default_units,
-            raw_data=data
+            raw_data=data,
         )
 
         self.stats["locations_queried"].add(data["name"])
@@ -872,7 +914,7 @@ class WeatherClient:
         query: LocationQuery,
         days: int = 5,
         units: Optional[WeatherUnits] = None,
-        language: Optional[WeatherLang] = None
+        language: Optional[WeatherLang] = None,
     ) -> List[WeatherForecast]:
         """
         Get weather forecast
@@ -887,18 +929,19 @@ class WeatherClient:
             List of weather forecasts
         """
         if days > 5:
-            self.logger.warning("Free tier supports max 5-day forecasts, limiting to 5 days")
+            self.logger.warning(
+                "Free tier supports max 5-day forecasts, limiting to 5 days"
+            )
             days = 5
 
         params = {
             "cnt": days * 8,  # 8 forecasts per day (3-hour intervals)
             "units": (units or self.config.default_units).value,
-            "lang": (language or self.config.default_language).value
+            "lang": (language or self.config.default_language).value,
         }
 
         data = await self._make_request(
-            "forecast", query, params,
-            cache_ttl=self.config.forecast_cache_minutes
+            "forecast", query, params, cache_ttl=self.config.forecast_cache_minutes
         )
 
         forecasts = []
@@ -909,39 +952,35 @@ class WeatherClient:
                 feels_like=item["main"]["feels_like"],
                 temperature_min=item["main"]["temp_min"],
                 temperature_max=item["main"]["temp_max"],
-
                 pressure=item["main"]["pressure"],
                 humidity=item["main"]["humidity"],
-
                 wind_speed=item["wind"]["speed"],
                 wind_direction=item["wind"]["deg"],
                 wind_gust=item["wind"].get("gust"),
-
                 rain=item.get("rain", {}).get("3h"),
                 snow=item.get("snow", {}).get("3h"),
-
                 conditions=[
                     WeatherCondition(
                         id=w["id"],
                         main=w["main"],
                         description=w["description"],
-                        icon=w["icon"]
-                    ) for w in item["weather"]
+                        icon=w["icon"],
+                    )
+                    for w in item["weather"]
                 ],
                 cloudiness=item["clouds"]["all"],
-                probability_of_precipitation=item.get("pop", 0)
+                probability_of_precipitation=item.get("pop", 0),
             )
             forecasts.append(forecast)
 
         self.stats["data_types_requested"].add("forecast")
-        self.logger.info(f"Retrieved {len(forecasts)} forecast points for {data['city']['name']}")
+        self.logger.info(
+            f"Retrieved {len(forecasts)} forecast points for {data['city']['name']}"
+        )
         return forecasts
 
     @log_performance("weather_get_alerts")
-    async def get_weather_alerts(
-        self,
-        query: LocationQuery
-    ) -> List[WeatherAlert]:
+    async def get_weather_alerts(self, query: LocationQuery) -> List[WeatherAlert]:
         """
         Get active weather alerts/warnings
 
@@ -956,14 +995,14 @@ class WeatherClient:
 
         # This requires One Call API 3.0 (paid)
         # For free tier, we'll return empty list with a warning
-        self.logger.warning("Weather alerts require One Call API 3.0 (paid subscription)")
+        self.logger.warning(
+            "Weather alerts require One Call API 3.0 (paid subscription)"
+        )
         return []
 
     @log_performance("weather_get_insights")
     async def get_trading_insights(
-        self,
-        query: LocationQuery,
-        include_forecast: bool = True
+        self, query: LocationQuery, include_forecast: bool = True
     ) -> WeatherInsights:
         """
         Get trading-relevant weather insights
@@ -1003,9 +1042,7 @@ class WeatherClient:
 
     @log_performance("weather_multi_location")
     async def get_multi_location_weather(
-        self,
-        locations: List[LocationQuery],
-        data_types: List[str] = None
+        self, locations: List[LocationQuery], data_types: List[str] = None
     ) -> Dict[str, Dict[str, Any]]:
         """
         Get weather data for multiple locations
@@ -1034,27 +1071,34 @@ class WeatherClient:
                 location_tasks["forecast"] = self.get_forecast(location)
 
             if "insights" in data_types:
-                location_tasks["insights"] = self.get_trading_insights(location,
-                                                                     include_forecast=False)
+                location_tasks["insights"] = self.get_trading_insights(
+                    location, include_forecast=False
+                )
 
             tasks.append((location, location_tasks))
 
         # Execute all tasks
         for location, location_tasks in tasks:
-            location_key = location.city_name or f"{location.latitude},{location.longitude}"
+            location_key = (
+                location.city_name or f"{location.latitude},{location.longitude}"
+            )
             results[location_key] = {}
 
             for data_type, task in location_tasks.items():
                 try:
                     results[location_key][data_type] = await task
                 except Exception as e:
-                    self.logger.error(f"Failed to get {data_type} for {location_key}: {e}")
+                    self.logger.error(
+                        f"Failed to get {data_type} for {location_key}: {e}"
+                    )
                     results[location_key][data_type] = None
 
         self.logger.info(f"Retrieved weather data for {len(locations)} locations")
         return results
 
-    async def search_locations(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    async def search_locations(
+        self, query: str, limit: int = 5
+    ) -> List[Dict[str, Any]]:
         """
         Search for locations by name
 
@@ -1068,15 +1112,14 @@ class WeatherClient:
         params = {
             "q": query,
             "limit": min(limit, 5),  # API limit
-            "appid": self.config.api_key
+            "appid": self.config.api_key,
         }
 
         client = await self._get_client()
 
         try:
             response = await client.get(
-                f"{self.config.geocoding_url}/direct",
-                params=params
+                f"{self.config.geocoding_url}/direct", params=params
             )
 
             if response.status_code == 200:
@@ -1106,9 +1149,9 @@ class WeatherClient:
                 "calls_this_minute": len(self.rate_limiter.minute_calls),
                 "calls_this_month": self.rate_limiter.month_calls,
                 "minute_limit": self.rate_limiter.max_calls_per_minute,
-                "month_limit": self.rate_limiter.max_calls_per_month
+                "month_limit": self.rate_limiter.max_calls_per_month,
             },
-            "statistics": self.stats.copy()
+            "statistics": self.stats.copy(),
         }
 
         if not self.config.api_key:
@@ -1144,17 +1187,20 @@ class WeatherClient:
                     "commodity_analysis": self.config.enable_commodity_analysis,
                     "weather_alerts": self.config.enable_weather_alerts,
                     "agricultural_insights": self.config.enable_agricultural_insights,
-                    "energy_insights": self.config.enable_energy_insights
-                }
+                    "energy_insights": self.config.enable_energy_insights,
+                },
             },
             "statistics": stats,
             "cache_stats": self.cache.get_stats(),
             "circuit_breaker": {
                 "state": self.circuit_breaker.state,
                 "failure_count": self.circuit_breaker.failure_count,
-                "last_failure": self.circuit_breaker.last_failure_time.isoformat()
-                               if self.circuit_breaker.last_failure_time else None
-            }
+                "last_failure": (
+                    self.circuit_breaker.last_failure_time.isoformat()
+                    if self.circuit_breaker.last_failure_time
+                    else None
+                ),
+            },
         }
 
     async def clear_cache(self) -> None:
@@ -1182,6 +1228,7 @@ class WeatherClient:
         try:
             if self.client and not self.client.is_closed:
                 import warnings
+
                 warnings.warn(
                     "Weather client was not properly closed. Use async context manager or call close() explicitly."
                 )
@@ -1191,10 +1238,9 @@ class WeatherClient:
 
 # Utility functions for easy usage
 
+
 async def get_weather_for_trading(
-    city: str,
-    country: str = "IN",
-    api_key: Optional[str] = None
+    city: str, country: str = "IN", api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Quick weather data retrieval for trading analysis
@@ -1225,14 +1271,13 @@ async def get_weather_for_trading(
                 "conditions": [c.description for c in current.conditions],
                 "commodity_impacts": insights.commodity_price_impact,
                 "risk_level": insights.transportation_disruption_risk,
-                "alerts_count": insights.active_alerts_count
-            }
+                "alerts_count": insights.active_alerts_count,
+            },
         }
 
 
 async def monitor_agricultural_weather(
-    locations: List[str],
-    api_key: Optional[str] = None
+    locations: List[str], api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Monitor weather conditions for agricultural commodities
@@ -1244,18 +1289,21 @@ async def monitor_agricultural_weather(
     Returns:
         Agricultural weather summary
     """
-    config = WeatherConfig(
-        api_key=api_key,
-        enable_agricultural_insights=True,
-        enable_commodity_analysis=True
-    ) if api_key else WeatherConfig()
+    config = (
+        WeatherConfig(
+            api_key=api_key,
+            enable_agricultural_insights=True,
+            enable_commodity_analysis=True,
+        )
+        if api_key
+        else WeatherConfig()
+    )
 
     async with WeatherClient(config) as client:
         location_queries = [LocationQuery(city_name=city) for city in locations]
 
         results = await client.get_multi_location_weather(
-            location_queries,
-            data_types=["current", "insights"]
+            location_queries, data_types=["current", "insights"]
         )
 
         # Aggregate insights
@@ -1285,10 +1333,12 @@ async def monitor_agricultural_weather(
         return {
             "monitoring_summary": {
                 "locations_monitored": len(locations),
-                "average_crop_stress": total_crop_stress / len(locations) if locations else 0,
+                "average_crop_stress": (
+                    total_crop_stress / len(locations) if locations else 0
+                ),
                 "drought_affected_locations": drought_locations,
                 "frost_risk_locations": frost_risk_locations,
-                "commodity_impacts": high_impact_commodities
+                "commodity_impacts": high_impact_commodities,
             },
-            "detailed_data": results
+            "detailed_data": results,
         }

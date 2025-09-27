@@ -18,7 +18,7 @@ def validate_dhan_client():
 
     try:
         # Read and parse the file
-        with open(client_path, 'r') as f:
+        with open(client_path, "r") as f:
             content = f.read()
 
         # Parse AST to validate syntax
@@ -26,21 +26,37 @@ def validate_dhan_client():
         print("✅ Dhan client file syntax is valid")
 
         # Check for key classes and methods
-        classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-        functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+        classes = [
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        ]
+        functions = [
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        ]
 
         # Expected classes
         expected_classes = [
-            'DhanConfig', 'AuthTokens', 'RateLimiter', 'DhanError',
-            'AuthenticationError', 'OrderError', 'DhanClient'
+            "DhanConfig",
+            "AuthTokens",
+            "RateLimiter",
+            "DhanError",
+            "AuthenticationError",
+            "OrderError",
+            "DhanClient",
         ]
 
         # Expected methods in DhanClient
         expected_methods = [
-            'place_order', 'modify_order', 'cancel_order', 'get_order_list',
-            'get_holdings', 'get_positions', 'get_fund_limits',
-            'get_historical_daily_data', 'get_intraday_minute_data',
-            'margin_calculator', 'health_check'
+            "place_order",
+            "modify_order",
+            "cancel_order",
+            "get_order_list",
+            "get_holdings",
+            "get_positions",
+            "get_fund_limits",
+            "get_historical_daily_data",
+            "get_intraday_minute_data",
+            "margin_calculator",
+            "health_check",
         ]
 
         print(f"✅ Found {len(classes)} classes: {', '.join(classes[:5])}...")
@@ -54,15 +70,19 @@ def validate_dhan_client():
             print("✅ All expected classes found")
 
         # Check if key methods exist
-        missing_methods = [method for method in expected_methods if method not in functions]
+        missing_methods = [
+            method for method in expected_methods if method not in functions
+        ]
         if missing_methods:
             print(f"⚠️  Missing methods: {missing_methods}")
         else:
             print("✅ All expected methods found")
 
         # Count lines for complexity measure
-        lines = content.split('\n')
-        code_lines = [line for line in lines if line.strip() and not line.strip().startswith('#')]
+        lines = content.split("\n")
+        code_lines = [
+            line for line in lines if line.strip() and not line.strip().startswith("#")
+        ]
         print(f"✅ Total lines: {len(lines)}, Code lines: {len(code_lines)}")
 
         print("\n🎉 Dhan client structure validation passed!")
@@ -80,8 +100,15 @@ def validate_imports():
     """Validate that all required dependencies are available"""
 
     required_modules = [
-        'asyncio', 'json', 'time', 'datetime', 'typing',
-        'hashlib', 'secrets', 'httpx', 'pydantic'
+        "asyncio",
+        "json",
+        "time",
+        "datetime",
+        "typing",
+        "hashlib",
+        "secrets",
+        "httpx",
+        "pydantic",
     ]
 
     missing_modules = []

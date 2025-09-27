@@ -12,14 +12,30 @@ import httpx
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
 from src.api.weather_client import (
-    WeatherClient, WeatherConfig, LocationQuery, WeatherUnits, WeatherLang,
-    CurrentWeather, WeatherForecast, WeatherAlert, WeatherInsights,
-    WeatherError, AuthenticationError, RateLimitError, ValidationError,
-    NetworkError, DataNotFoundError, WeatherCache, RateLimiter, CircuitBreaker,
-    get_weather_for_trading, monitor_agricultural_weather
+    WeatherClient,
+    WeatherConfig,
+    LocationQuery,
+    WeatherUnits,
+    WeatherLang,
+    CurrentWeather,
+    WeatherForecast,
+    WeatherAlert,
+    WeatherInsights,
+    WeatherError,
+    AuthenticationError,
+    RateLimitError,
+    ValidationError,
+    NetworkError,
+    DataNotFoundError,
+    WeatherCache,
+    RateLimiter,
+    CircuitBreaker,
+    get_weather_for_trading,
+    monitor_agricultural_weather,
 )
 
 
@@ -46,7 +62,7 @@ class TestWeatherConfig:
             api_key="test_key",
             timeout=30,
             default_units=WeatherUnits.IMPERIAL,
-            enable_commodity_analysis=False
+            enable_commodity_analysis=False,
         )
 
         assert config.api_key == "test_key"
@@ -165,7 +181,7 @@ class TestRateLimiter:
 
         # Third call should cause a delay (mocked time)
         start_time = asyncio.get_event_loop().time()
-        with patch('time.time', return_value=start_time):
+        with patch("time.time", return_value=start_time):
             await limiter.wait_if_needed()
 
         assert len(limiter.minute_calls) <= 2
@@ -203,11 +219,7 @@ class TestWeatherClient:
     @pytest.fixture
     def weather_config(self):
         """Test configuration"""
-        return WeatherConfig(
-            api_key="test_api_key",
-            timeout=10,
-            max_retries=2
-        )
+        return WeatherConfig(api_key="test_api_key", timeout=10, max_retries=2)
 
     @pytest.fixture
     def mock_response_current_weather(self):
@@ -215,12 +227,7 @@ class TestWeatherClient:
         return {
             "coord": {"lon": 72.8777, "lat": 19.076},
             "weather": [
-                {
-                    "id": 800,
-                    "main": "Clear",
-                    "description": "clear sky",
-                    "icon": "01d"
-                }
+                {"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}
             ],
             "main": {
                 "temp": 25.5,
@@ -228,22 +235,14 @@ class TestWeatherClient:
                 "temp_min": 24.0,
                 "temp_max": 27.0,
                 "pressure": 1013,
-                "humidity": 65
+                "humidity": 65,
             },
-            "wind": {
-                "speed": 3.5,
-                "deg": 180,
-                "gust": 5.2
-            },
+            "wind": {"speed": 3.5, "deg": 180, "gust": 5.2},
             "clouds": {"all": 10},
             "dt": 1640995200,
-            "sys": {
-                "country": "IN",
-                "sunrise": 1640995200,
-                "sunset": 1640995200
-            },
+            "sys": {"country": "IN", "sunrise": 1640995200, "sunset": 1640995200},
             "timezone": 19800,
-            "name": "Mumbai"
+            "name": "Mumbai",
         }
 
     @pytest.fixture
@@ -259,35 +258,34 @@ class TestWeatherClient:
                         "temp_min": 24.0,
                         "temp_max": 27.0,
                         "pressure": 1013,
-                        "humidity": 65
+                        "humidity": 65,
                     },
                     "weather": [
                         {
                             "id": 800,
                             "main": "Clear",
                             "description": "clear sky",
-                            "icon": "01d"
+                            "icon": "01d",
                         }
                     ],
                     "clouds": {"all": 10},
-                    "wind": {
-                        "speed": 3.5,
-                        "deg": 180
-                    },
-                    "pop": 0.1
+                    "wind": {"speed": 3.5, "deg": 180},
+                    "pop": 0.1,
                 }
             ],
             "city": {
                 "name": "Mumbai",
                 "coord": {"lat": 19.076, "lon": 72.8777},
-                "country": "IN"
-            }
+                "country": "IN",
+            },
         }
 
     @pytest.mark.asyncio
-    async def test_get_current_weather_success(self, weather_config, mock_response_current_weather):
+    async def test_get_current_weather_success(
+        self, weather_config, mock_response_current_weather
+    ):
         """Test successful current weather retrieval"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_response_current_weather
@@ -308,7 +306,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_get_forecast_success(self, weather_config, mock_response_forecast):
         """Test successful forecast retrieval"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_response_forecast
@@ -326,7 +324,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_authentication_error(self, weather_config):
         """Test authentication error handling"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 401
             mock_response.json.return_value = {"message": "Invalid API key"}
@@ -341,7 +339,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_location_not_found_error(self, weather_config):
         """Test location not found error"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 404
             mock_response.json.return_value = {"message": "City not found"}
@@ -356,7 +354,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_rate_limit_error_with_retry(self, weather_config):
         """Test rate limit error with retry logic"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             # First call returns rate limit error
             # Second call succeeds
             mock_response_error = Mock()
@@ -367,14 +365,28 @@ class TestWeatherClient:
             mock_response_success.status_code = 200
             mock_response_success.json.return_value = {
                 "coord": {"lon": 72.8777, "lat": 19.076},
-                "weather": [{"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}],
-                "main": {"temp": 25.5, "feels_like": 27.2, "temp_min": 24.0, "temp_max": 27.0, "pressure": 1013, "humidity": 65},
+                "weather": [
+                    {
+                        "id": 800,
+                        "main": "Clear",
+                        "description": "clear sky",
+                        "icon": "01d",
+                    }
+                ],
+                "main": {
+                    "temp": 25.5,
+                    "feels_like": 27.2,
+                    "temp_min": 24.0,
+                    "temp_max": 27.0,
+                    "pressure": 1013,
+                    "humidity": 65,
+                },
                 "wind": {"speed": 3.5, "deg": 180},
                 "clouds": {"all": 10},
                 "dt": 1640995200,
                 "sys": {"country": "IN", "sunrise": 1640995200, "sunset": 1640995200},
                 "timezone": 19800,
-                "name": "Mumbai"
+                "name": "Mumbai",
             }
 
             mock_get.side_effect = [mock_response_error, mock_response_success]
@@ -389,11 +401,35 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_network_error_with_retry(self, weather_config):
         """Test network error with retry"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_get.side_effect = [
                 httpx.NetworkError("Connection failed"),
                 httpx.NetworkError("Connection failed"),
-                Mock(status_code=200, json=lambda: {"name": "Mumbai", "coord": {"lat": 19, "lon": 72}, "main": {"temp": 25}, "weather": [{"id": 800, "main": "Clear", "description": "clear", "icon": "01d"}], "wind": {"speed": 3, "deg": 180}, "clouds": {"all": 0}, "dt": 1640995200, "sys": {"country": "IN", "sunrise": 1640995200, "sunset": 1640995200}, "timezone": 19800})
+                Mock(
+                    status_code=200,
+                    json=lambda: {
+                        "name": "Mumbai",
+                        "coord": {"lat": 19, "lon": 72},
+                        "main": {"temp": 25},
+                        "weather": [
+                            {
+                                "id": 800,
+                                "main": "Clear",
+                                "description": "clear",
+                                "icon": "01d",
+                            }
+                        ],
+                        "wind": {"speed": 3, "deg": 180},
+                        "clouds": {"all": 0},
+                        "dt": 1640995200,
+                        "sys": {
+                            "country": "IN",
+                            "sunrise": 1640995200,
+                            "sunset": 1640995200,
+                        },
+                        "timezone": 19800,
+                    },
+                ),
             ]
 
             async with WeatherClient(weather_config) as client:
@@ -406,7 +442,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_timeout_error(self, weather_config):
         """Test timeout error handling"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_get.side_effect = httpx.TimeoutException("Request timeout")
 
             async with WeatherClient(weather_config) as client:
@@ -416,9 +452,11 @@ class TestWeatherClient:
                     await client.get_current_weather(query)
 
     @pytest.mark.asyncio
-    async def test_caching_functionality(self, weather_config, mock_response_current_weather):
+    async def test_caching_functionality(
+        self, weather_config, mock_response_current_weather
+    ):
         """Test caching reduces API calls"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_response_current_weather
@@ -439,14 +477,16 @@ class TestWeatherClient:
                 assert client.stats["cache_hits"] == 1
 
     @pytest.mark.asyncio
-    async def test_trading_insights_calculation(self, weather_config, mock_response_current_weather):
+    async def test_trading_insights_calculation(
+        self, weather_config, mock_response_current_weather
+    ):
         """Test trading insights calculation"""
         # Modify mock data for testing insights
         mock_data = mock_response_current_weather.copy()
         mock_data["main"]["temp"] = 40  # High temperature for crop stress
         mock_data["main"]["humidity"] = 25  # Low humidity for drought
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_data
@@ -458,14 +498,20 @@ class TestWeatherClient:
 
                 assert isinstance(insights, WeatherInsights)
                 assert insights.crop_stress_index is not None
-                assert insights.crop_stress_index > 0  # High temperature should cause stress
-                assert insights.drought_indicator is True  # Low humidity should indicate drought
+                assert (
+                    insights.crop_stress_index > 0
+                )  # High temperature should cause stress
+                assert (
+                    insights.drought_indicator is True
+                )  # Low humidity should indicate drought
                 assert len(insights.commodity_price_impact) > 0
 
     @pytest.mark.asyncio
-    async def test_multi_location_weather(self, weather_config, mock_response_current_weather):
+    async def test_multi_location_weather(
+        self, weather_config, mock_response_current_weather
+    ):
         """Test multi-location weather retrieval"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_response_current_weather
@@ -474,12 +520,11 @@ class TestWeatherClient:
             async with WeatherClient(weather_config) as client:
                 locations = [
                     LocationQuery(city_name="Mumbai"),
-                    LocationQuery(city_name="Delhi")
+                    LocationQuery(city_name="Delhi"),
                 ]
 
                 results = await client.get_multi_location_weather(
-                    locations,
-                    data_types=["current", "insights"]
+                    locations, data_types=["current", "insights"]
                 )
 
                 assert len(results) == 2
@@ -496,11 +541,11 @@ class TestWeatherClient:
                 "lat": 19.076,
                 "lon": 72.8777,
                 "country": "IN",
-                "state": "Maharashtra"
+                "state": "Maharashtra",
             }
         ]
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_search_results
@@ -516,7 +561,7 @@ class TestWeatherClient:
     @pytest.mark.asyncio
     async def test_health_check(self, weather_config, mock_response_current_weather):
         """Test health check functionality"""
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_response_current_weather
@@ -563,17 +608,26 @@ class TestUtilityFunctions:
         """Test quick weather for trading function"""
         mock_current_data = {
             "coord": {"lon": 77.2090, "lat": 28.6139},
-            "weather": [{"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}],
-            "main": {"temp": 25.5, "feels_like": 27.2, "temp_min": 24.0, "temp_max": 27.0, "pressure": 1013, "humidity": 65},
+            "weather": [
+                {"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}
+            ],
+            "main": {
+                "temp": 25.5,
+                "feels_like": 27.2,
+                "temp_min": 24.0,
+                "temp_max": 27.0,
+                "pressure": 1013,
+                "humidity": 65,
+            },
             "wind": {"speed": 3.5, "deg": 180},
             "clouds": {"all": 10},
             "dt": 1640995200,
             "sys": {"country": "IN", "sunrise": 1640995200, "sunset": 1640995200},
             "timezone": 19800,
-            "name": "Delhi"
+            "name": "Delhi",
         }
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_current_data
@@ -591,23 +645,34 @@ class TestUtilityFunctions:
         """Test agricultural weather monitoring"""
         mock_current_data = {
             "coord": {"lon": 77.2090, "lat": 28.6139},
-            "weather": [{"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}],
-            "main": {"temp": 38.0, "feels_like": 40.0, "temp_min": 35.0, "temp_max": 40.0, "pressure": 1013, "humidity": 25},
+            "weather": [
+                {"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}
+            ],
+            "main": {
+                "temp": 38.0,
+                "feels_like": 40.0,
+                "temp_min": 35.0,
+                "temp_max": 40.0,
+                "pressure": 1013,
+                "humidity": 25,
+            },
             "wind": {"speed": 3.5, "deg": 180},
             "clouds": {"all": 10},
             "dt": 1640995200,
             "sys": {"country": "IN", "sunrise": 1640995200, "sunset": 1640995200},
             "timezone": 19800,
-            "name": "Delhi"
+            "name": "Delhi",
         }
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_current_data
             mock_get.return_value = mock_response
 
-            result = await monitor_agricultural_weather(["Delhi", "Mumbai"], "test_api_key")
+            result = await monitor_agricultural_weather(
+                ["Delhi", "Mumbai"], "test_api_key"
+            )
 
             assert "monitoring_summary" in result
             assert "detailed_data" in result
@@ -623,7 +688,7 @@ class TestErrorScenarios:
         """Test handling of invalid JSON response"""
         config = WeatherConfig(api_key="test_key")
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
@@ -640,7 +705,7 @@ class TestErrorScenarios:
         """Test server error with max retries exceeded"""
         config = WeatherConfig(api_key="test_key", max_retries=1)
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 500
             mock_response.text = "Internal Server Error"
@@ -660,7 +725,7 @@ class TestErrorScenarios:
         """Test unexpected HTTP status code"""
         config = WeatherConfig(api_key="test_key")
 
-        with patch('httpx.AsyncClient.get') as mock_get:
+        with patch("httpx.AsyncClient.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 418  # I'm a teapot
             mock_response.text = "I'm a teapot"
@@ -679,11 +744,12 @@ class TestErrorScenarios:
             "id": 800,
             "main": "Clear",
             "description": "clear sky",
-            "icon": "01d"
+            "icon": "01d",
         }
 
         # This should not raise an exception
         from api.weather_client import WeatherCondition
+
         weather_condition = WeatherCondition(**condition)
         assert weather_condition.main == "Clear"
 
@@ -706,7 +772,7 @@ class TestErrorScenarios:
             "cloudiness": 10,
             "sunrise": 1640995200,
             "sunset": 1640995200,
-            "units": WeatherUnits.METRIC
+            "units": WeatherUnits.METRIC,
         }
 
         weather = CurrentWeather(**weather_data)

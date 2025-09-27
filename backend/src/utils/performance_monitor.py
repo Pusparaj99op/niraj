@@ -6,17 +6,8 @@ This module provides comprehensive performance monitoring, profiling, and optimi
 capabilities for the NIRAJ algorithmic trading system.
 
 Features:
-- Real-time performance metrics collection
-- Advanced profiling and analysis tools
-- Performance alerting and notification system
-- Automatic performance optimization recommendations
-- Resource utilization monitoring
-- Database query performance tracking
-- API endpoint response time monitoring
-- Memory usage analysis and optimization
-- CPU utilization monitoring
-- WebSocket connection performance tracking
-- AI inference performance monitoring
+- Real-time performance metrics collection - Advanced profiling and analysis tools - Performance alerting and notification system - Automatic performance optimization recommendations - Resource utilization monitoring - Database query performance tracking - API endpoint response time monitoring - Memory usage analysis and optimization - CPU utilization monitoring - WebSocket connection performance tracking -
+AI inference performance monitoring
 
 Author: NIRAJ Development Team
 Version: 1.0.0
@@ -48,35 +39,17 @@ from ..core.cache import CacheManager
 logger = get_structured_logger(__name__)
 
 # Type definitions
-F = TypeVar('F', bound=Callable[..., Any])
-AF = TypeVar('AF', bound=Callable[..., Awaitable[Any]])
+F = TypeVar("F", bound=Callable[..., Any])
+AF = TypeVar("AF", bound=Callable[..., Awaitable[Any]])
 
 # Performance thresholds and constants
 PERFORMANCE_THRESHOLDS = {
-    'api_response_time': {
-        'warning': 500,  # ms
-        'critical': 1000  # ms
-    },
-    'database_query_time': {
-        'warning': 100,  # ms
-        'critical': 500  # ms
-    },
-    'memory_usage': {
-        'warning': 80,  # percentage
-        'critical': 95  # percentage
-    },
-    'cpu_usage': {
-        'warning': 70,  # percentage
-        'critical': 90  # percentage
-    },
-    'websocket_latency': {
-        'warning': 50,  # ms
-        'critical': 100  # ms
-    },
-    'ai_inference_time': {
-        'warning': 2000,  # ms
-        'critical': 5000  # ms
-    }
+    "api_response_time": {"warning": 500, "critical": 1000},  # ms  # ms
+    "database_query_time": {"warning": 100, "critical": 500},  # ms  # ms
+    "memory_usage": {"warning": 80, "critical": 95},  # percentage  # percentage
+    "cpu_usage": {"warning": 70, "critical": 90},  # percentage  # percentage
+    "websocket_latency": {"warning": 50, "critical": 100},  # ms  # ms
+    "ai_inference_time": {"warning": 2000, "critical": 5000},  # ms  # ms
 }
 
 METRICS_RETENTION_PERIOD = timedelta(hours=24)
@@ -85,6 +58,7 @@ ALERT_COOLDOWN_PERIOD = timedelta(minutes=5)
 
 class MetricType:
     """Metric type constants"""
+
     COUNTER = "counter"
     GAUGE = "gauge"
     HISTOGRAM = "histogram"
@@ -94,6 +68,7 @@ class MetricType:
 @dataclass
 class PerformanceMetric:
     """Individual performance metric data structure"""
+
     name: str
     value: float
     metric_type: str
@@ -105,6 +80,7 @@ class PerformanceMetric:
 @dataclass
 class PerformanceAlert:
     """Performance alert data structure"""
+
     metric_name: str
     threshold_type: str  # 'warning' or 'critical'
     current_value: float
@@ -139,9 +115,13 @@ class PerformanceTracker:
                 self._histograms[metric.name].append(metric.value)
                 # Keep only recent samples for histograms
                 if len(self._histograms[metric.name]) > 1000:
-                    self._histograms[metric.name] = self._histograms[metric.name][-1000:]
+                    self._histograms[metric.name] = self._histograms[metric.name][
+                        -1000:
+                    ]
 
-    def get_metrics(self, metric_name: str, limit: Optional[int] = None) -> List[PerformanceMetric]:
+    def get_metrics(
+        self, metric_name: str, limit: Optional[int] = None
+    ) -> List[PerformanceMetric]:
         """Get metrics by name"""
         with self._lock:
             metrics = list(self._metrics[metric_name])
@@ -149,17 +129,16 @@ class PerformanceTracker:
                 metrics = metrics[-limit:]
             return metrics
 
-    def get_recent_metrics(self, time_window: timedelta) -> Dict[str, List[PerformanceMetric]]:
+    def get_recent_metrics(
+        self, time_window: timedelta
+    ) -> Dict[str, List[PerformanceMetric]]:
         """Get metrics within time window"""
         cutoff_time = datetime.now(timezone.utc) - time_window
         result = {}
 
         with self._lock:
             for name, metrics in self._metrics.items():
-                recent_metrics = [
-                    m for m in metrics
-                    if m.timestamp >= cutoff_time
-                ]
+                recent_metrics = [m for m in metrics if m.timestamp >= cutoff_time]
                 if recent_metrics:
                     result[name] = recent_metrics
 
@@ -177,13 +156,13 @@ class PerformanceTracker:
 
             n = len(values)
             return {
-                'count': n,
-                'min': values[0],
-                'max': values[-1],
-                'mean': sum(values) / n,
-                'median': values[n // 2],
-                'p95': values[int(n * 0.95)] if n > 20 else values[-1],
-                'p99': values[int(n * 0.99)] if n > 100 else values[-1]
+                "count": n,
+                "min": values[0],
+                "max": values[-1],
+                "mean": sum(values) / n,
+                "median": values[n // 2],
+                "p95": values[int(n * 0.95)] if n > 20 else values[-1],
+                "p99": values[int(n * 0.99)] if n > 100 else values[-1],
             }
 
     def cleanup_old_metrics(self):
@@ -195,7 +174,7 @@ class PerformanceTracker:
                 # Filter out old metrics
                 self._metrics[name] = deque(
                     (m for m in self._metrics[name] if m.timestamp >= cutoff_time),
-                    maxlen=self.max_samples
+                    maxlen=self.max_samples,
                 )
 
                 # Remove empty metric collections
@@ -251,113 +230,139 @@ class ResourceMonitor:
             # CPU metrics
             cpu_percent = psutil.cpu_percent(interval=1)
             cpu_count = psutil.cpu_count()
-            load_avg = os.getloadavg() if hasattr(os, 'getloadavg') else (0, 0, 0)
+            load_avg = os.getloadavg() if hasattr(os, "getloadavg") else (0, 0, 0)
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="system.cpu.usage_percent",
-                value=cpu_percent,
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "cpu"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="system.cpu.usage_percent",
+                    value=cpu_percent,
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "cpu"},
+                )
+            )
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="system.cpu.load_avg_1min",
-                value=load_avg[0],
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "cpu", "period": "1min"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="system.cpu.load_avg_1min",
+                    value=load_avg[0],
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "cpu", "period": "1min"},
+                )
+            )
 
             # Memory metrics
             memory = psutil.virtual_memory()
             swap = psutil.swap_memory()
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="system.memory.usage_percent",
-                value=memory.percent,
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "memory", "type": "virtual"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="system.memory.usage_percent",
+                    value=memory.percent,
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "memory", "type": "virtual"},
+                )
+            )
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="system.memory.available_bytes",
-                value=memory.available,
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "memory", "type": "virtual"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="system.memory.available_bytes",
+                    value=memory.available,
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "memory", "type": "virtual"},
+                )
+            )
 
             # Disk metrics
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage("/")
             disk_io = psutil.disk_io_counters()
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="system.disk.usage_percent",
-                value=(disk.used / disk.total) * 100,
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "disk", "mount": "/"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="system.disk.usage_percent",
+                    value=(disk.used / disk.total) * 100,
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "disk", "mount": "/"},
+                )
+            )
 
             if disk_io:
-                self.tracker.add_metric(PerformanceMetric(
-                    name="system.disk.read_bytes_per_sec",
-                    value=disk_io.read_bytes,
-                    metric_type=MetricType.COUNTER,
-                    timestamp=timestamp,
-                    labels={"resource": "disk", "operation": "read"}
-                ))
+                self.tracker.add_metric(
+                    PerformanceMetric(
+                        name="system.disk.read_bytes_per_sec",
+                        value=disk_io.read_bytes,
+                        metric_type=MetricType.COUNTER,
+                        timestamp=timestamp,
+                        labels={"resource": "disk", "operation": "read"},
+                    )
+                )
 
             # Network metrics
             network = psutil.net_io_counters()
             if network:
-                self.tracker.add_metric(PerformanceMetric(
-                    name="system.network.bytes_sent",
-                    value=network.bytes_sent,
-                    metric_type=MetricType.COUNTER,
-                    timestamp=timestamp,
-                    labels={"resource": "network", "direction": "out"}
-                ))
+                self.tracker.add_metric(
+                    PerformanceMetric(
+                        name="system.network.bytes_sent",
+                        value=network.bytes_sent,
+                        metric_type=MetricType.COUNTER,
+                        timestamp=timestamp,
+                        labels={"resource": "network", "direction": "out"},
+                    )
+                )
 
-                self.tracker.add_metric(PerformanceMetric(
-                    name="system.network.bytes_recv",
-                    value=network.bytes_recv,
-                    metric_type=MetricType.COUNTER,
-                    timestamp=timestamp,
-                    labels={"resource": "network", "direction": "in"}
-                ))
+                self.tracker.add_metric(
+                    PerformanceMetric(
+                        name="system.network.bytes_recv",
+                        value=network.bytes_recv,
+                        metric_type=MetricType.COUNTER,
+                        timestamp=timestamp,
+                        labels={"resource": "network", "direction": "in"},
+                    )
+                )
 
             # Process-specific metrics
             process = psutil.Process()
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="process.memory.rss_bytes",
-                value=process.memory_info().rss,
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "process", "type": "memory"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="process.memory.rss_bytes",
+                    value=process.memory_info().rss,
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "process", "type": "memory"},
+                )
+            )
 
-            self.tracker.add_metric(PerformanceMetric(
-                name="process.cpu.usage_percent",
-                value=process.cpu_percent(),
-                metric_type=MetricType.GAUGE,
-                timestamp=timestamp,
-                labels={"resource": "process", "type": "cpu"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="process.cpu.usage_percent",
+                    value=process.cpu_percent(),
+                    metric_type=MetricType.GAUGE,
+                    timestamp=timestamp,
+                    labels={"resource": "process", "type": "cpu"},
+                )
+            )
 
             # Python-specific metrics
             gc_stats = gc.get_stats()
             for i, stat in enumerate(gc_stats):
-                self.tracker.add_metric(PerformanceMetric(
-                    name=f"python.gc.collections_gen{i}",
-                    value=stat['collections'],
-                    metric_type=MetricType.COUNTER,
-                    timestamp=timestamp,
-                    labels={"resource": "python", "type": "gc", "generation": str(i)}
-                ))
+                self.tracker.add_metric(
+                    PerformanceMetric(
+                        name=f"python.gc.collections_gen{i}",
+                        value=stat["collections"],
+                        metric_type=MetricType.COUNTER,
+                        timestamp=timestamp,
+                        labels={
+                            "resource": "python",
+                            "type": "gc",
+                            "generation": str(i),
+                        },
+                    )
+                )
 
         except Exception as e:
             logger.error("Failed to collect system metrics", error=str(e))
@@ -368,47 +373,59 @@ class DatabasePerformanceMonitor:
 
     def __init__(self, tracker: PerformanceTracker):
         self.tracker = tracker
-        self._query_stats: Dict[str, Dict] = defaultdict(lambda: {
-            'count': 0,
-            'total_time': 0.0,
-            'min_time': float('inf'),
-            'max_time': 0.0,
-            'last_executed': None
-        })
+        self._query_stats: Dict[str, Dict] = defaultdict(
+            lambda: {
+                "count": 0,
+                "total_time": 0.0,
+                "min_time": float("inf"),
+                "max_time": 0.0,
+                "last_executed": None,
+            }
+        )
         self._lock = threading.RLock()
 
     def setup_sqlalchemy_monitoring(self, engine: Engine):
         """Set up SQLAlchemy event monitoring"""
 
         @event.listens_for(engine, "before_cursor_execute")
-        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        def before_cursor_execute(
+            conn, cursor, statement, parameters, context, executemany
+        ):
             context._query_start_time = time.time()
 
         @event.listens_for(engine, "after_cursor_execute")
-        def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-            if hasattr(context, '_query_start_time'):
-                duration = (time.time() - context._query_start_time) * 1000  # Convert to ms
+        def after_cursor_execute(
+            conn, cursor, statement, parameters, context, executemany
+        ):
+            if hasattr(context, "_query_start_time"):
+                duration = (
+                    time.time() - context._query_start_time
+                ) * 1000  # Convert to ms
                 self._record_query_performance(statement, duration)
 
         @event.listens_for(Pool, "connect")
         def on_connect(dbapi_conn, connection_record):
-            self.tracker.add_metric(PerformanceMetric(
-                name="database.connections.created",
-                value=1,
-                metric_type=MetricType.COUNTER,
-                timestamp=datetime.now(timezone.utc),
-                labels={"database": "main"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="database.connections.created",
+                    value=1,
+                    metric_type=MetricType.COUNTER,
+                    timestamp=datetime.now(timezone.utc),
+                    labels={"database": "main"},
+                )
+            )
 
         @event.listens_for(Pool, "checkout")
         def on_checkout(dbapi_conn, connection_record, connection_proxy):
-            self.tracker.add_metric(PerformanceMetric(
-                name="database.connections.checked_out",
-                value=1,
-                metric_type=MetricType.COUNTER,
-                timestamp=datetime.now(timezone.utc),
-                labels={"database": "main"}
-            ))
+            self.tracker.add_metric(
+                PerformanceMetric(
+                    name="database.connections.checked_out",
+                    value=1,
+                    metric_type=MetricType.COUNTER,
+                    timestamp=datetime.now(timezone.utc),
+                    labels={"database": "main"},
+                )
+            )
 
         logger.info("SQLAlchemy performance monitoring enabled")
 
@@ -419,43 +436,46 @@ class DatabasePerformanceMonitor:
 
         with self._lock:
             stats = self._query_stats[normalized_stmt]
-            stats['count'] += 1
-            stats['total_time'] += duration_ms
-            stats['min_time'] = min(stats['min_time'], duration_ms)
-            stats['max_time'] = max(stats['max_time'], duration_ms)
-            stats['last_executed'] = datetime.now(timezone.utc)
+            stats["count"] += 1
+            stats["total_time"] += duration_ms
+            stats["min_time"] = min(stats["min_time"], duration_ms)
+            stats["max_time"] = max(stats["max_time"], duration_ms)
+            stats["last_executed"] = datetime.now(timezone.utc)
 
         # Record metric
-        self.tracker.add_metric(PerformanceMetric(
-            name="database.query.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=datetime.now(timezone.utc),
-            labels={
-                "database": "main",
-                "query_type": self._get_query_type(statement)
-            },
-            metadata={"statement": normalized_stmt[:200]}  # Truncate for storage
-        ))
+        self.tracker.add_metric(
+            PerformanceMetric(
+                name="database.query.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=datetime.now(timezone.utc),
+                labels={
+                    "database": "main",
+                    "query_type": self._get_query_type(statement),
+                },
+                metadata={"statement": normalized_stmt[:200]},  # Truncate for storage
+            )
+        )
 
         # Check for slow queries
-        if duration_ms > PERFORMANCE_THRESHOLDS['database_query_time']['warning']:
+        if duration_ms > PERFORMANCE_THRESHOLDS["database_query_time"]["warning"]:
             logger.warning(
                 "Slow database query detected",
                 duration_ms=duration_ms,
-                statement=normalized_stmt[:200]
+                statement=normalized_stmt[:200],
             )
 
     def _normalize_statement(self, statement: str) -> str:
         """Normalize SQL statement for grouping"""
         # Remove extra whitespace and normalize
-        normalized = ' '.join(statement.split())
+        normalized = " ".join(statement.split())
 
         # Replace parameter placeholders with generic placeholder
         import re
-        normalized = re.sub(r'%\([^)]+\)s', '?', normalized)  # Named parameters
-        normalized = re.sub(r'\?', '?', normalized)  # Positional parameters
-        normalized = re.sub(r'\d+', 'N', normalized)  # Numbers
+
+        normalized = re.sub(r"%\([^)]+\)s", "?", normalized)  # Named parameters
+        normalized = re.sub(r"\?", "?", normalized)  # Positional parameters
+        normalized = re.sub(r"\d+", "N", normalized)  # Numbers
         normalized = re.sub(r"'[^']*'", "'...'", normalized)  # String literals
 
         return normalized[:500]  # Limit length
@@ -463,36 +483,40 @@ class DatabasePerformanceMonitor:
     def _get_query_type(self, statement: str) -> str:
         """Extract query type from statement"""
         statement = statement.strip().upper()
-        if statement.startswith('SELECT'):
-            return 'SELECT'
-        elif statement.startswith('INSERT'):
-            return 'INSERT'
-        elif statement.startswith('UPDATE'):
-            return 'UPDATE'
-        elif statement.startswith('DELETE'):
-            return 'DELETE'
-        elif statement.startswith('CREATE'):
-            return 'CREATE'
-        elif statement.startswith('DROP'):
-            return 'DROP'
-        elif statement.startswith('ALTER'):
-            return 'ALTER'
+        if statement.startswith("SELECT"):
+            return "SELECT"
+        elif statement.startswith("INSERT"):
+            return "INSERT"
+        elif statement.startswith("UPDATE"):
+            return "UPDATE"
+        elif statement.startswith("DELETE"):
+            return "DELETE"
+        elif statement.startswith("CREATE"):
+            return "CREATE"
+        elif statement.startswith("DROP"):
+            return "DROP"
+        elif statement.startswith("ALTER"):
+            return "ALTER"
         else:
-            return 'OTHER'
+            return "OTHER"
 
     def get_query_statistics(self) -> Dict[str, Dict]:
         """Get query performance statistics"""
         with self._lock:
             stats = {}
             for statement, data in self._query_stats.items():
-                if data['count'] > 0:
+                if data["count"] > 0:
                     stats[statement] = {
-                        'count': data['count'],
-                        'avg_time_ms': data['total_time'] / data['count'],
-                        'min_time_ms': data['min_time'],
-                        'max_time_ms': data['max_time'],
-                        'total_time_ms': data['total_time'],
-                        'last_executed': data['last_executed'].isoformat() if data['last_executed'] else None
+                        "count": data["count"],
+                        "avg_time_ms": data["total_time"] / data["count"],
+                        "min_time_ms": data["min_time"],
+                        "max_time_ms": data["max_time"],
+                        "total_time_ms": data["total_time"],
+                        "last_executed": (
+                            data["last_executed"].isoformat()
+                            if data["last_executed"]
+                            else None
+                        ),
                     }
             return stats
 
@@ -502,70 +526,79 @@ class APIPerformanceMonitor:
 
     def __init__(self, tracker: PerformanceTracker):
         self.tracker = tracker
-        self._endpoint_stats: Dict[str, Dict] = defaultdict(lambda: {
-            'request_count': 0,
-            'error_count': 0,
-            'total_time': 0.0,
-            'min_time': float('inf'),
-            'max_time': 0.0
-        })
+        self._endpoint_stats: Dict[str, Dict] = defaultdict(
+            lambda: {
+                "request_count": 0,
+                "error_count": 0,
+                "total_time": 0.0,
+                "min_time": float("inf"),
+                "max_time": 0.0,
+            }
+        )
         self._lock = threading.RLock()
 
-    def record_request(self, endpoint: str, method: str, duration_ms: float,
-                      status_code: int, user_id: Optional[str] = None):
+    def record_request(
+        self,
+        endpoint: str,
+        method: str,
+        duration_ms: float,
+        status_code: int,
+        user_id: Optional[str] = None,
+    ):
         """Record API request performance"""
         endpoint_key = f"{method} {endpoint}"
         timestamp = datetime.now(timezone.utc)
 
         with self._lock:
             stats = self._endpoint_stats[endpoint_key]
-            stats['request_count'] += 1
-            stats['total_time'] += duration_ms
-            stats['min_time'] = min(stats['min_time'], duration_ms)
-            stats['max_time'] = max(stats['max_time'], duration_ms)
+            stats["request_count"] += 1
+            stats["total_time"] += duration_ms
+            stats["min_time"] = min(stats["min_time"], duration_ms)
+            stats["max_time"] = max(stats["max_time"], duration_ms)
 
             if status_code >= 400:
-                stats['error_count'] += 1
+                stats["error_count"] += 1
 
         # Record detailed metric
-        self.tracker.add_metric(PerformanceMetric(
-            name="api.request.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=timestamp,
-            labels={
-                "endpoint": endpoint,
-                "method": method,
-                "status_code": str(status_code),
-                "status_class": f"{status_code // 100}xx"
-            },
-            metadata={
-                "user_id": user_id,
-                "timestamp": timestamp.isoformat()
-            }
-        ))
+        self.tracker.add_metric(
+            PerformanceMetric(
+                name="api.request.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=timestamp,
+                labels={
+                    "endpoint": endpoint,
+                    "method": method,
+                    "status_code": str(status_code),
+                    "status_class": f"{status_code // 100}xx",
+                },
+                metadata={"user_id": user_id, "timestamp": timestamp.isoformat()},
+            )
+        )
 
         # Record request count
-        self.tracker.add_metric(PerformanceMetric(
-            name="api.requests.total",
-            value=1,
-            metric_type=MetricType.COUNTER,
-            timestamp=timestamp,
-            labels={
-                "endpoint": endpoint,
-                "method": method,
-                "status_code": str(status_code)
-            }
-        ))
+        self.tracker.add_metric(
+            PerformanceMetric(
+                name="api.requests.total",
+                value=1,
+                metric_type=MetricType.COUNTER,
+                timestamp=timestamp,
+                labels={
+                    "endpoint": endpoint,
+                    "method": method,
+                    "status_code": str(status_code),
+                },
+            )
+        )
 
         # Check for slow requests
-        if duration_ms > PERFORMANCE_THRESHOLDS['api_response_time']['warning']:
+        if duration_ms > PERFORMANCE_THRESHOLDS["api_response_time"]["warning"]:
             logger.warning(
                 "Slow API request detected",
                 endpoint=endpoint,
                 method=method,
                 duration_ms=duration_ms,
-                status_code=status_code
+                status_code=status_code,
             )
 
     def get_endpoint_statistics(self) -> Dict[str, Dict]:
@@ -573,15 +606,15 @@ class APIPerformanceMonitor:
         with self._lock:
             stats = {}
             for endpoint, data in self._endpoint_stats.items():
-                if data['request_count'] > 0:
+                if data["request_count"] > 0:
                     stats[endpoint] = {
-                        'request_count': data['request_count'],
-                        'error_count': data['error_count'],
-                        'error_rate': data['error_count'] / data['request_count'],
-                        'avg_time_ms': data['total_time'] / data['request_count'],
-                        'min_time_ms': data['min_time'],
-                        'max_time_ms': data['max_time'],
-                        'total_time_ms': data['total_time']
+                        "request_count": data["request_count"],
+                        "error_count": data["error_count"],
+                        "error_rate": data["error_count"] / data["request_count"],
+                        "avg_time_ms": data["total_time"] / data["request_count"],
+                        "min_time_ms": data["min_time"],
+                        "max_time_ms": data["max_time"],
+                        "total_time_ms": data["total_time"],
                     }
             return stats
 
@@ -619,23 +652,27 @@ class MemoryProfiler:
         # Get current memory usage
         current, peak = tracemalloc.get_traced_memory()
 
-        self.tracker.add_metric(PerformanceMetric(
-            name="memory.traced.current_bytes",
-            value=current,
-            metric_type=MetricType.GAUGE,
-            timestamp=datetime.now(timezone.utc),
-            labels={"type": "traced"},
-            metadata={"snapshot": name}
-        ))
+        self.tracker.add_metric(
+            PerformanceMetric(
+                name="memory.traced.current_bytes",
+                value=current,
+                metric_type=MetricType.GAUGE,
+                timestamp=datetime.now(timezone.utc),
+                labels={"type": "traced"},
+                metadata={"snapshot": name},
+            )
+        )
 
-        self.tracker.add_metric(PerformanceMetric(
-            name="memory.traced.peak_bytes",
-            value=peak,
-            metric_type=MetricType.GAUGE,
-            timestamp=datetime.now(timezone.utc),
-            labels={"type": "traced"},
-            metadata={"snapshot": name}
-        ))
+        self.tracker.add_metric(
+            PerformanceMetric(
+                name="memory.traced.peak_bytes",
+                value=peak,
+                metric_type=MetricType.GAUGE,
+                timestamp=datetime.now(timezone.utc),
+                labels={"type": "traced"},
+                metadata={"snapshot": name},
+            )
+        )
 
         return snapshot
 
@@ -645,16 +682,20 @@ class MemoryProfiler:
             return []
 
         snapshot = self._snapshots[-1][1]  # Latest snapshot
-        top_stats = snapshot.statistics('lineno')
+        top_stats = snapshot.statistics("lineno")
 
         allocations = []
         for index, stat in enumerate(top_stats[:limit]):
-            allocations.append({
-                'rank': index + 1,
-                'size_mb': stat.size / 1024 / 1024,
-                'count': stat.count,
-                'filename': stat.traceback.format()[-1] if stat.traceback else 'Unknown'
-            })
+            allocations.append(
+                {
+                    "rank": index + 1,
+                    "size_mb": stat.size / 1024 / 1024,
+                    "count": stat.count,
+                    "filename": (
+                        stat.traceback.format()[-1] if stat.traceback else "Unknown"
+                    ),
+                }
+            )
 
         return allocations
 
@@ -672,20 +713,26 @@ class MemoryProfiler:
         if not (snap1 and snap2):
             return None
 
-        top_stats = snap2.compare_to(snap1, 'lineno')
+        top_stats = snap2.compare_to(snap1, "lineno")
 
         comparison = {
-            'total_size_diff_mb': sum(stat.size_diff for stat in top_stats) / 1024 / 1024,
-            'total_count_diff': sum(stat.count_diff for stat in top_stats),
-            'top_differences': []
+            "total_size_diff_mb": sum(stat.size_diff for stat in top_stats)
+            / 1024
+            / 1024,
+            "total_count_diff": sum(stat.count_diff for stat in top_stats),
+            "top_differences": [],
         }
 
         for stat in top_stats[:10]:
-            comparison['top_differences'].append({
-                'size_diff_mb': stat.size_diff / 1024 / 1024,
-                'count_diff': stat.count_diff,
-                'filename': stat.traceback.format()[-1] if stat.traceback else 'Unknown'
-            })
+            comparison["top_differences"].append(
+                {
+                    "size_diff_mb": stat.size_diff / 1024 / 1024,
+                    "count_diff": stat.count_diff,
+                    "filename": (
+                        stat.traceback.format()[-1] if stat.traceback else "Unknown"
+                    ),
+                }
+            )
 
         return comparison
 
@@ -755,25 +802,29 @@ class AlertManager:
                 thresholds = PERFORMANCE_THRESHOLDS[alert_key]
 
                 alert = None
-                if latest_metric.value >= thresholds['critical']:
+                if latest_metric.value >= thresholds["critical"]:
                     alert = PerformanceAlert(
                         metric_name=metric_name,
-                        threshold_type='critical',
+                        threshold_type="critical",
                         current_value=latest_metric.value,
-                        threshold_value=thresholds['critical'],
+                        threshold_value=thresholds["critical"],
                         timestamp=now,
                         description=f"Critical performance threshold exceeded for {metric_name}",
-                        suggested_actions=self._get_suggested_actions(metric_name, 'critical')
+                        suggested_actions=self._get_suggested_actions(
+                            metric_name, "critical"
+                        ),
                     )
-                elif latest_metric.value >= thresholds['warning']:
+                elif latest_metric.value >= thresholds["warning"]:
                     alert = PerformanceAlert(
                         metric_name=metric_name,
-                        threshold_type='warning',
+                        threshold_type="warning",
                         current_value=latest_metric.value,
-                        threshold_value=thresholds['warning'],
+                        threshold_value=thresholds["warning"],
                         timestamp=now,
                         description=f"Performance warning threshold exceeded for {metric_name}",
-                        suggested_actions=self._get_suggested_actions(metric_name, 'warning')
+                        suggested_actions=self._get_suggested_actions(
+                            metric_name, "warning"
+                        ),
                     )
 
                 if alert:
@@ -781,55 +832,57 @@ class AlertManager:
 
     def _get_alert_key(self, metric_name: str) -> str:
         """Map metric name to alert threshold key"""
-        if 'api.request.duration' in metric_name:
-            return 'api_response_time'
-        elif 'database.query.duration' in metric_name:
-            return 'database_query_time'
-        elif 'system.memory.usage_percent' in metric_name:
-            return 'memory_usage'
-        elif 'system.cpu.usage_percent' in metric_name:
-            return 'cpu_usage'
-        elif 'websocket.latency' in metric_name:
-            return 'websocket_latency'
-        elif 'ai.inference.duration' in metric_name:
-            return 'ai_inference_time'
+        if "api.request.duration" in metric_name:
+            return "api_response_time"
+        elif "database.query.duration" in metric_name:
+            return "database_query_time"
+        elif "system.memory.usage_percent" in metric_name:
+            return "memory_usage"
+        elif "system.cpu.usage_percent" in metric_name:
+            return "cpu_usage"
+        elif "websocket.latency" in metric_name:
+            return "websocket_latency"
+        elif "ai.inference.duration" in metric_name:
+            return "ai_inference_time"
         else:
             return metric_name
 
-    def _get_suggested_actions(self, metric_name: str, threshold_type: str) -> List[str]:
+    def _get_suggested_actions(
+        self, metric_name: str, threshold_type: str
+    ) -> List[str]:
         """Get suggested actions for performance alerts"""
         actions = []
 
-        if 'api.request.duration' in metric_name:
+        if "api.request.duration" in metric_name:
             actions = [
                 "Review API endpoint implementation for bottlenecks",
                 "Check database query performance",
                 "Consider implementing response caching",
-                "Review concurrent request handling"
+                "Review concurrent request handling",
             ]
-        elif 'database.query.duration' in metric_name:
+        elif "database.query.duration" in metric_name:
             actions = [
                 "Analyze slow query logs",
                 "Review database indexes",
                 "Consider query optimization",
-                "Check connection pool settings"
+                "Check connection pool settings",
             ]
-        elif 'system.memory.usage' in metric_name:
+        elif "system.memory.usage" in metric_name:
             actions = [
                 "Review memory-intensive operations",
                 "Check for memory leaks",
                 "Consider increasing available memory",
-                "Review caching strategies"
+                "Review caching strategies",
             ]
-        elif 'system.cpu.usage' in metric_name:
+        elif "system.cpu.usage" in metric_name:
             actions = [
                 "Review CPU-intensive operations",
                 "Consider implementing async processing",
                 "Check for blocking operations",
-                "Review resource allocation"
+                "Review resource allocation",
             ]
 
-        if threshold_type == 'critical':
+        if threshold_type == "critical":
             actions.insert(0, "IMMEDIATE ACTION REQUIRED")
 
         return actions
@@ -855,7 +908,7 @@ class AlertManager:
             threshold_type=alert.threshold_type,
             current_value=alert.current_value,
             threshold_value=alert.threshold_value,
-            suggested_actions=alert.suggested_actions
+            suggested_actions=alert.suggested_actions,
         )
 
         # Notify callbacks
@@ -868,7 +921,9 @@ class AlertManager:
             except Exception as e:
                 logger.error("Alert notification callback failed", error=str(e))
 
-    def get_recent_alerts(self, time_window: timedelta = timedelta(hours=1)) -> List[PerformanceAlert]:
+    def get_recent_alerts(
+        self, time_window: timedelta = timedelta(hours=1)
+    ) -> List[PerformanceAlert]:
         """Get recent alerts"""
         cutoff_time = datetime.now(timezone.utc) - time_window
         return [alert for alert in self._alerts if alert.timestamp >= cutoff_time]
@@ -897,6 +952,7 @@ class PerformanceOptimizer:
                 from sklearn.linear_model import LinearRegression
                 from sklearn.preprocessing import StandardScaler
                 import pandas as pd
+
                 self._ml_available = True
                 self.np = np
                 self.LinearRegression = LinearRegression
@@ -908,31 +964,38 @@ class PerformanceOptimizer:
         def enable_predictive_analytics(self):
             """Enable predictive analytics if ML libraries are available"""
             if not self._ml_available:
-                logger.warning("Cannot enable predictive analytics - ML libraries not installed")
+                logger.warning(
+                    "Cannot enable predictive analytics - ML libraries not installed"
+                )
                 return False
 
             logger.info("Predictive analytics enabled")
             return True
 
-        def record_metric_for_prediction(self, metric_name: str, value: float, timestamp: datetime):
+        def record_metric_for_prediction(
+            self, metric_name: str, value: float, timestamp: datetime
+        ):
             """Record metric data for predictive modeling"""
             if not self._ml_available:
                 return
 
             with self._lock:
-                self._training_data[metric_name].append({
-                    'timestamp': timestamp,
-                    'value': value,
-                    'hour': timestamp.hour,
-                    'day_of_week': timestamp.weekday(),
-                    'month': timestamp.month
-                })
+                self._training_data[metric_name].append(
+                    {
+                        "timestamp": timestamp,
+                        "value": value,
+                        "hour": timestamp.hour,
+                        "day_of_week": timestamp.weekday(),
+                        "month": timestamp.month,
+                    }
+                )
 
                 # Keep only recent data (last 30 days)
                 cutoff = datetime.now(timezone.utc) - timedelta(days=30)
                 self._training_data[metric_name] = [
-                    d for d in self._training_data[metric_name]
-                    if d['timestamp'] >= cutoff
+                    d
+                    for d in self._training_data[metric_name]
+                    if d["timestamp"] >= cutoff
                 ]
 
         def train_prediction_model(self, metric_name: str) -> bool:
@@ -947,7 +1010,7 @@ class PerformanceOptimizer:
 
                 # Prepare training data
                 df = self.pd.DataFrame(data)
-                df['timestamp_unix'] = df['timestamp'].astype(self.np.int64) // 10**9
+                df["timestamp_unix"] = df["timestamp"].astype(self.np.int64) // 10**9
 
                 # Features: hour, day_of_week, recent trend
                 X = []
@@ -955,13 +1018,17 @@ class PerformanceOptimizer:
 
                 for i in range(6, len(df)):  # Start from index 6 to have enough history
                     features = [
-                        df.iloc[i]['hour'],
-                        df.iloc[i]['day_of_week'],
-                        df.iloc[i - 1]['value'],  # Previous value
-                        df.iloc[i - 6]['value'] if i >= 6 else df.iloc[i - 1]['value'],  # 6 hours ago
+                        df.iloc[i]["hour"],
+                        df.iloc[i]["day_of_week"],
+                        df.iloc[i - 1]["value"],  # Previous value
+                        (
+                            df.iloc[i - 6]["value"]
+                            if i >= 6
+                            else df.iloc[i - 1]["value"]
+                        ),  # 6 hours ago
                     ]
                     X.append(features)
-                    y.append(df.iloc[i]['value'])
+                    y.append(df.iloc[i]["value"])
 
                 if len(X) < 10:
                     return False
@@ -979,35 +1046,45 @@ class PerformanceOptimizer:
 
                 with self._lock:
                     self._prediction_models[metric_name] = {
-                        'model': model,
-                        'scaler': scaler,
-                        'last_trained': datetime.now(timezone.utc),
-                        'accuracy_score': model.score(X_scaled, y)
+                        "model": model,
+                        "scaler": scaler,
+                        "last_trained": datetime.now(timezone.utc),
+                        "accuracy_score": model.score(X_scaled, y),
                     }
 
-                logger.info("Prediction model trained",
-                           metric=metric_name,
-                           data_points=len(X),
-                           accuracy=model.score(X_scaled, y))
+                logger.info(
+                    "Prediction model trained",
+                    metric=metric_name,
+                    data_points=len(X),
+                    accuracy=model.score(X_scaled, y),
+                )
 
                 return True
 
             except Exception as e:
-                logger.error("Failed to train prediction model", metric=metric_name, error=str(e))
+                logger.error(
+                    "Failed to train prediction model", metric=metric_name, error=str(e)
+                )
                 return False
 
-        def predict_metric(self, metric_name: str, hours_ahead: int = 1) -> Optional[Dict[str, Any]]:
+        def predict_metric(
+            self, metric_name: str, hours_ahead: int = 1
+        ) -> Optional[Dict[str, Any]]:
             """Predict future metric values"""
             if not self._ml_available or metric_name not in self._prediction_models:
                 return None
 
             try:
                 model_data = self._prediction_models[metric_name]
-                model = model_data['model']
-                scaler = model_data['scaler']
+                model = model_data["model"]
+                scaler = model_data["scaler"]
 
                 # Get recent data for prediction
-                recent_data = self._training_data[metric_name][-6:] if len(self._training_data[metric_name]) >= 6 else self._training_data[metric_name]
+                recent_data = (
+                    self._training_data[metric_name][-6:]
+                    if len(self._training_data[metric_name]) >= 6
+                    else self._training_data[metric_name]
+                )
 
                 if len(recent_data) < 2:
                     return None
@@ -1017,8 +1094,12 @@ class PerformanceOptimizer:
                 features = [
                     now.hour,
                     now.weekday(),
-                    recent_data[-1]['value'],  # Most recent value
-                    recent_data[-6]['value'] if len(recent_data) >= 6 else recent_data[0]['value']
+                    recent_data[-1]["value"],  # Most recent value
+                    (
+                        recent_data[-6]["value"]
+                        if len(recent_data) >= 6
+                        else recent_data[0]["value"]
+                    ),
                 ]
 
                 X_pred = self.np.array([features])
@@ -1030,33 +1111,38 @@ class PerformanceOptimizer:
                 confidence_interval = prediction * 0.15  # 15% confidence interval
 
                 result = {
-                    'metric_name': metric_name,
-                    'predicted_value': max(0, prediction),  # Ensure non-negative
-                    'confidence_interval': confidence_interval,
-                    'prediction_time': now + timedelta(hours=hours_ahead),
-                    'model_accuracy': model_data['accuracy_score'],
-                    'hours_ahead': hours_ahead
+                    "metric_name": metric_name,
+                    "predicted_value": max(0, prediction),  # Ensure non-negative
+                    "confidence_interval": confidence_interval,
+                    "prediction_time": now + timedelta(hours=hours_ahead),
+                    "model_accuracy": model_data["accuracy_score"],
+                    "hours_ahead": hours_ahead,
                 }
 
                 # Store prediction for analysis
                 with self._lock:
-                    self._predictions[metric_name].append({
-                        'timestamp': now,
-                        'prediction': result,
-                        'actual_value': None  # Will be filled when actual value is available
-                    })
+                    self._predictions[metric_name].append(
+                        {
+                            "timestamp": now,
+                            "prediction": result,
+                            "actual_value": None,  # Will be filled when actual value is available
+                        }
+                    )
 
                     # Keep only recent predictions
                     cutoff = now - timedelta(days=7)
                     self._predictions[metric_name] = [
-                        p for p in self._predictions[metric_name]
-                        if p['timestamp'] >= cutoff
+                        p
+                        for p in self._predictions[metric_name]
+                        if p["timestamp"] >= cutoff
                     ]
 
                 return result
 
             except Exception as e:
-                logger.error("Failed to predict metric", metric=metric_name, error=str(e))
+                logger.error(
+                    "Failed to predict metric", metric=metric_name, error=str(e)
+                )
                 return None
 
         def validate_predictions(self, metric_name: str) -> Dict[str, Any]:
@@ -1072,48 +1158,55 @@ class PerformanceOptimizer:
             validated_predictions = []
 
             for pred_data in predictions:
-                if pred_data['actual_value'] is not None:
+                if pred_data["actual_value"] is not None:
                     validated_predictions.append(pred_data)
 
             if not validated_predictions:
-                return {'status': 'no_validated_predictions'}
+                return {"status": "no_validated_predictions"}
 
             # Calculate accuracy metrics
             errors = []
             for pred in validated_predictions:
-                predicted = pred['prediction']['predicted_value']
-                actual = pred['actual_value']
+                predicted = pred["prediction"]["predicted_value"]
+                actual = pred["actual_value"]
                 error = abs(predicted - actual)
                 errors.append(error)
 
             avg_error = self.np.mean(errors)
             max_error = self.np.max(errors)
-            accuracy = 1 - (avg_error / self.np.mean([p['actual_value'] for p in validated_predictions]))
+            accuracy = 1 - (
+                avg_error
+                / self.np.mean([p["actual_value"] for p in validated_predictions])
+            )
 
             return {
-                'metric_name': metric_name,
-                'predictions_validated': len(validated_predictions),
-                'average_error': avg_error,
-                'max_error': max_error,
-                'accuracy_score': max(0, accuracy),  # Ensure non-negative
-                'last_validated': validated_predictions[-1]['timestamp'] if validated_predictions else None
+                "metric_name": metric_name,
+                "predictions_validated": len(validated_predictions),
+                "average_error": avg_error,
+                "max_error": max_error,
+                "accuracy_score": max(0, accuracy),  # Ensure non-negative
+                "last_validated": (
+                    validated_predictions[-1]["timestamp"]
+                    if validated_predictions
+                    else None
+                ),
             }
 
         def get_prediction_insights(self) -> Dict[str, Any]:
             """Get insights from predictive analytics"""
             insights = {
-                'models_trained': len(self._prediction_models),
-                'metrics_with_predictions': list(self._prediction_models.keys()),
-                'prediction_accuracy': {},
-                'anomaly_predictions': [],
-                'trend_predictions': []
+                "models_trained": len(self._prediction_models),
+                "metrics_with_predictions": list(self._prediction_models.keys()),
+                "prediction_accuracy": {},
+                "anomaly_predictions": [],
+                "trend_predictions": [],
             }
 
             # Get accuracy for each metric
             for metric_name in self._prediction_models.keys():
                 accuracy = self.validate_predictions(metric_name)
                 if accuracy:
-                    insights['prediction_accuracy'][metric_name] = accuracy
+                    insights["prediction_accuracy"][metric_name] = accuracy
 
             # Generate insights based on predictions
             for metric_name, predictions in self._predictions.items():
@@ -1124,27 +1217,35 @@ class PerformanceOptimizer:
 
                 # Check for anomaly predictions
                 for pred_data in recent_predictions:
-                    pred = pred_data['prediction']
-                    if pred['predicted_value'] > pred['confidence_interval'] * 3:  # 3 sigma
-                        insights['anomaly_predictions'].append({
-                            'metric': metric_name,
-                            'predicted_value': pred['predicted_value'],
-                            'timestamp': pred['prediction_time'],
-                            'severity': 'high'
-                        })
+                    pred = pred_data["prediction"]
+                    if (
+                        pred["predicted_value"] > pred["confidence_interval"] * 3
+                    ):  # 3 sigma
+                        insights["anomaly_predictions"].append(
+                            {
+                                "metric": metric_name,
+                                "predicted_value": pred["predicted_value"],
+                                "timestamp": pred["prediction_time"],
+                                "severity": "high",
+                            }
+                        )
 
                 # Check for trend predictions
                 if len(recent_predictions) >= 5:
-                    values = [p['prediction']['predicted_value'] for p in recent_predictions]
+                    values = [
+                        p["prediction"]["predicted_value"] for p in recent_predictions
+                    ]
                     trend = self._calculate_trend(values)
 
                     if abs(trend) > 0.1:  # Significant trend
-                        insights['trend_predictions'].append({
-                            'metric': metric_name,
-                            'trend': 'increasing' if trend > 0 else 'decreasing',
-                            'magnitude': abs(trend),
-                            'period': 'recent_predictions'
-                        })
+                        insights["trend_predictions"].append(
+                            {
+                                "metric": metric_name,
+                                "trend": "increasing" if trend > 0 else "decreasing",
+                                "magnitude": abs(trend),
+                                "period": "recent_predictions",
+                            }
+                        )
 
             return insights
 
@@ -1160,30 +1261,42 @@ class PerformanceOptimizer:
             slope = self.np.polyfit(x, y, 1)[0]
             return slope
 
-        def get_anomaly_predictions(self, time_window: timedelta = timedelta(hours=24)) -> List[Dict[str, Any]]:
+        def get_anomaly_predictions(
+            self, time_window: timedelta = timedelta(hours=24)
+        ) -> List[Dict[str, Any]]:
             """Get predictions that indicate potential anomalies"""
             anomalies = []
             cutoff_time = datetime.now(timezone.utc) - time_window
 
             for metric_name, predictions in self._predictions.items():
                 for pred_data in predictions:
-                    if pred_data['timestamp'] < cutoff_time:
+                    if pred_data["timestamp"] < cutoff_time:
                         continue
 
-                    pred = pred_data['prediction']
+                    pred = pred_data["prediction"]
 
                     # Check if prediction exceeds normal bounds
-                    if pred['predicted_value'] > (pred.get('baseline', 0) + pred['confidence_interval'] * 2):
-                        anomalies.append({
-                            'metric_name': metric_name,
-                            'predicted_value': pred['predicted_value'],
-                            'baseline': pred.get('baseline', 0),
-                            'confidence_interval': pred['confidence_interval'],
-                            'timestamp': pred['prediction_time'],
-                            'severity': 'high' if pred['predicted_value'] > pred.get('baseline', 0) + pred['confidence_interval'] * 3 else 'medium'
-                        })
+                    if pred["predicted_value"] > (
+                        pred.get("baseline", 0) + pred["confidence_interval"] * 2
+                    ):
+                        anomalies.append(
+                            {
+                                "metric_name": metric_name,
+                                "predicted_value": pred["predicted_value"],
+                                "baseline": pred.get("baseline", 0),
+                                "confidence_interval": pred["confidence_interval"],
+                                "timestamp": pred["prediction_time"],
+                                "severity": (
+                                    "high"
+                                    if pred["predicted_value"]
+                                    > pred.get("baseline", 0)
+                                    + pred["confidence_interval"] * 3
+                                    else "medium"
+                                ),
+                            }
+                        )
 
-            return sorted(anomalies, key=lambda x: x['predicted_value'], reverse=True)
+            return sorted(anomalies, key=lambda x: x["predicted_value"], reverse=True)
 
     class AnomalyDetector:
         """Anomaly detection for performance metrics"""
@@ -1200,17 +1313,22 @@ class PerformanceOptimizer:
                 from sklearn.ensemble import IsolationForest
                 from sklearn.preprocessing import StandardScaler
                 import numpy as np
+
                 self._ml_available = True
                 self.IsolationForest = IsolationForest
                 self.StandardScaler = StandardScaler
                 self.np = np
             except ImportError:
-                logger.warning("ML libraries not available for advanced anomaly detection")
+                logger.warning(
+                    "ML libraries not available for advanced anomaly detection"
+                )
 
         def enable_anomaly_detection(self):
             """Enable anomaly detection"""
             if not self._ml_available:
-                logger.warning("Cannot enable advanced anomaly detection - ML libraries not installed")
+                logger.warning(
+                    "Cannot enable advanced anomaly detection - ML libraries not installed"
+                )
                 return False
 
             logger.info("Anomaly detection enabled")
@@ -1232,20 +1350,22 @@ class PerformanceOptimizer:
 
                     # Calculate statistical baselines
                     baseline = {
-                        'mean': self.np.mean(values),
-                        'std': self.np.std(values),
-                        'min': min(values),
-                        'max': max(values),
-                        'p95': self.np.percentile(values, 95),
-                        'p99': self.np.percentile(values, 99),
-                        'last_updated': datetime.now(timezone.utc)
+                        "mean": self.np.mean(values),
+                        "std": self.np.std(values),
+                        "min": min(values),
+                        "max": max(values),
+                        "p95": self.np.percentile(values, 95),
+                        "p99": self.np.percentile(values, 99),
+                        "last_updated": datetime.now(timezone.utc),
                     }
 
                     self._metric_baselines[metric_name] = baseline
 
             logger.debug("Baselines updated", metrics_count=len(self._metric_baselines))
 
-        def detect_anomalies(self, metric_name: str, current_value: float) -> Optional[Dict[str, Any]]:
+        def detect_anomalies(
+            self, metric_name: str, current_value: float
+        ) -> Optional[Dict[str, Any]]:
             """Detect if current value is anomalous"""
             if metric_name not in self._metric_baselines:
                 return None
@@ -1253,8 +1373,8 @@ class PerformanceOptimizer:
             baseline = self._metric_baselines[metric_name]
 
             # Simple statistical anomaly detection
-            mean = baseline['mean']
-            std = baseline['std']
+            mean = baseline["mean"]
+            std = baseline["std"]
 
             if std == 0:
                 # No variation in baseline, check against mean
@@ -1266,18 +1386,22 @@ class PerformanceOptimizer:
 
             if is_anomaly:
                 anomaly = {
-                    'metric_name': metric_name,
-                    'current_value': current_value,
-                    'expected_range': {
-                        'mean': mean,
-                        'std': std,
-                        'min_normal': mean - 2 * std,
-                        'max_normal': mean + 2 * std
+                    "metric_name": metric_name,
+                    "current_value": current_value,
+                    "expected_range": {
+                        "mean": mean,
+                        "std": std,
+                        "min_normal": mean - 2 * std,
+                        "max_normal": mean + 2 * std,
                     },
-                    'z_score': z_score,
-                    'severity': 'critical' if z_score > 5 else 'high' if z_score > 3 else 'medium',
-                    'timestamp': datetime.now(timezone.utc),
-                    'description': f"Anomalous value detected for {metric_name}: {current_value} (expected ~{mean:.2f})"
+                    "z_score": z_score,
+                    "severity": (
+                        "critical"
+                        if z_score > 5
+                        else "high" if z_score > 3 else "medium"
+                    ),
+                    "timestamp": datetime.now(timezone.utc),
+                    "description": f"Anomalous value detected for {metric_name}: {current_value} (expected ~{mean:.2f})",
                 }
 
                 with self._lock:
@@ -1285,50 +1409,56 @@ class PerformanceOptimizer:
 
                     # Keep only recent anomalies
                     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-                    self._anomalies = [a for a in self._anomalies if a['timestamp'] >= cutoff]
+                    self._anomalies = [
+                        a for a in self._anomalies if a["timestamp"] >= cutoff
+                    ]
 
                 return anomaly
 
             return None
 
-        def get_recent_anomalies(self, time_window: timedelta = timedelta(hours=1)) -> List[Dict[str, Any]]:
+        def get_recent_anomalies(
+            self, time_window: timedelta = timedelta(hours=1)
+        ) -> List[Dict[str, Any]]:
             """Get recent anomalies"""
             cutoff_time = datetime.now(timezone.utc) - time_window
 
             with self._lock:
-                return [a for a in self._anomalies if a['timestamp'] >= cutoff_time]
+                return [a for a in self._anomalies if a["timestamp"] >= cutoff_time]
 
         def get_anomaly_summary(self) -> Dict[str, Any]:
             """Get anomaly detection summary"""
             recent_anomalies = self.get_recent_anomalies(timedelta(hours=24))
 
             summary = {
-                'total_anomalies_detected': len(recent_anomalies),
-                'anomalies_by_severity': {},
-                'anomalies_by_metric': {},
-                'most_anomalous_metrics': []
+                "total_anomalies_detected": len(recent_anomalies),
+                "anomalies_by_severity": {},
+                "anomalies_by_metric": {},
+                "most_anomalous_metrics": [],
             }
 
             # Group by severity
             severity_counts = {}
             for anomaly in recent_anomalies:
-                severity = anomaly['severity']
+                severity = anomaly["severity"]
                 severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-            summary['anomalies_by_severity'] = severity_counts
+            summary["anomalies_by_severity"] = severity_counts
 
             # Group by metric
             metric_counts = {}
             for anomaly in recent_anomalies:
-                metric = anomaly['metric_name']
+                metric = anomaly["metric_name"]
                 metric_counts[metric] = metric_counts.get(metric, 0) + 1
 
-            summary['anomalies_by_metric'] = metric_counts
+            summary["anomalies_by_metric"] = metric_counts
 
             # Find most anomalous metrics
             if metric_counts:
-                sorted_metrics = sorted(metric_counts.items(), key=lambda x: x[1], reverse=True)
-                summary['most_anomalous_metrics'] = sorted_metrics[:5]
+                sorted_metrics = sorted(
+                    metric_counts.items(), key=lambda x: x[1], reverse=True
+                )
+                summary["most_anomalous_metrics"] = sorted_metrics[:5]
 
             return summary
 
@@ -1338,7 +1468,7 @@ def monitor_performance(
     operation_name: Optional[str] = None,
     include_args: bool = False,
     include_result: bool = False,
-    timeout_threshold: Optional[float] = None
+    timeout_threshold: Optional[float] = None,
 ):
     """Decorator for monitoring function performance"""
 
@@ -1363,24 +1493,25 @@ def monitor_performance(
                     memory_used = tracemalloc.get_traced_memory()[0] - start_memory
 
                 # Record performance metric
-                if hasattr(func, '_performance_tracker'):
+                if hasattr(func, "_performance_tracker"):
                     tracker = func._performance_tracker
-                    tracker.add_metric(PerformanceMetric(
-                        name=f"function.{name}.duration_ms",
-                        value=duration_ms,
-                        metric_type=MetricType.HISTOGRAM,
-                        timestamp=datetime.now(timezone.utc),
-                        labels={
-                            "function": name,
-                            "success": "true"
-                        },
-                        metadata={
-                            "args_count": len(args) if include_args else None,
-                            "kwargs_count": len(kwargs) if include_args else None,
-                            "memory_used_bytes": memory_used if memory_used > 0 else None,
-                            "has_result": include_result and result is not None
-                        }
-                    ))
+                    tracker.add_metric(
+                        PerformanceMetric(
+                            name=f"function.{name}.duration_ms",
+                            value=duration_ms,
+                            metric_type=MetricType.HISTOGRAM,
+                            timestamp=datetime.now(timezone.utc),
+                            labels={"function": name, "success": "true"},
+                            metadata={
+                                "args_count": len(args) if include_args else None,
+                                "kwargs_count": len(kwargs) if include_args else None,
+                                "memory_used_bytes": (
+                                    memory_used if memory_used > 0 else None
+                                ),
+                                "has_result": include_result and result is not None,
+                            },
+                        )
+                    )
 
                 # Check timeout threshold
                 if timeout_threshold and duration_ms > timeout_threshold:
@@ -1388,14 +1519,14 @@ def monitor_performance(
                         "Function execution exceeded timeout threshold",
                         function=name,
                         duration_ms=duration_ms,
-                        threshold_ms=timeout_threshold
+                        threshold_ms=timeout_threshold,
                     )
 
                 logger.debug(
                     "Function performance recorded",
                     function=name,
                     duration_ms=duration_ms,
-                    memory_used_bytes=memory_used
+                    memory_used_bytes=memory_used,
                 )
 
                 return result
@@ -1404,28 +1535,28 @@ def monitor_performance(
                 duration_ms = (time.time() - start_time) * 1000
 
                 # Record error metric
-                if hasattr(func, '_performance_tracker'):
+                if hasattr(func, "_performance_tracker"):
                     tracker = func._performance_tracker
-                    tracker.add_metric(PerformanceMetric(
-                        name=f"function.{name}.duration_ms",
-                        value=duration_ms,
-                        metric_type=MetricType.HISTOGRAM,
-                        timestamp=datetime.now(timezone.utc),
-                        labels={
-                            "function": name,
-                            "success": "false",
-                            "error_type": type(e).__name__
-                        },
-                        metadata={
-                            "error_message": str(e)[:200]
-                        }
-                    ))
+                    tracker.add_metric(
+                        PerformanceMetric(
+                            name=f"function.{name}.duration_ms",
+                            value=duration_ms,
+                            metric_type=MetricType.HISTOGRAM,
+                            timestamp=datetime.now(timezone.utc),
+                            labels={
+                                "function": name,
+                                "success": "false",
+                                "error_type": type(e).__name__,
+                            },
+                            metadata={"error_message": str(e)[:200]},
+                        )
+                    )
 
                 logger.error(
                     "Function execution failed",
                     function=name,
                     duration_ms=duration_ms,
-                    error=str(e)
+                    error=str(e),
                 )
 
                 raise
@@ -1450,24 +1581,25 @@ def monitor_performance(
                     memory_used = tracemalloc.get_traced_memory()[0] - start_memory
 
                 # Record performance metric
-                if hasattr(func, '_performance_tracker'):
+                if hasattr(func, "_performance_tracker"):
                     tracker = func._performance_tracker
-                    tracker.add_metric(PerformanceMetric(
-                        name=f"function.{name}.duration_ms",
-                        value=duration_ms,
-                        metric_type=MetricType.HISTOGRAM,
-                        timestamp=datetime.now(timezone.utc),
-                        labels={
-                            "function": name,
-                            "success": "true"
-                        },
-                        metadata={
-                            "args_count": len(args) if include_args else None,
-                            "kwargs_count": len(kwargs) if include_args else None,
-                            "memory_used_bytes": memory_used if memory_used > 0 else None,
-                            "has_result": include_result and result is not None
-                        }
-                    ))
+                    tracker.add_metric(
+                        PerformanceMetric(
+                            name=f"function.{name}.duration_ms",
+                            value=duration_ms,
+                            metric_type=MetricType.HISTOGRAM,
+                            timestamp=datetime.now(timezone.utc),
+                            labels={"function": name, "success": "true"},
+                            metadata={
+                                "args_count": len(args) if include_args else None,
+                                "kwargs_count": len(kwargs) if include_args else None,
+                                "memory_used_bytes": (
+                                    memory_used if memory_used > 0 else None
+                                ),
+                                "has_result": include_result and result is not None,
+                            },
+                        )
+                    )
 
                 # Check timeout threshold
                 if timeout_threshold and duration_ms > timeout_threshold:
@@ -1475,14 +1607,14 @@ def monitor_performance(
                         "Async function execution exceeded timeout threshold",
                         function=name,
                         duration_ms=duration_ms,
-                        threshold_ms=timeout_threshold
+                        threshold_ms=timeout_threshold,
                     )
 
                 logger.debug(
                     "Async function performance recorded",
                     function=name,
                     duration_ms=duration_ms,
-                    memory_used_bytes=memory_used
+                    memory_used_bytes=memory_used,
                 )
 
                 return result
@@ -1491,28 +1623,28 @@ def monitor_performance(
                 duration_ms = (time.time() - start_time) * 1000
 
                 # Record error metric
-                if hasattr(func, '_performance_tracker'):
+                if hasattr(func, "_performance_tracker"):
                     tracker = func._performance_tracker
-                    tracker.add_metric(PerformanceMetric(
-                        name=f"function.{name}.duration_ms",
-                        value=duration_ms,
-                        metric_type=MetricType.HISTOGRAM,
-                        timestamp=datetime.now(timezone.utc),
-                        labels={
-                            "function": name,
-                            "success": "false",
-                            "error_type": type(e).__name__
-                        },
-                        metadata={
-                            "error_message": str(e)[:200]
-                        }
-                    ))
+                    tracker.add_metric(
+                        PerformanceMetric(
+                            name=f"function.{name}.duration_ms",
+                            value=duration_ms,
+                            metric_type=MetricType.HISTOGRAM,
+                            timestamp=datetime.now(timezone.utc),
+                            labels={
+                                "function": name,
+                                "success": "false",
+                                "error_type": type(e).__name__,
+                            },
+                            metadata={"error_message": str(e)[:200]},
+                        )
+                    )
 
                 logger.error(
                     "Async function execution failed",
                     function=name,
                     duration_ms=duration_ms,
-                    error=str(e)
+                    error=str(e),
                 )
 
                 raise
@@ -1530,7 +1662,7 @@ def monitor_performance(
 def performance_context(
     tracker: PerformanceTracker,
     operation_name: str,
-    labels: Optional[Dict[str, str]] = None
+    labels: Optional[Dict[str, str]] = None,
 ):
     """Context manager for performance monitoring"""
     start_time = time.time()
@@ -1548,33 +1680,37 @@ def performance_context(
         if tracemalloc.is_tracing():
             memory_used = tracemalloc.get_traced_memory()[0] - start_memory
 
-        tracker.add_metric(PerformanceMetric(
-            name=f"operation.{operation_name}.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=datetime.now(timezone.utc),
-            labels=labels or {},
-            metadata={
-                "success": True,
-                "memory_used_bytes": memory_used if memory_used > 0 else None
-            }
-        ))
+        tracker.add_metric(
+            PerformanceMetric(
+                name=f"operation.{operation_name}.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=datetime.now(timezone.utc),
+                labels=labels or {},
+                metadata={
+                    "success": True,
+                    "memory_used_bytes": memory_used if memory_used > 0 else None,
+                },
+            )
+        )
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
 
-        tracker.add_metric(PerformanceMetric(
-            name=f"operation.{operation_name}.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=datetime.now(timezone.utc),
-            labels=labels or {},
-            metadata={
-                "success": False,
-                "error_type": type(e).__name__,
-                "error_message": str(e)[:200]
-            }
-        ))
+        tracker.add_metric(
+            PerformanceMetric(
+                name=f"operation.{operation_name}.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=datetime.now(timezone.utc),
+                labels=labels or {},
+                metadata={
+                    "success": False,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)[:200],
+                },
+            )
+        )
 
         raise
 
@@ -1583,7 +1719,7 @@ def performance_context(
 async def async_performance_context(
     tracker: PerformanceTracker,
     operation_name: str,
-    labels: Optional[Dict[str, str]] = None
+    labels: Optional[Dict[str, str]] = None,
 ):
     """Async context manager for performance monitoring"""
     start_time = time.time()
@@ -1601,39 +1737,42 @@ async def async_performance_context(
         if tracemalloc.is_tracing():
             memory_used = tracemalloc.get_traced_memory()[0] - start_memory
 
-        tracker.add_metric(PerformanceMetric(
-            name=f"operation.{operation_name}.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=datetime.now(timezone.utc),
-            labels=labels or {},
-            metadata={
-                "success": True,
-                "memory_used_bytes": memory_used if memory_used > 0 else None
-            }
-        ))
+        tracker.add_metric(
+            PerformanceMetric(
+                name=f"operation.{operation_name}.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=datetime.now(timezone.utc),
+                labels=labels or {},
+                metadata={
+                    "success": True,
+                    "memory_used_bytes": memory_used if memory_used > 0 else None,
+                },
+            )
+        )
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
 
-        tracker.add_metric(PerformanceMetric(
-            name=f"operation.{operation_name}.duration_ms",
-            value=duration_ms,
-            metric_type=MetricType.HISTOGRAM,
-            timestamp=datetime.now(timezone.utc),
-            labels=labels or {},
-            metadata={
-                "success": False,
-                "error_type": type(e).__name__,
-                "error_message": str(e)[:200]
-            }
-        ))
+        tracker.add_metric(
+            PerformanceMetric(
+                name=f"operation.{operation_name}.duration_ms",
+                value=duration_ms,
+                metric_type=MetricType.HISTOGRAM,
+                timestamp=datetime.now(timezone.utc),
+                labels=labels or {},
+                metadata={
+                    "success": False,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)[:200],
+                },
+            )
+        )
 
         raise
 
 
 class PerformanceManager:
-
     def __init__(self, tracker: PerformanceTracker):
         self.tracker = tracker
         self._prediction_models: Dict[str, Any] = {}
@@ -1648,6 +1787,7 @@ class PerformanceManager:
             from sklearn.linear_model import LinearRegression
             from sklearn.preprocessing import StandardScaler
             import pandas as pd
+
             self._ml_available = True
             self.np = np
             self.LinearRegression = LinearRegression
@@ -1659,31 +1799,36 @@ class PerformanceManager:
     def enable_predictive_analytics(self):
         """Enable predictive analytics if ML libraries are available"""
         if not self._ml_available:
-            logger.warning("Cannot enable predictive analytics - ML libraries not installed")
+            logger.warning(
+                "Cannot enable predictive analytics - ML libraries not installed"
+            )
             return False
 
         logger.info("Predictive analytics enabled")
         return True
 
-    def record_metric_for_prediction(self, metric_name: str, value: float, timestamp: datetime):
+    def record_metric_for_prediction(
+        self, metric_name: str, value: float, timestamp: datetime
+    ):
         """Record metric data for predictive modeling"""
         if not self._ml_available:
             return
 
         with self._lock:
-            self._training_data[metric_name].append({
-                'timestamp': timestamp,
-                'value': value,
-                'hour': timestamp.hour,
-                'day_of_week': timestamp.weekday(),
-                'month': timestamp.month
-            })
+            self._training_data[metric_name].append(
+                {
+                    "timestamp": timestamp,
+                    "value": value,
+                    "hour": timestamp.hour,
+                    "day_of_week": timestamp.weekday(),
+                    "month": timestamp.month,
+                }
+            )
 
             # Keep only recent data (last 30 days)
             cutoff = datetime.now(timezone.utc) - timedelta(days=30)
             self._training_data[metric_name] = [
-                d for d in self._training_data[metric_name]
-                if d['timestamp'] >= cutoff
+                d for d in self._training_data[metric_name] if d["timestamp"] >= cutoff
             ]
 
     def train_prediction_model(self, metric_name: str) -> bool:
@@ -1698,7 +1843,7 @@ class PerformanceManager:
 
             # Prepare training data
             df = self.pd.DataFrame(data)
-            df['timestamp_unix'] = df['timestamp'].astype(self.np.int64) // 10**9
+            df["timestamp_unix"] = df["timestamp"].astype(self.np.int64) // 10**9
 
             # Features: hour, day_of_week, recent trend
             X = []
@@ -1706,13 +1851,15 @@ class PerformanceManager:
 
             for i in range(6, len(df)):  # Start from index 6 to have enough history
                 features = [
-                    df.iloc[i]['hour'],
-                    df.iloc[i]['day_of_week'],
-                    df.iloc[i - 1]['value'],  # Previous value
-                    df.iloc[i - 6]['value'] if i >= 6 else df.iloc[i - 1]['value'],  # 6 hours ago
+                    df.iloc[i]["hour"],
+                    df.iloc[i]["day_of_week"],
+                    df.iloc[i - 1]["value"],  # Previous value
+                    (
+                        df.iloc[i - 6]["value"] if i >= 6 else df.iloc[i - 1]["value"]
+                    ),  # 6 hours ago
                 ]
                 X.append(features)
-                y.append(df.iloc[i]['value'])
+                y.append(df.iloc[i]["value"])
 
             if len(X) < 10:
                 return False
@@ -1730,35 +1877,45 @@ class PerformanceManager:
 
             with self._lock:
                 self._prediction_models[metric_name] = {
-                    'model': model,
-                    'scaler': scaler,
-                    'last_trained': datetime.now(timezone.utc),
-                    'accuracy_score': model.score(X_scaled, y)
+                    "model": model,
+                    "scaler": scaler,
+                    "last_trained": datetime.now(timezone.utc),
+                    "accuracy_score": model.score(X_scaled, y),
                 }
 
-            logger.info("Prediction model trained",
-                       metric=metric_name,
-                       data_points=len(X),
-                       accuracy=model.score(X_scaled, y))
+            logger.info(
+                "Prediction model trained",
+                metric=metric_name,
+                data_points=len(X),
+                accuracy=model.score(X_scaled, y),
+            )
 
             return True
 
         except Exception as e:
-            logger.error("Failed to train prediction model", metric=metric_name, error=str(e))
+            logger.error(
+                "Failed to train prediction model", metric=metric_name, error=str(e)
+            )
             return False
 
-    def predict_metric(self, metric_name: str, hours_ahead: int = 1) -> Optional[Dict[str, Any]]:
+    def predict_metric(
+        self, metric_name: str, hours_ahead: int = 1
+    ) -> Optional[Dict[str, Any]]:
         """Predict future metric values"""
         if not self._ml_available or metric_name not in self._prediction_models:
             return None
 
         try:
             model_data = self._prediction_models[metric_name]
-            model = model_data['model']
-            scaler = model_data['scaler']
+            model = model_data["model"]
+            scaler = model_data["scaler"]
 
             # Get recent data for prediction
-            recent_data = self._training_data[metric_name][-6:] if len(self._training_data[metric_name]) >= 6 else self._training_data[metric_name]
+            recent_data = (
+                self._training_data[metric_name][-6:]
+                if len(self._training_data[metric_name]) >= 6
+                else self._training_data[metric_name]
+            )
 
             if len(recent_data) < 2:
                 return None
@@ -1768,8 +1925,12 @@ class PerformanceManager:
             features = [
                 now.hour,
                 now.weekday(),
-                recent_data[-1]['value'],  # Most recent value
-                recent_data[-6]['value'] if len(recent_data) >= 6 else recent_data[0]['value']
+                recent_data[-1]["value"],  # Most recent value
+                (
+                    recent_data[-6]["value"]
+                    if len(recent_data) >= 6
+                    else recent_data[0]["value"]
+                ),
             ]
 
             X_pred = self.np.array([features])
@@ -1781,27 +1942,30 @@ class PerformanceManager:
             confidence_interval = prediction * 0.15  # 15% confidence interval
 
             result = {
-                'metric_name': metric_name,
-                'predicted_value': max(0, prediction),  # Ensure non-negative
-                'confidence_interval': confidence_interval,
-                'prediction_time': now + timedelta(hours=hours_ahead),
-                'model_accuracy': model_data['accuracy_score'],
-                'hours_ahead': hours_ahead
+                "metric_name": metric_name,
+                "predicted_value": max(0, prediction),  # Ensure non-negative
+                "confidence_interval": confidence_interval,
+                "prediction_time": now + timedelta(hours=hours_ahead),
+                "model_accuracy": model_data["accuracy_score"],
+                "hours_ahead": hours_ahead,
             }
 
             # Store prediction for analysis
             with self._lock:
-                self._predictions[metric_name].append({
-                    'timestamp': now,
-                    'prediction': result,
-                    'actual_value': None  # Will be filled when actual value is available
-                })
+                self._predictions[metric_name].append(
+                    {
+                        "timestamp": now,
+                        "prediction": result,
+                        "actual_value": None,  # Will be filled when actual value is available
+                    }
+                )
 
                 # Keep only recent predictions
                 cutoff = now - timedelta(days=7)
                 self._predictions[metric_name] = [
-                    p for p in self._predictions[metric_name]
-                    if p['timestamp'] >= cutoff
+                    p
+                    for p in self._predictions[metric_name]
+                    if p["timestamp"] >= cutoff
                 ]
 
             return result
@@ -1823,48 +1987,54 @@ class PerformanceManager:
         validated_predictions = []
 
         for pred_data in predictions:
-            if pred_data['actual_value'] is not None:
+            if pred_data["actual_value"] is not None:
                 validated_predictions.append(pred_data)
 
         if not validated_predictions:
-            return {'status': 'no_validated_predictions'}
+            return {"status": "no_validated_predictions"}
 
         # Calculate accuracy metrics
         errors = []
         for pred in validated_predictions:
-            predicted = pred['prediction']['predicted_value']
-            actual = pred['actual_value']
+            predicted = pred["prediction"]["predicted_value"]
+            actual = pred["actual_value"]
             error = abs(predicted - actual)
             errors.append(error)
 
         avg_error = self.np.mean(errors)
         max_error = self.np.max(errors)
-        accuracy = 1 - (avg_error / self.np.mean([p['actual_value'] for p in validated_predictions]))
+        accuracy = 1 - (
+            avg_error / self.np.mean([p["actual_value"] for p in validated_predictions])
+        )
 
         return {
-            'metric_name': metric_name,
-            'predictions_validated': len(validated_predictions),
-            'average_error': avg_error,
-            'max_error': max_error,
-            'accuracy_score': max(0, accuracy),  # Ensure non-negative
-            'last_validated': validated_predictions[-1]['timestamp'] if validated_predictions else None
+            "metric_name": metric_name,
+            "predictions_validated": len(validated_predictions),
+            "average_error": avg_error,
+            "max_error": max_error,
+            "accuracy_score": max(0, accuracy),  # Ensure non-negative
+            "last_validated": (
+                validated_predictions[-1]["timestamp"]
+                if validated_predictions
+                else None
+            ),
         }
 
     def get_prediction_insights(self) -> Dict[str, Any]:
         """Get insights from predictive analytics"""
         insights = {
-            'models_trained': len(self._prediction_models),
-            'metrics_with_predictions': list(self._prediction_models.keys()),
-            'prediction_accuracy': {},
-            'anomaly_predictions': [],
-            'trend_predictions': []
+            "models_trained": len(self._prediction_models),
+            "metrics_with_predictions": list(self._prediction_models.keys()),
+            "prediction_accuracy": {},
+            "anomaly_predictions": [],
+            "trend_predictions": [],
         }
 
         # Get accuracy for each metric
         for metric_name in self._prediction_models.keys():
             accuracy = self.validate_predictions(metric_name)
             if accuracy:
-                insights['prediction_accuracy'][metric_name] = accuracy
+                insights["prediction_accuracy"][metric_name] = accuracy
 
         # Generate insights based on predictions
         for metric_name, predictions in self._predictions.items():
@@ -1875,27 +2045,33 @@ class PerformanceManager:
 
             # Check for anomaly predictions
             for pred_data in recent_predictions:
-                pred = pred_data['prediction']
-                if pred['predicted_value'] > pred['confidence_interval'] * 3:  # 3 sigma
-                    insights['anomaly_predictions'].append({
-                        'metric': metric_name,
-                        'predicted_value': pred['predicted_value'],
-                        'timestamp': pred['prediction_time'],
-                        'severity': 'high'
-                    })
+                pred = pred_data["prediction"]
+                if pred["predicted_value"] > pred["confidence_interval"] * 3:  # 3 sigma
+                    insights["anomaly_predictions"].append(
+                        {
+                            "metric": metric_name,
+                            "predicted_value": pred["predicted_value"],
+                            "timestamp": pred["prediction_time"],
+                            "severity": "high",
+                        }
+                    )
 
             # Check for trend predictions
             if len(recent_predictions) >= 5:
-                values = [p['prediction']['predicted_value'] for p in recent_predictions]
+                values = [
+                    p["prediction"]["predicted_value"] for p in recent_predictions
+                ]
                 trend = self._calculate_trend(values)
 
                 if abs(trend) > 0.1:  # Significant trend
-                    insights['trend_predictions'].append({
-                        'metric': metric_name,
-                        'trend': 'increasing' if trend > 0 else 'decreasing',
-                        'magnitude': abs(trend),
-                        'period': 'recent_predictions'
-                    })
+                    insights["trend_predictions"].append(
+                        {
+                            "metric": metric_name,
+                            "trend": "increasing" if trend > 0 else "decreasing",
+                            "magnitude": abs(trend),
+                            "period": "recent_predictions",
+                        }
+                    )
 
         return insights
 
@@ -1911,30 +2087,42 @@ class PerformanceManager:
         slope = self.np.polyfit(x, y, 1)[0]
         return slope
 
-    def get_anomaly_predictions(self, time_window: timedelta = timedelta(hours=24)) -> List[Dict[str, Any]]:
+    def get_anomaly_predictions(
+        self, time_window: timedelta = timedelta(hours=24)
+    ) -> List[Dict[str, Any]]:
         """Get predictions that indicate potential anomalies"""
         anomalies = []
         cutoff_time = datetime.now(timezone.utc) - time_window
 
         for metric_name, predictions in self._predictions.items():
             for pred_data in predictions:
-                if pred_data['timestamp'] < cutoff_time:
+                if pred_data["timestamp"] < cutoff_time:
                     continue
 
-                pred = pred_data['prediction']
+                pred = pred_data["prediction"]
 
                 # Check if prediction exceeds normal bounds
-                if pred['predicted_value'] > (pred.get('baseline', 0) + pred['confidence_interval'] * 2):
-                    anomalies.append({
-                        'metric_name': metric_name,
-                        'predicted_value': pred['predicted_value'],
-                        'baseline': pred.get('baseline', 0),
-                        'confidence_interval': pred['confidence_interval'],
-                        'timestamp': pred['prediction_time'],
-                        'severity': 'high' if pred['predicted_value'] > pred.get('baseline', 0) + pred['confidence_interval'] * 3 else 'medium'
-                    })
+                if pred["predicted_value"] > (
+                    pred.get("baseline", 0) + pred["confidence_interval"] * 2
+                ):
+                    anomalies.append(
+                        {
+                            "metric_name": metric_name,
+                            "predicted_value": pred["predicted_value"],
+                            "baseline": pred.get("baseline", 0),
+                            "confidence_interval": pred["confidence_interval"],
+                            "timestamp": pred["prediction_time"],
+                            "severity": (
+                                "high"
+                                if pred["predicted_value"]
+                                > pred.get("baseline", 0)
+                                + pred["confidence_interval"] * 3
+                                else "medium"
+                            ),
+                        }
+                    )
 
-        return sorted(anomalies, key=lambda x: x['predicted_value'], reverse=True)
+        return sorted(anomalies, key=lambda x: x["predicted_value"], reverse=True)
 
 
 class PerformancePredictor:
@@ -1954,6 +2142,7 @@ class PerformancePredictor:
             from sklearn.linear_model import LinearRegression
             from sklearn.preprocessing import StandardScaler
             import pandas as pd
+
             self._ml_available = True
             self.np = np
             self.LinearRegression = LinearRegression
@@ -1965,31 +2154,36 @@ class PerformancePredictor:
     def enable_predictive_analytics(self):
         """Enable predictive analytics if ML libraries are available"""
         if not self._ml_available:
-            logger.warning("Cannot enable predictive analytics - ML libraries not installed")
+            logger.warning(
+                "Cannot enable predictive analytics - ML libraries not installed"
+            )
             return False
 
         logger.info("Predictive analytics enabled")
         return True
 
-    def record_metric_for_prediction(self, metric_name: str, value: float, timestamp: datetime):
+    def record_metric_for_prediction(
+        self, metric_name: str, value: float, timestamp: datetime
+    ):
         """Record metric data for predictive modeling"""
         if not self._ml_available:
             return
 
         with self._lock:
-            self._training_data[metric_name].append({
-                'timestamp': timestamp,
-                'value': value,
-                'hour': timestamp.hour,
-                'day_of_week': timestamp.weekday(),
-                'month': timestamp.month
-            })
+            self._training_data[metric_name].append(
+                {
+                    "timestamp": timestamp,
+                    "value": value,
+                    "hour": timestamp.hour,
+                    "day_of_week": timestamp.weekday(),
+                    "month": timestamp.month,
+                }
+            )
 
             # Keep only recent data (last 30 days)
             cutoff = datetime.now(timezone.utc) - timedelta(days=30)
             self._training_data[metric_name] = [
-                d for d in self._training_data[metric_name]
-                if d['timestamp'] >= cutoff
+                d for d in self._training_data[metric_name] if d["timestamp"] >= cutoff
             ]
 
     def train_prediction_model(self, metric_name: str) -> bool:
@@ -2004,7 +2198,7 @@ class PerformancePredictor:
 
             # Prepare training data
             df = self.pd.DataFrame(data)
-            df['timestamp_unix'] = df['timestamp'].astype(self.np.int64) // 10**9
+            df["timestamp_unix"] = df["timestamp"].astype(self.np.int64) // 10**9
 
             # Features: hour, day_of_week, recent trend
             X = []
@@ -2012,13 +2206,15 @@ class PerformancePredictor:
 
             for i in range(6, len(df)):  # Start from index 6 to have enough history
                 features = [
-                    df.iloc[i]['hour'],
-                    df.iloc[i]['day_of_week'],
-                    df.iloc[i - 1]['value'],  # Previous value
-                    df.iloc[i - 6]['value'] if i >= 6 else df.iloc[i - 1]['value'],  # 6 hours ago
+                    df.iloc[i]["hour"],
+                    df.iloc[i]["day_of_week"],
+                    df.iloc[i - 1]["value"],  # Previous value
+                    (
+                        df.iloc[i - 6]["value"] if i >= 6 else df.iloc[i - 1]["value"]
+                    ),  # 6 hours ago
                 ]
                 X.append(features)
-                y.append(df.iloc[i]['value'])
+                y.append(df.iloc[i]["value"])
 
             if len(X) < 10:
                 return False
@@ -2036,35 +2232,45 @@ class PerformancePredictor:
 
             with self._lock:
                 self._prediction_models[metric_name] = {
-                    'model': model,
-                    'scaler': scaler,
-                    'last_trained': datetime.now(timezone.utc),
-                    'accuracy_score': model.score(X_scaled, y)
+                    "model": model,
+                    "scaler": scaler,
+                    "last_trained": datetime.now(timezone.utc),
+                    "accuracy_score": model.score(X_scaled, y),
                 }
 
-            logger.info("Prediction model trained",
-                       metric=metric_name,
-                       data_points=len(X),
-                       accuracy=model.score(X_scaled, y))
+            logger.info(
+                "Prediction model trained",
+                metric=metric_name,
+                data_points=len(X),
+                accuracy=model.score(X_scaled, y),
+            )
 
             return True
 
         except Exception as e:
-            logger.error("Failed to train prediction model", metric=metric_name, error=str(e))
+            logger.error(
+                "Failed to train prediction model", metric=metric_name, error=str(e)
+            )
             return False
 
-    def predict_metric(self, metric_name: str, hours_ahead: int = 1) -> Optional[Dict[str, Any]]:
+    def predict_metric(
+        self, metric_name: str, hours_ahead: int = 1
+    ) -> Optional[Dict[str, Any]]:
         """Predict future metric values"""
         if not self._ml_available or metric_name not in self._prediction_models:
             return None
 
         try:
             model_data = self._prediction_models[metric_name]
-            model = model_data['model']
-            scaler = model_data['scaler']
+            model = model_data["model"]
+            scaler = model_data["scaler"]
 
             # Get recent data for prediction
-            recent_data = self._training_data[metric_name][-6:] if len(self._training_data[metric_name]) >= 6 else self._training_data[metric_name]
+            recent_data = (
+                self._training_data[metric_name][-6:]
+                if len(self._training_data[metric_name]) >= 6
+                else self._training_data[metric_name]
+            )
 
             if len(recent_data) < 2:
                 return None
@@ -2074,8 +2280,12 @@ class PerformancePredictor:
             features = [
                 now.hour,
                 now.weekday(),
-                recent_data[-1]['value'],  # Most recent value
-                recent_data[-6]['value'] if len(recent_data) >= 6 else recent_data[0]['value']
+                recent_data[-1]["value"],  # Most recent value
+                (
+                    recent_data[-6]["value"]
+                    if len(recent_data) >= 6
+                    else recent_data[0]["value"]
+                ),
             ]
 
             X_pred = self.np.array([features])
@@ -2087,27 +2297,30 @@ class PerformancePredictor:
             confidence_interval = prediction * 0.15  # 15% confidence interval
 
             result = {
-                'metric_name': metric_name,
-                'predicted_value': max(0, prediction),  # Ensure non-negative
-                'confidence_interval': confidence_interval,
-                'prediction_time': now + timedelta(hours=hours_ahead),
-                'model_accuracy': model_data['accuracy_score'],
-                'hours_ahead': hours_ahead
+                "metric_name": metric_name,
+                "predicted_value": max(0, prediction),  # Ensure non-negative
+                "confidence_interval": confidence_interval,
+                "prediction_time": now + timedelta(hours=hours_ahead),
+                "model_accuracy": model_data["accuracy_score"],
+                "hours_ahead": hours_ahead,
             }
 
             # Store prediction for analysis
             with self._lock:
-                self._predictions[metric_name].append({
-                    'timestamp': now,
-                    'prediction': result,
-                    'actual_value': None  # Will be filled when actual value is available
-                })
+                self._predictions[metric_name].append(
+                    {
+                        "timestamp": now,
+                        "prediction": result,
+                        "actual_value": None,  # Will be filled when actual value is available
+                    }
+                )
 
                 # Keep only recent predictions
                 cutoff = now - timedelta(days=7)
                 self._predictions[metric_name] = [
-                    p for p in self._predictions[metric_name]
-                    if p['timestamp'] >= cutoff
+                    p
+                    for p in self._predictions[metric_name]
+                    if p["timestamp"] >= cutoff
                 ]
 
             return result
@@ -2129,48 +2342,54 @@ class PerformancePredictor:
         validated_predictions = []
 
         for pred_data in predictions:
-            if pred_data['actual_value'] is not None:
+            if pred_data["actual_value"] is not None:
                 validated_predictions.append(pred_data)
 
         if not validated_predictions:
-            return {'status': 'no_validated_predictions'}
+            return {"status": "no_validated_predictions"}
 
         # Calculate accuracy metrics
         errors = []
         for pred in validated_predictions:
-            predicted = pred['prediction']['predicted_value']
-            actual = pred['actual_value']
+            predicted = pred["prediction"]["predicted_value"]
+            actual = pred["actual_value"]
             error = abs(predicted - actual)
             errors.append(error)
 
         avg_error = self.np.mean(errors)
         max_error = self.np.max(errors)
-        accuracy = 1 - (avg_error / self.np.mean([p['actual_value'] for p in validated_predictions]))
+        accuracy = 1 - (
+            avg_error / self.np.mean([p["actual_value"] for p in validated_predictions])
+        )
 
         return {
-            'metric_name': metric_name,
-            'predictions_validated': len(validated_predictions),
-            'average_error': avg_error,
-            'max_error': max_error,
-            'accuracy_score': max(0, accuracy),  # Ensure non-negative
-            'last_validated': validated_predictions[-1]['timestamp'] if validated_predictions else None
+            "metric_name": metric_name,
+            "predictions_validated": len(validated_predictions),
+            "average_error": avg_error,
+            "max_error": max_error,
+            "accuracy_score": max(0, accuracy),  # Ensure non-negative
+            "last_validated": (
+                validated_predictions[-1]["timestamp"]
+                if validated_predictions
+                else None
+            ),
         }
 
     def get_prediction_insights(self) -> Dict[str, Any]:
         """Get insights from predictive analytics"""
         insights = {
-            'models_trained': len(self._prediction_models),
-            'metrics_with_predictions': list(self._prediction_models.keys()),
-            'prediction_accuracy': {},
-            'anomaly_predictions': [],
-            'trend_predictions': []
+            "models_trained": len(self._prediction_models),
+            "metrics_with_predictions": list(self._prediction_models.keys()),
+            "prediction_accuracy": {},
+            "anomaly_predictions": [],
+            "trend_predictions": [],
         }
 
         # Get accuracy for each metric
         for metric_name in self._prediction_models.keys():
             accuracy = self.validate_predictions(metric_name)
             if accuracy:
-                insights['prediction_accuracy'][metric_name] = accuracy
+                insights["prediction_accuracy"][metric_name] = accuracy
 
         # Generate insights based on predictions
         for metric_name, predictions in self._predictions.items():
@@ -2181,27 +2400,33 @@ class PerformancePredictor:
 
             # Check for anomaly predictions
             for pred_data in recent_predictions:
-                pred = pred_data['prediction']
-                if pred['predicted_value'] > pred['confidence_interval'] * 3:  # 3 sigma
-                    insights['anomaly_predictions'].append({
-                        'metric': metric_name,
-                        'predicted_value': pred['predicted_value'],
-                        'timestamp': pred['prediction_time'],
-                        'severity': 'high'
-                    })
+                pred = pred_data["prediction"]
+                if pred["predicted_value"] > pred["confidence_interval"] * 3:  # 3 sigma
+                    insights["anomaly_predictions"].append(
+                        {
+                            "metric": metric_name,
+                            "predicted_value": pred["predicted_value"],
+                            "timestamp": pred["prediction_time"],
+                            "severity": "high",
+                        }
+                    )
 
             # Check for trend predictions
             if len(recent_predictions) >= 5:
-                values = [p['prediction']['predicted_value'] for p in recent_predictions]
+                values = [
+                    p["prediction"]["predicted_value"] for p in recent_predictions
+                ]
                 trend = self._calculate_trend(values)
 
                 if abs(trend) > 0.1:  # Significant trend
-                    insights['trend_predictions'].append({
-                        'metric': metric_name,
-                        'trend': 'increasing' if trend > 0 else 'decreasing',
-                        'magnitude': abs(trend),
-                        'period': 'recent_predictions'
-                    })
+                    insights["trend_predictions"].append(
+                        {
+                            "metric": metric_name,
+                            "trend": "increasing" if trend > 0 else "decreasing",
+                            "magnitude": abs(trend),
+                            "period": "recent_predictions",
+                        }
+                    )
 
         return insights
 
@@ -2217,30 +2442,42 @@ class PerformancePredictor:
         slope = self.np.polyfit(x, y, 1)[0]
         return slope
 
-    def get_anomaly_predictions(self, time_window: timedelta = timedelta(hours=24)) -> List[Dict[str, Any]]:
+    def get_anomaly_predictions(
+        self, time_window: timedelta = timedelta(hours=24)
+    ) -> List[Dict[str, Any]]:
         """Get predictions that indicate potential anomalies"""
         anomalies = []
         cutoff_time = datetime.now(timezone.utc) - time_window
 
         for metric_name, predictions in self._predictions.items():
             for pred_data in predictions:
-                if pred_data['timestamp'] < cutoff_time:
+                if pred_data["timestamp"] < cutoff_time:
                     continue
 
-                pred = pred_data['prediction']
+                pred = pred_data["prediction"]
 
                 # Check if prediction exceeds normal bounds
-                if pred['predicted_value'] > (pred.get('baseline', 0) + pred['confidence_interval'] * 2):
-                    anomalies.append({
-                        'metric_name': metric_name,
-                        'predicted_value': pred['predicted_value'],
-                        'baseline': pred.get('baseline', 0),
-                        'confidence_interval': pred['confidence_interval'],
-                        'timestamp': pred['prediction_time'],
-                        'severity': 'high' if pred['predicted_value'] > pred.get('baseline', 0) + pred['confidence_interval'] * 3 else 'medium'
-                    })
+                if pred["predicted_value"] > (
+                    pred.get("baseline", 0) + pred["confidence_interval"] * 2
+                ):
+                    anomalies.append(
+                        {
+                            "metric_name": metric_name,
+                            "predicted_value": pred["predicted_value"],
+                            "baseline": pred.get("baseline", 0),
+                            "confidence_interval": pred["confidence_interval"],
+                            "timestamp": pred["prediction_time"],
+                            "severity": (
+                                "high"
+                                if pred["predicted_value"]
+                                > pred.get("baseline", 0)
+                                + pred["confidence_interval"] * 3
+                                else "medium"
+                            ),
+                        }
+                    )
 
-        return sorted(anomalies, key=lambda x: x['predicted_value'], reverse=True)
+        return sorted(anomalies, key=lambda x: x["predicted_value"], reverse=True)
 
 
 class AnomalyDetector:
@@ -2258,6 +2495,7 @@ class AnomalyDetector:
             from sklearn.ensemble import IsolationForest
             from sklearn.preprocessing import StandardScaler
             import numpy as np
+
             self._ml_available = True
             self.IsolationForest = IsolationForest
             self.StandardScaler = StandardScaler
@@ -2268,7 +2506,9 @@ class AnomalyDetector:
     def enable_anomaly_detection(self):
         """Enable anomaly detection"""
         if not self._ml_available:
-            logger.warning("Cannot enable advanced anomaly detection - ML libraries not installed")
+            logger.warning(
+                "Cannot enable advanced anomaly detection - ML libraries not installed"
+            )
             return False
 
         logger.info("Anomaly detection enabled")
@@ -2290,20 +2530,22 @@ class AnomalyDetector:
 
                 # Calculate statistical baselines
                 baseline = {
-                    'mean': self.np.mean(values),
-                    'std': self.np.std(values),
-                    'min': min(values),
-                    'max': max(values),
-                    'p95': self.np.percentile(values, 95),
-                    'p99': self.np.percentile(values, 99),
-                    'last_updated': datetime.now(timezone.utc)
+                    "mean": self.np.mean(values),
+                    "std": self.np.std(values),
+                    "min": min(values),
+                    "max": max(values),
+                    "p95": self.np.percentile(values, 95),
+                    "p99": self.np.percentile(values, 99),
+                    "last_updated": datetime.now(timezone.utc),
                 }
 
                 self._metric_baselines[metric_name] = baseline
 
         logger.debug("Baselines updated", metrics_count=len(self._metric_baselines))
 
-    def detect_anomalies(self, metric_name: str, current_value: float) -> Optional[Dict[str, Any]]:
+    def detect_anomalies(
+        self, metric_name: str, current_value: float
+    ) -> Optional[Dict[str, Any]]:
         """Detect if current value is anomalous"""
         if metric_name not in self._metric_baselines:
             return None
@@ -2311,8 +2553,8 @@ class AnomalyDetector:
         baseline = self._metric_baselines[metric_name]
 
         # Simple statistical anomaly detection
-        mean = baseline['mean']
-        std = baseline['std']
+        mean = baseline["mean"]
+        std = baseline["std"]
 
         if std == 0:
             # No variation in baseline, check against mean
@@ -2324,18 +2566,20 @@ class AnomalyDetector:
 
         if is_anomaly:
             anomaly = {
-                'metric_name': metric_name,
-                'current_value': current_value,
-                'expected_range': {
-                    'mean': mean,
-                    'std': std,
-                    'min_normal': mean - 2 * std,
-                    'max_normal': mean + 2 * std
+                "metric_name": metric_name,
+                "current_value": current_value,
+                "expected_range": {
+                    "mean": mean,
+                    "std": std,
+                    "min_normal": mean - 2 * std,
+                    "max_normal": mean + 2 * std,
                 },
-                'z_score': z_score,
-                'severity': 'critical' if z_score > 5 else 'high' if z_score > 3 else 'medium',
-                'timestamp': datetime.now(timezone.utc),
-                'description': f"Anomalous value detected for {metric_name}: {current_value} (expected ~{mean:.2f})"
+                "z_score": z_score,
+                "severity": (
+                    "critical" if z_score > 5 else "high" if z_score > 3 else "medium"
+                ),
+                "timestamp": datetime.now(timezone.utc),
+                "description": f"Anomalous value detected for {metric_name}: {current_value} (expected ~{mean:.2f})",
             }
 
             with self._lock:
@@ -2343,50 +2587,56 @@ class AnomalyDetector:
 
                 # Keep only recent anomalies
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-                self._anomalies = [a for a in self._anomalies if a['timestamp'] >= cutoff]
+                self._anomalies = [
+                    a for a in self._anomalies if a["timestamp"] >= cutoff
+                ]
 
             return anomaly
 
         return None
 
-    def get_recent_anomalies(self, time_window: timedelta = timedelta(hours=1)) -> List[Dict[str, Any]]:
+    def get_recent_anomalies(
+        self, time_window: timedelta = timedelta(hours=1)
+    ) -> List[Dict[str, Any]]:
         """Get recent anomalies"""
         cutoff_time = datetime.now(timezone.utc) - time_window
 
         with self._lock:
-            return [a for a in self._anomalies if a['timestamp'] >= cutoff_time]
+            return [a for a in self._anomalies if a["timestamp"] >= cutoff_time]
 
     def get_anomaly_summary(self) -> Dict[str, Any]:
         """Get anomaly detection summary"""
         recent_anomalies = self.get_recent_anomalies(timedelta(hours=24))
 
         summary = {
-            'total_anomalies_detected': len(recent_anomalies),
-            'anomalies_by_severity': {},
-            'anomalies_by_metric': {},
-            'most_anomalous_metrics': []
+            "total_anomalies_detected": len(recent_anomalies),
+            "anomalies_by_severity": {},
+            "anomalies_by_metric": {},
+            "most_anomalous_metrics": [],
         }
 
         # Group by severity
         severity_counts = {}
         for anomaly in recent_anomalies:
-            severity = anomaly['severity']
+            severity = anomaly["severity"]
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-        summary['anomalies_by_severity'] = severity_counts
+        summary["anomalies_by_severity"] = severity_counts
 
         # Group by metric
         metric_counts = {}
         for anomaly in recent_anomalies:
-            metric = anomaly['metric_name']
+            metric = anomaly["metric_name"]
             metric_counts[metric] = metric_counts.get(metric, 0) + 1
 
-        summary['anomalies_by_metric'] = metric_counts
+        summary["anomalies_by_metric"] = metric_counts
 
         # Find most anomalous metrics
         if metric_counts:
-            sorted_metrics = sorted(metric_counts.items(), key=lambda x: x[1], reverse=True)
-            summary['most_anomalous_metrics'] = sorted_metrics[:5]
+            sorted_metrics = sorted(
+                metric_counts.items(), key=lambda x: x[1], reverse=True
+            )
+            summary["most_anomalous_metrics"] = sorted_metrics[:5]
 
         return summary
 
@@ -2419,24 +2669,24 @@ class PerformanceManager:
         config = config or {}
 
         # Start resource monitoring
-        if config.get('enable_resource_monitoring', True):
+        if config.get("enable_resource_monitoring", True):
             await self.resource_monitor.start_monitoring(
-                interval=config.get('resource_monitoring_interval', 30.0)
+                interval=config.get("resource_monitoring_interval", 30.0)
             )
 
         # Start memory profiling
-        if config.get('enable_memory_profiling', True):
+        if config.get("enable_memory_profiling", True):
             self.memory_profiler.start_profiling()
 
         # Start alert monitoring
-        if config.get('enable_alerting', True):
+        if config.get("enable_alerting", True):
             await self.alert_manager.start_monitoring(
-                check_interval=config.get('alert_check_interval', 60.0)
+                check_interval=config.get("alert_check_interval", 60.0)
             )
 
         # Set up cleanup task
         cleanup_task = asyncio.create_task(
-            self._cleanup_loop(config.get('cleanup_interval', 300.0))
+            self._cleanup_loop(config.get("cleanup_interval", 300.0))
         )
         self._background_tasks.append(cleanup_task)
 
@@ -2481,7 +2731,9 @@ class PerformanceManager:
                 # Force garbage collection periodically
                 collected = gc.collect()
                 if collected > 0:
-                    logger.debug("Garbage collection completed", objects_collected=collected)
+                    logger.debug(
+                        "Garbage collection completed", objects_collected=collected
+                    )
 
             except asyncio.CancelledError:
                 break
@@ -2493,69 +2745,73 @@ class PerformanceManager:
         self.db_monitor.setup_sqlalchemy_monitoring(engine)
         logger.info("Database performance monitoring enabled")
 
-    def get_performance_summary(self, time_window: timedelta = timedelta(hours=1)) -> Dict[str, Any]:
+    def get_performance_summary(
+        self, time_window: timedelta = timedelta(hours=1)
+    ) -> Dict[str, Any]:
         """Get comprehensive performance summary"""
         summary = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'time_window_hours': time_window.total_seconds() / 3600,
-            'system_metrics': {},
-            'api_metrics': {},
-            'database_metrics': {},
-            'recent_alerts': [],
-            'performance_analysis': {},
-            'recommendations': []
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "time_window_hours": time_window.total_seconds() / 3600,
+            "system_metrics": {},
+            "api_metrics": {},
+            "database_metrics": {},
+            "recent_alerts": [],
+            "performance_analysis": {},
+            "recommendations": [],
         }
 
         # Get recent metrics
         recent_metrics = self.tracker.get_recent_metrics(time_window)
 
         # System metrics summary
-        for metric_name in ['system.cpu.usage_percent', 'system.memory.usage_percent']:
+        for metric_name in ["system.cpu.usage_percent", "system.memory.usage_percent"]:
             if metric_name in recent_metrics:
                 stats = self.tracker.get_statistics(metric_name)
-                summary['system_metrics'][metric_name] = stats
+                summary["system_metrics"][metric_name] = stats
 
         # API metrics summary
-        summary['api_metrics'] = self.api_monitor.get_endpoint_statistics()
+        summary["api_metrics"] = self.api_monitor.get_endpoint_statistics()
 
         # Database metrics summary
-        summary['database_metrics'] = self.db_monitor.get_query_statistics()
+        summary["database_metrics"] = self.db_monitor.get_query_statistics()
 
         # Recent alerts
-        summary['recent_alerts'] = [
+        summary["recent_alerts"] = [
             {
-                'metric_name': alert.metric_name,
-                'threshold_type': alert.threshold_type,
-                'current_value': alert.current_value,
-                'threshold_value': alert.threshold_value,
-                'timestamp': alert.timestamp.isoformat(),
-                'description': alert.description,
-                'suggested_actions': alert.suggested_actions
+                "metric_name": alert.metric_name,
+                "threshold_type": alert.threshold_type,
+                "current_value": alert.current_value,
+                "threshold_value": alert.threshold_value,
+                "timestamp": alert.timestamp.isoformat(),
+                "description": alert.description,
+                "suggested_actions": alert.suggested_actions,
             }
             for alert in self.alert_manager.get_recent_alerts(time_window)
         ]
 
         # Performance analysis
-        summary['performance_analysis'] = self.optimizer.analyze_performance(time_window)
+        summary["performance_analysis"] = self.optimizer.analyze_performance(
+            time_window
+        )
 
         return summary
 
     def get_health_status(self) -> Dict[str, Any]:
         """Get overall system health status"""
         return {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'performance_monitoring': {
-                'initialized': self._initialized,
-                'resource_monitoring': self.resource_monitor._monitoring,
-                'memory_profiling': self.memory_profiler._profiling,
-                'alert_monitoring': self.alert_manager._monitoring,
-                'background_tasks': len(self._background_tasks)
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "performance_monitoring": {
+                "initialized": self._initialized,
+                "resource_monitoring": self.resource_monitor._monitoring,
+                "memory_profiling": self.memory_profiler._profiling,
+                "alert_monitoring": self.alert_manager._monitoring,
+                "background_tasks": len(self._background_tasks),
             },
-            'metrics_count': sum(
+            "metrics_count": sum(
                 len(metrics) for metrics in self.tracker._metrics.values()
             ),
-            'recent_alerts_count': len(self.alert_manager.get_recent_alerts()),
-            'system_status': 'healthy' if self._initialized else 'not_initialized'
+            "recent_alerts_count": len(self.alert_manager.get_recent_alerts()),
+            "system_status": "healthy" if self._initialized else "not_initialized",
         }
 
 
@@ -2571,7 +2827,9 @@ def get_performance_manager() -> PerformanceManager:
     return _performance_manager
 
 
-def initialize_performance_monitoring(config: Optional[Dict[str, Any]] = None) -> PerformanceManager:
+def initialize_performance_monitoring(
+    config: Optional[Dict[str, Any]] = None,
+) -> PerformanceManager:
     """Initialize global performance monitoring"""
     manager = get_performance_manager()
     asyncio.create_task(manager.initialize(config))
@@ -2589,7 +2847,7 @@ def setup_fastapi_monitoring(app, performance_manager: PerformanceManager):
         # Extract request info
         method = request.method
         url_path = request.url.path
-        user_id = getattr(request.state, 'user_id', None)
+        user_id = getattr(request.state, "user_id", None)
 
         try:
             response = await call_next(request)
@@ -2601,7 +2859,7 @@ def setup_fastapi_monitoring(app, performance_manager: PerformanceManager):
                 method=method,
                 duration_ms=duration_ms,
                 status_code=response.status_code,
-                user_id=user_id
+                user_id=user_id,
             )
 
             return response
@@ -2615,7 +2873,7 @@ def setup_fastapi_monitoring(app, performance_manager: PerformanceManager):
                 method=method,
                 duration_ms=duration_ms,
                 status_code=500,
-                user_id=user_id
+                user_id=user_id,
             )
 
             raise
@@ -2625,24 +2883,24 @@ def setup_fastapi_monitoring(app, performance_manager: PerformanceManager):
 
 # Export all public classes and functions
 __all__ = [
-    'PerformanceManager',
-    'PerformanceTracker',
-    'ResourceMonitor',
-    'DatabasePerformanceMonitor',
-    'APIPerformanceMonitor',
-    'MemoryProfiler',
-    'AlertManager',
-    'PerformanceOptimizer',
-    'PerformancePredictor',
-    'AnomalyDetector',
-    'PerformanceMetric',
-    'PerformanceAlert',
-    'MetricType',
-    'monitor_performance',
-    'performance_context',
-    'async_performance_context',
-    'get_performance_manager',
-    'initialize_performance_monitoring',
-    'setup_fastapi_monitoring',
-    'PERFORMANCE_THRESHOLDS'
+    "PerformanceManager",
+    "PerformanceTracker",
+    "ResourceMonitor",
+    "DatabasePerformanceMonitor",
+    "APIPerformanceMonitor",
+    "MemoryProfiler",
+    "AlertManager",
+    "PerformanceOptimizer",
+    "PerformancePredictor",
+    "AnomalyDetector",
+    "PerformanceMetric",
+    "PerformanceAlert",
+    "MetricType",
+    "monitor_performance",
+    "performance_context",
+    "async_performance_context",
+    "get_performance_manager",
+    "initialize_performance_monitoring",
+    "setup_fastapi_monitoring",
+    "PERFORMANCE_THRESHOLDS",
 ]

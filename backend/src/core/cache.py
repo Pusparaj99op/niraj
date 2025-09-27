@@ -2,17 +2,15 @@
 NIRAJ Redis Cache Configuration
 Redis setup for caching and real-time data storage
 """
+
 import json
 import pickle
-from typing import Any, Optional, Dict, List, Union
-from datetime import datetime, timedelta
+from typing import Any, Optional, Dict, List
 import os
-import asyncio
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
 import structlog
-from pydantic import BaseModel
 
 logger = structlog.get_logger()
 
@@ -33,20 +31,20 @@ CACHE_PREFIXES = {
     "ai_predictions": "ai:",
     "system_status": "status:",
     "websocket": "ws:",
-    "temp_data": "temp:"
+    "temp_data": "temp:",
 }
 
 # Default TTL values (in seconds)
 DEFAULT_TTL = {
-    "market_data": 300,      # 5 minutes
-    "user_session": 86400,   # 24 hours
+    "market_data": 300,  # 5 minutes
+    "user_session": 86400,  # 24 hours
     "api_rate_limit": 3600,  # 1 hour
-    "strategy_signals": 1800, # 30 minutes
-    "portfolio": 600,        # 10 minutes
-    "ai_predictions": 900,   # 15 minutes
-    "system_status": 60,     # 1 minute
-    "websocket": 300,        # 5 minutes
-    "temp_data": 300         # 5 minutes
+    "strategy_signals": 1800,  # 30 minutes
+    "portfolio": 600,  # 10 minutes
+    "ai_predictions": 900,  # 15 minutes
+    "system_status": 60,  # 1 minute
+    "websocket": 300,  # 5 minutes
+    "temp_data": 300,  # 5 minutes
 }
 
 
@@ -67,12 +65,11 @@ class RedisCache:
                 max_connections=REDIS_MAX_CONNECTIONS,
                 retry_on_timeout=REDIS_RETRY_ON_TIMEOUT,
                 socket_keepalive=REDIS_SOCKET_KEEPALIVE,
-                socket_keepalive_options=REDIS_SOCKET_KEEPALIVE_OPTIONS
+                socket_keepalive_options=REDIS_SOCKET_KEEPALIVE_OPTIONS,
             )
 
             self.redis_client = redis.Redis(
-                connection_pool=self.redis_pool,
-                decode_responses=True
+                connection_pool=self.redis_pool, decode_responses=True
             )
 
             # Test connection
@@ -118,7 +115,7 @@ class RedisCache:
         value: Any,
         prefix: str = "temp_data",
         ttl: Optional[int] = None,
-        serialize: str = "json"
+        serialize: str = "json",
     ) -> bool:
         """Set cache value"""
         try:
@@ -151,7 +148,7 @@ class RedisCache:
         key: str,
         prefix: str = "temp_data",
         deserialize: str = "json",
-        default: Any = None
+        default: Any = None,
     ) -> Any:
         """Get cache value"""
         try:
@@ -204,7 +201,9 @@ class RedisCache:
             logger.error("Cache exists check failed", key=key, error=str(e))
             return False
 
-    async def increment(self, key: str, prefix: str = "temp_data", amount: int = 1) -> int:
+    async def increment(
+        self, key: str, prefix: str = "temp_data", amount: int = 1
+    ) -> int:
         """Increment cache value"""
         try:
             full_key = self._make_key(prefix, key)
@@ -218,7 +217,13 @@ class RedisCache:
             logger.error("Cache increment failed", key=key, error=str(e))
             return 0
 
-    async def set_hash(self, key: str, mapping: Dict[str, Any], prefix: str = "temp_data", ttl: Optional[int] = None) -> bool:
+    async def set_hash(
+        self,
+        key: str,
+        mapping: Dict[str, Any],
+        prefix: str = "temp_data",
+        ttl: Optional[int] = None,
+    ) -> bool:
         """Set hash cache value"""
         try:
             full_key = self._make_key(prefix, key)
@@ -312,7 +317,7 @@ class RedisCache:
                     "total_commands_processed": info.get("total_commands_processed", 0),
                     "keyspace_hits": info.get("keyspace_hits", 0),
                     "keyspace_misses": info.get("keyspace_misses", 0),
-                    "uptime_in_seconds": info.get("uptime_in_seconds", 0)
+                    "uptime_in_seconds": info.get("uptime_in_seconds", 0),
                 }
         except Exception as e:
             logger.error("Failed to get Redis stats", error=str(e))
@@ -327,7 +332,9 @@ class RedisCache:
                 keys = await redis_client.keys(pattern)
                 if keys:
                     result = await redis_client.delete(*keys)
-                    logger.info("Cache prefix cleared", prefix=prefix, keys_deleted=result)
+                    logger.info(
+                        "Cache prefix cleared", prefix=prefix, keys_deleted=result
+                    )
                     return result
                 return 0
 
@@ -343,7 +350,9 @@ class MarketDataCache:
     def __init__(self, cache: RedisCache):
         self.cache = cache
 
-    async def cache_market_data(self, symbol: str, timeframe: str, data: List[Dict]) -> bool:
+    async def cache_market_data(
+        self, symbol: str, timeframe: str, data: List[Dict]
+    ) -> bool:
         """Cache market data for symbol and timeframe"""
         key = f"{symbol}:{timeframe}"
         return await self.cache.set(key, data, prefix="market_data")
@@ -353,11 +362,15 @@ class MarketDataCache:
         key = f"{symbol}:{timeframe}"
         return await self.cache.get(key, prefix="market_data", default=[])
 
-    async def cache_latest_price(self, symbol: str, price: float, timestamp: str) -> bool:
+    async def cache_latest_price(
+        self, symbol: str, price: float, timestamp: str
+    ) -> bool:
         """Cache latest price for symbol"""
         key = f"{symbol}:latest"
         data = {"price": price, "timestamp": timestamp}
-        return await self.cache.set(key, data, prefix="market_data", ttl=60)  # 1 minute TTL
+        return await self.cache.set(
+            key, data, prefix="market_data", ttl=60
+        )  # 1 minute TTL
 
 
 # Global cache instances
@@ -435,13 +448,7 @@ def cache_key(*args, **kwargs) -> str:
     return ":".join(key_parts)
 
 
-async def cached_function(
-    func,
-    cache_prefix: str,
-    ttl: int = 300,
-    *args,
-    **kwargs
-):
+async def cached_function(func, cache_prefix: str, ttl: int = 300, *args, **kwargs):
     """Generic function caching"""
     key = cache_key(func.__name__, *args, **kwargs)
 

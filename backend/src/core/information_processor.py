@@ -4,14 +4,8 @@ Advanced real-time data processing system for market data, news, weather, and se
 with sub-second latency requirements and comprehensive error handling.
 
 This processor handles:
-- Real-time market data from multiple broker APIs
-- News sentiment processing and relevance scoring
-- Weather data correlation for sector analysis
-- Social media sentiment analysis
-- Multi-stream data synchronization and aggregation
-- WebSocket stream management
-- Advanced error handling and circuit breakers
-- Performance monitoring and alerting
+- Real-time market data from multiple broker APIs - News sentiment processing and relevance scoring - Weather data correlation for sector analysis - Social media sentiment analysis - Multi-stream data synchronization and aggregation - WebSocket stream management - Advanced error handling and circuit breakers -
+Performance monitoring and alerting
 """
 
 import asyncio
@@ -41,6 +35,7 @@ from ..utils.logger import get_logger
 
 class StreamType(str, Enum):
     """Types of data streams"""
+
     MARKET_DATA = "market_data"
     NEWS = "news"
     WEATHER = "weather"
@@ -53,6 +48,7 @@ class StreamType(str, Enum):
 
 class ProcessingStatus(str, Enum):
     """Processing status states"""
+
     ACTIVE = "active"
     PAUSED = "paused"
     ERROR = "error"
@@ -61,6 +57,7 @@ class ProcessingStatus(str, Enum):
 
 class AlertSeverity(str, Enum):
     """Alert severity levels"""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -70,6 +67,7 @@ class AlertSeverity(str, Enum):
 @dataclass
 class StreamData:
     """Base class for all stream data"""
+
     stream_type: StreamType
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     symbol: Optional[str] = None
@@ -92,14 +90,15 @@ class StreamData:
                 "source": self.source,
                 "latency_ms": self.latency_ms,
                 "confidence": self.confidence,
-                **self.data
-            }
+                **self.data,
+            },
         }
 
 
 @dataclass
 class MarketDataStream(StreamData):
     """Real-time market data stream"""
+
     stream_type: StreamType = StreamType.MARKET_DATA
     ohlcv: Optional[Dict[str, Any]] = None
     indicators: Optional[Dict[str, float]] = None
@@ -107,16 +106,15 @@ class MarketDataStream(StreamData):
 
     def __post_init__(self):
         super().__post_init__()
-        self.data.update({
-            "ohlcv": self.ohlcv,
-            "indicators": self.indicators,
-            "quote": self.quote
-        })
+        self.data.update(
+            {"ohlcv": self.ohlcv, "indicators": self.indicators, "quote": self.quote}
+        )
 
 
 @dataclass
 class NewsStream(StreamData):
     """Real-time news stream"""
+
     stream_type: StreamType = StreamType.NEWS
     title: str = ""
     content: str = ""
@@ -126,18 +124,21 @@ class NewsStream(StreamData):
 
     def __post_init__(self):
         super().__post_init__()
-        self.data.update({
-            "title": self.title,
-            "content": self.content[:500],  # Truncate for WebSocket
-            "relevance_score": self.relevance_score,
-            "sentiment_score": self.sentiment_score,
-            "extracted_symbols": self.extracted_symbols
-        })
+        self.data.update(
+            {
+                "title": self.title,
+                "content": self.content[:500],  # Truncate for WebSocket
+                "relevance_score": self.relevance_score,
+                "sentiment_score": self.sentiment_score,
+                "extracted_symbols": self.extracted_symbols,
+            }
+        )
 
 
 @dataclass
 class WeatherStream(StreamData):
     """Weather data stream"""
+
     stream_type: StreamType = StreamType.WEATHER
     location: str = ""
     temperature: float = 0.0
@@ -147,18 +148,21 @@ class WeatherStream(StreamData):
 
     def __post_init__(self):
         super().__post_init__()
-        self.data.update({
-            "location": self.location,
-            "temperature": self.temperature,
-            "humidity": self.humidity,
-            "conditions": self.conditions,
-            "sector_impact": self.sector_impact
-        })
+        self.data.update(
+            {
+                "location": self.location,
+                "temperature": self.temperature,
+                "humidity": self.humidity,
+                "conditions": self.conditions,
+                "sector_impact": self.sector_impact,
+            }
+        )
 
 
 @dataclass
 class SystemAlert(StreamData):
     """System alert stream"""
+
     stream_type: StreamType = StreamType.SYSTEM_ALERTS
     severity: AlertSeverity = AlertSeverity.INFO
     message: str = ""
@@ -167,12 +171,14 @@ class SystemAlert(StreamData):
 
     def __post_init__(self):
         super().__post_init__()
-        self.data.update({
-            "severity": self.severity.value,
-            "message": self.message,
-            "component": self.component,
-            "resolution": self.resolution
-        })
+        self.data.update(
+            {
+                "severity": self.severity.value,
+                "message": self.message,
+                "component": self.component,
+                "resolution": self.resolution,
+            }
+        )
 
 
 class StreamMetrics:
@@ -185,7 +191,7 @@ class StreamMetrics:
         self.messages_failed = 0
         self.total_latency = 0.0
         self.max_latency = 0.0
-        self.min_latency = float('inf')
+        self.min_latency = float("inf")
         self.latency_history = deque(maxlen=100)
         self.throughput_history = deque(maxlen=60)  # Last 60 seconds
         self.last_message_time = None
@@ -234,8 +240,9 @@ class StreamMetrics:
         """Get messages per second"""
         current_time = time.time()
         # Count messages in last second
-        recent_messages = sum(1 for ts in self.throughput_history
-                              if current_time - ts <= 1.0)
+        recent_messages = sum(
+            1 for ts in self.throughput_history if current_time - ts <= 1.0
+        )
         return recent_messages
 
     def get_stats(self) -> Dict[str, Any]:
@@ -250,10 +257,14 @@ class StreamMetrics:
             "average_latency_ms": self.get_average_latency(),
             "p95_latency_ms": self.get_p95_latency(),
             "max_latency_ms": self.max_latency,
-            "min_latency_ms": self.min_latency if self.min_latency != float('inf') else 0,
+            "min_latency_ms": (
+                self.min_latency if self.min_latency != float("inf") else 0
+            ),
             "throughput_per_second": self.get_throughput(),
             "uptime_seconds": uptime,
-            "last_message_ago_seconds": time.time() - self.last_message_time if self.last_message_time else None
+            "last_message_ago_seconds": (
+                time.time() - self.last_message_time if self.last_message_time else None
+            ),
         }
 
 
@@ -319,9 +330,11 @@ class StreamProcessor(ABC):
 class MarketDataProcessor(StreamProcessor):
     """Real-time market data stream processor"""
 
-    def __init__(self,
-                 angel_one_client: Optional[AngelOneClient] = None,
-                 dhan_client: Optional[DhanClient] = None):
+    def __init__(
+        self,
+        angel_one_client: Optional[AngelOneClient] = None,
+        dhan_client: Optional[DhanClient] = None,
+    ):
         super().__init__(StreamType.MARKET_DATA)
         self.angel_one_client = angel_one_client
         self.dhan_client = dhan_client
@@ -399,17 +412,17 @@ class MarketDataProcessor(StreamProcessor):
                 break
 
             # Generate mock tick data
-            last_price = self.last_prices.get(symbol, Decimal('45000'))
+            last_price = self.last_prices.get(symbol, Decimal("45000"))
             price_change = Decimal(str(statistics.uniform(-50, 50)))
             new_price = last_price + price_change
 
             tick_data = {
-                'symbol': symbol,
-                'ltp': float(new_price),
-                'timestamp': time.time() * 1000,
-                'volume': int(statistics.uniform(1000, 10000)),
-                'bid': float(new_price - Decimal('0.25')),
-                'ask': float(new_price + Decimal('0.25'))
+                "symbol": symbol,
+                "ltp": float(new_price),
+                "timestamp": time.time() * 1000,
+                "volume": int(statistics.uniform(1000, 10000)),
+                "bid": float(new_price - Decimal("0.25")),
+                "ask": float(new_price + Decimal("0.25")),
             }
 
             self.last_prices[symbol] = new_price
@@ -430,31 +443,31 @@ class MarketDataProcessor(StreamProcessor):
             start_time = time.time()
 
             # Extract basic info
-            symbol = raw_data.get('symbol')
+            symbol = raw_data.get("symbol")
             if not symbol:
                 return None
 
             # Create OHLCV data (for tick data, O=H=L=C=LTP)
-            ltp = raw_data.get('ltp', 0)
+            ltp = raw_data.get("ltp", 0)
             ohlcv = {
                 "timestamp": datetime.fromtimestamp(
-                    raw_data.get('timestamp', time.time() * 1000) / 1000,
-                    tz=timezone.utc
+                    raw_data.get("timestamp", time.time() * 1000) / 1000,
+                    tz=timezone.utc,
                 ).isoformat(),
                 "open": ltp,
                 "high": ltp,
                 "low": ltp,
                 "close": ltp,
-                "volume": raw_data.get('volume', 0),
-                "change_percent": 0.0  # Would calculate from previous close
+                "volume": raw_data.get("volume", 0),
+                "change_percent": 0.0,  # Would calculate from previous close
             }
 
             # Create quote data
             quote = {
-                "bid": raw_data.get('bid', ltp),
-                "ask": raw_data.get('ask', ltp),
+                "bid": raw_data.get("bid", ltp),
+                "ask": raw_data.get("ask", ltp),
                 "last_price": ltp,
-                "last_updated": datetime.now(timezone.utc).isoformat()
+                "last_updated": datetime.now(timezone.utc).isoformat(),
             }
 
             # Calculate basic indicators (simplified)
@@ -462,7 +475,7 @@ class MarketDataProcessor(StreamProcessor):
                 "rsi_14": 50.0,  # Would calculate actual RSI
                 "sma_20": ltp,
                 "bb_upper": ltp * 1.02,
-                "bb_lower": ltp * 0.98
+                "bb_lower": ltp * 0.98,
             }
 
             latency = (time.time() - start_time) * 1000
@@ -474,7 +487,7 @@ class MarketDataProcessor(StreamProcessor):
                 latency_ms=latency,
                 ohlcv=ohlcv,
                 indicators=indicators,
-                quote=quote
+                quote=quote,
             )
 
             self.metrics.record_message(latency, success=True)
@@ -505,8 +518,16 @@ class NewsProcessor(StreamProcessor):
         self.processed_articles: Set[str] = set()
         self.polling_interval = 60  # seconds
         self.sentiment_keywords = {
-            'bullish': ['surge', 'rally', 'bull', 'optimistic', 'positive', 'growth', 'rise'],
-            'bearish': ['crash', 'fall', 'bear', 'negative', 'decline', 'drop', 'loss']
+            "bullish": [
+                "surge",
+                "rally",
+                "bull",
+                "optimistic",
+                "positive",
+                "growth",
+                "rise",
+            ],
+            "bearish": ["crash", "fall", "bear", "negative", "decline", "drop", "loss"],
         }
 
     async def start(self):
@@ -532,8 +553,7 @@ class NewsProcessor(StreamProcessor):
         try:
             # Get business/finance news
             articles = await self.news_client.get_business_headlines(
-                country="in",
-                page_size=50
+                country="in", page_size=50
             )
 
             for article in articles:
@@ -550,9 +570,7 @@ class NewsProcessor(StreamProcessor):
                 # Limit cache size
                 if len(self.processed_articles) > 1000:
                     # Remove oldest entries (simplified)
-                    self.processed_articles = set(
-                        list(self.processed_articles)[-500:]
-                    )
+                    self.processed_articles = set(list(self.processed_articles)[-500:])
 
                 # Process the article
                 stream_data = await self.process_data(article)
@@ -565,10 +583,12 @@ class NewsProcessor(StreamProcessor):
     def _calculate_sentiment_score(self, text: str) -> float:
         """Calculate sentiment score from text"""
         text_lower = text.lower()
-        bullish_count = sum(1 for word in self.sentiment_keywords['bullish']
-                           if word in text_lower)
-        bearish_count = sum(1 for word in self.sentiment_keywords['bearish']
-                           if word in text_lower)
+        bullish_count = sum(
+            1 for word in self.sentiment_keywords["bullish"] if word in text_lower
+        )
+        bearish_count = sum(
+            1 for word in self.sentiment_keywords["bearish"] if word in text_lower
+        )
 
         total_sentiment_words = bullish_count + bearish_count
         if total_sentiment_words == 0:
@@ -581,10 +601,10 @@ class NewsProcessor(StreamProcessor):
         """Extract stock symbols from text"""
         # Indian market symbol patterns
         patterns = [
-            r'\b[A-Z]{2,10}\.NS\b',  # NSE symbols
-            r'\b[A-Z]{2,10}\.BO\b',  # BSE symbols
-            r'\b(?:NIFTY|SENSEX|BANKNIFTY)\b',  # Index names
-            r'\b[A-Z]{2,10}\s+(?:BANK|LTD|LIMITED)\b'  # Bank names
+            r"\b[A-Z]{2,10}\.NS\b",  # NSE symbols
+            r"\b[A-Z]{2,10}\.BO\b",  # BSE symbols
+            r"\b(?:NIFTY|SENSEX|BANKNIFTY)\b",  # Index names
+            r"\b[A-Z]{2,10}\s+(?:BANK|LTD|LIMITED)\b",  # Bank names
         ]
 
         symbols = set()
@@ -599,8 +619,8 @@ class NewsProcessor(StreamProcessor):
         try:
             start_time = time.time()
 
-            title = raw_data.get('title', '')
-            content = raw_data.get('description', '') or raw_data.get('content', '')
+            title = raw_data.get("title", "")
+            content = raw_data.get("description", "") or raw_data.get("content", "")
 
             if not title:
                 return None
@@ -621,14 +641,14 @@ class NewsProcessor(StreamProcessor):
 
             stream_data = NewsStream(
                 timestamp=datetime.now(timezone.utc),
-                source=raw_data.get('source', {}).get('name', 'unknown'),
+                source=raw_data.get("source", {}).get("name", "unknown"),
                 latency_ms=latency,
                 title=title,
                 content=content,
                 relevance_score=relevance_score,
                 sentiment_score=sentiment_score,
                 extracted_symbols=extracted_symbols,
-                confidence=min(relevance_score * 2, 1.0)  # Convert to confidence
+                confidence=min(relevance_score * 2, 1.0),  # Convert to confidence
             )
 
             self.metrics.record_message(latency, success=True)
@@ -652,7 +672,7 @@ class WeatherProcessor(StreamProcessor):
             "agricultural_banks": ["temperature", "humidity", "precipitation"],
             "power_sector": ["temperature", "wind_speed"],
             "insurance": ["extreme_weather", "natural_disasters"],
-            "commodities": ["temperature", "precipitation"]
+            "commodities": ["temperature", "precipitation"],
         }
 
     async def start(self):
@@ -687,35 +707,40 @@ class WeatherProcessor(StreamProcessor):
             except Exception as e:
                 self.logger.error(f"Error processing weather for {city}: {e}")
 
-    def _calculate_sector_impact(self, weather_data: Dict[str, Any]) -> Dict[str, float]:
+    def _calculate_sector_impact(
+        self, weather_data: Dict[str, Any]
+    ) -> Dict[str, float]:
         """Calculate impact on different sectors"""
         impacts = {}
 
-        temp = weather_data.get('temperature', 25)
-        humidity = weather_data.get('humidity', 50)
-        conditions = weather_data.get('conditions', '').lower()
+        temp = weather_data.get("temperature", 25)
+        humidity = weather_data.get("humidity", 50)
+        conditions = weather_data.get("conditions", "").lower()
 
         # Agricultural banks impact
         if temp > 40 or temp < 5:  # Extreme temperatures
-            impacts['agricultural_banks'] = -0.3
-        elif 'rain' in conditions or humidity > 80:
-            impacts['agricultural_banks'] = 0.2
+            impacts["agricultural_banks"] = -0.3
+        elif "rain" in conditions or humidity > 80:
+            impacts["agricultural_banks"] = 0.2
         else:
-            impacts['agricultural_banks'] = 0.0
+            impacts["agricultural_banks"] = 0.0
 
         # Power sector impact
         if temp > 35:  # High power demand for cooling
-            impacts['power_sector'] = 0.4
+            impacts["power_sector"] = 0.4
         elif temp < 10:  # High power demand for heating
-            impacts['power_sector'] = 0.3
+            impacts["power_sector"] = 0.3
         else:
-            impacts['power_sector'] = 0.0
+            impacts["power_sector"] = 0.0
 
         # Insurance sector impact
-        if any(extreme in conditions for extreme in ['storm', 'cyclone', 'flood', 'drought']):
-            impacts['insurance'] = -0.5
+        if any(
+            extreme in conditions
+            for extreme in ["storm", "cyclone", "flood", "drought"]
+        ):
+            impacts["insurance"] = -0.5
         else:
-            impacts['insurance'] = 0.0
+            impacts["insurance"] = 0.0
 
         return impacts
 
@@ -724,17 +749,19 @@ class WeatherProcessor(StreamProcessor):
         try:
             start_time = time.time()
 
-            location = raw_data.get('name', 'Unknown')
-            temperature = raw_data.get('main', {}).get('temp', 0) - 273.15  # K to C
-            humidity = raw_data.get('main', {}).get('humidity', 0)
-            conditions = raw_data.get('weather', [{}])[0].get('description', '')
+            location = raw_data.get("name", "Unknown")
+            temperature = raw_data.get("main", {}).get("temp", 0) - 273.15  # K to C
+            humidity = raw_data.get("main", {}).get("humidity", 0)
+            conditions = raw_data.get("weather", [{}])[0].get("description", "")
 
             # Calculate sector impacts
-            sector_impact = self._calculate_sector_impact({
-                'temperature': temperature,
-                'humidity': humidity,
-                'conditions': conditions
-            })
+            sector_impact = self._calculate_sector_impact(
+                {
+                    "temperature": temperature,
+                    "humidity": humidity,
+                    "conditions": conditions,
+                }
+            )
 
             latency = (time.time() - start_time) * 1000
 
@@ -747,7 +774,7 @@ class WeatherProcessor(StreamProcessor):
                 humidity=humidity,
                 conditions=conditions,
                 sector_impact=sector_impact,
-                confidence=0.9  # Weather data is generally reliable
+                confidence=0.9,  # Weather data is generally reliable
             )
 
             self.metrics.record_message(latency, success=True)
@@ -764,22 +791,19 @@ class InformationProcessor:
     Advanced real-time information processing system for NIRAJ trading system
 
     Features:
-    - Multi-stream real-time data processing (market, news, weather)
-    - Sub-second latency processing with performance monitoring
-    - Advanced error handling and circuit breakers
-    - WebSocket stream management and broadcasting
-    - Comprehensive metrics and alerting
-    - Data correlation and enrichment
-    - Configurable processing pipelines
+    - Multi-stream real-time data processing (market, news, weather) - Sub-second latency processing with performance monitoring - Advanced error handling and circuit breakers - WebSocket stream management and broadcasting - Comprehensive metrics and alerting - Data correlation and enrichment -
+    Configurable processing pipelines
     """
 
-    def __init__(self,
-                 data_manager: Optional[HistoricalDataManager] = None,
-                 angel_one_client: Optional[AngelOneClient] = None,
-                 dhan_client: Optional[DhanClient] = None,
-                 news_client: Optional[NewsClient] = None,
-                 weather_client: Optional[WeatherClient] = None,
-                 cache: Optional[RedisCache] = None):
+    def __init__(
+        self,
+        data_manager: Optional[HistoricalDataManager] = None,
+        angel_one_client: Optional[AngelOneClient] = None,
+        dhan_client: Optional[DhanClient] = None,
+        news_client: Optional[NewsClient] = None,
+        weather_client: Optional[WeatherClient] = None,
+        cache: Optional[RedisCache] = None,
+    ):
         """
         Initialize information processor
 
@@ -831,15 +855,17 @@ class InformationProcessor:
             "total_errors": 0,
             "average_processing_latency": 0.0,
             "peak_throughput": 0.0,
-            "uptime_seconds": 0.0
+            "uptime_seconds": 0.0,
         }
 
         # Setup stream subscriptions
         self._setup_stream_subscriptions()
 
-        self.logger.info("Information Processor initialized",
-                        processors=list(self.processors.keys()),
-                        max_latency_ms=self.max_latency_ms)
+        self.logger.info(
+            "Information Processor initialized",
+            processors=list(self.processors.keys()),
+            max_latency_ms=self.max_latency_ms,
+        )
 
     def _setup_stream_subscriptions(self):
         """Setup subscriptions between processors"""
@@ -858,7 +884,7 @@ class InformationProcessor:
                 await self._emit_alert(
                     AlertSeverity.WARNING,
                     f"High latency detected: {stream_data.latency_ms:.2f}ms > {self.max_latency_ms}ms",
-                    f"{stream_data.stream_type.value}_processor"
+                    f"{stream_data.stream_type.value}_processor",
                 )
 
             # Store in cache for recent access
@@ -867,7 +893,7 @@ class InformationProcessor:
                 cache_key,
                 stream_data.to_websocket_message(),
                 prefix="real_time",
-                ttl=300  # 5 minutes
+                ttl=300,  # 5 minutes
             )
 
             # Broadcast to WebSocket clients
@@ -889,7 +915,7 @@ class InformationProcessor:
             severity=severity,
             message=message,
             component=component,
-            source="information_processor"
+            source="information_processor",
         )
 
         # Broadcast alert
@@ -924,9 +950,11 @@ class InformationProcessor:
                     continue
 
                 # Check symbol-specific subscriptions
-                if (stream_data.symbol and
-                    subscriptions[stream_type].get('symbols') and
-                    stream_data.symbol not in subscriptions[stream_type]['symbols']):
+                if (
+                    stream_data.symbol
+                    and subscriptions[stream_type].get("symbols")
+                    and stream_data.symbol not in subscriptions[stream_type]["symbols"]
+                ):
                     continue
 
                 await client.send(message)
@@ -963,7 +991,9 @@ class InformationProcessor:
                     self.processing_tasks.append(task)
                     self.logger.info(f"Started {stream_type.value} processor")
                 except Exception as e:
-                    self.logger.error(f"Failed to start {stream_type.value} processor: {e}")
+                    self.logger.error(
+                        f"Failed to start {stream_type.value} processor: {e}"
+                    )
 
             # Start performance monitoring
             monitor_task = asyncio.create_task(self._performance_monitor())
@@ -972,7 +1002,7 @@ class InformationProcessor:
             await self._emit_alert(
                 AlertSeverity.INFO,
                 "Information processor started successfully",
-                "system"
+                "system",
             )
 
         except Exception as e:
@@ -1017,9 +1047,7 @@ class InformationProcessor:
         self.client_subscriptions.clear()
 
         await self._emit_alert(
-            AlertSeverity.INFO,
-            "Information processor stopped",
-            "system"
+            AlertSeverity.INFO, "Information processor stopped", "system"
         )
 
     async def _performance_monitor(self):
@@ -1039,12 +1067,13 @@ class InformationProcessor:
                     max_latency = max(max_latency, stats["max_latency_ms"])
                     total_error_rate += stats["error_rate"]
 
-                avg_error_rate = total_error_rate / len(self.processors) if self.processors else 0
+                avg_error_rate = (
+                    total_error_rate / len(self.processors) if self.processors else 0
+                )
 
                 # Update global metrics
                 self.global_metrics["peak_throughput"] = max(
-                    self.global_metrics["peak_throughput"],
-                    total_throughput
+                    self.global_metrics["peak_throughput"], total_throughput
                 )
 
                 if self.start_time:
@@ -1057,28 +1086,32 @@ class InformationProcessor:
                     await self._emit_alert(
                         AlertSeverity.ERROR,
                         f"High error rate detected: {avg_error_rate:.2%}",
-                        "performance_monitor"
+                        "performance_monitor",
                     )
 
                 if max_latency > self.max_latency_ms * 2:  # Double the threshold
                     await self._emit_alert(
                         AlertSeverity.WARNING,
                         f"Very high latency detected: {max_latency:.2f}ms",
-                        "performance_monitor"
+                        "performance_monitor",
                     )
 
             except Exception as e:
                 self.logger.error(f"Error in performance monitor: {e}")
 
-    async def add_websocket_client(self,
-                                 websocket: websockets.WebSocketServerProtocol,
-                                 subscriptions: Dict[str, Any]):
+    async def add_websocket_client(
+        self,
+        websocket: websockets.WebSocketServerProtocol,
+        subscriptions: Dict[str, Any],
+    ):
         """Add WebSocket client with subscriptions"""
         self.websocket_clients.add(websocket)
         client_id = str(id(websocket))
         self.client_subscriptions[client_id] = subscriptions
 
-        self.logger.info(f"Added WebSocket client with subscriptions: {list(subscriptions.keys())}")
+        self.logger.info(
+            f"Added WebSocket client with subscriptions: {list(subscriptions.keys())}"
+        )
 
         # Send current status
         status_message = {
@@ -1087,8 +1120,8 @@ class InformationProcessor:
             "data": {
                 "status": "connected",
                 "subscriptions": subscriptions,
-                "available_streams": list(self.processors.keys())
-            }
+                "available_streams": list(self.processors.keys()),
+            },
         }
 
         await websocket.send(json.dumps(status_message))
@@ -1116,9 +1149,9 @@ class InformationProcessor:
             for symbol in symbols:
                 processor.unsubscribe_from_symbol(symbol)
 
-    async def get_latest_data(self,
-                            stream_type: StreamType,
-                            symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def get_latest_data(
+        self, stream_type: StreamType, symbol: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Get latest data for a stream type"""
         try:
             cache_key = f"stream:{stream_type.value}:{symbol or 'global'}:latest"
@@ -1143,7 +1176,7 @@ class InformationProcessor:
             "uptime": self.global_metrics["uptime_seconds"],
             "subscriptions": {
                 client_id: subs for client_id, subs in self.client_subscriptions.items()
-            }
+            },
         }
 
     async def health_check(self) -> Dict[str, Any]:
@@ -1153,11 +1186,13 @@ class InformationProcessor:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "information_processor": {
                 "status": self.status.value,
-                "processors_running": len([p for p in self.processors.values() if p.is_running]),
+                "processors_running": len(
+                    [p for p in self.processors.values() if p.is_running]
+                ),
                 "total_processors": len(self.processors),
-                "websocket_clients": len(self.websocket_clients)
+                "websocket_clients": len(self.websocket_clients),
             },
-            "processors": {}
+            "processors": {},
         }
 
         # Check individual processors
@@ -1167,7 +1202,7 @@ class InformationProcessor:
                 "running": processor.is_running,
                 "error_rate": processor.metrics.error_rate,
                 "average_latency": processor.metrics.get_average_latency(),
-                "throughput": processor.metrics.get_throughput()
+                "throughput": processor.metrics.get_throughput(),
             }
 
             if not processor.is_running or processor.metrics.error_rate > 0.2:
@@ -1201,7 +1236,7 @@ async def create_information_processor(
     dhan_config: Optional[Dict[str, str]] = None,
     news_config: Optional[Dict[str, str]] = None,
     weather_config: Optional[Dict[str, str]] = None,
-    cache_config: Optional[Dict[str, Any]] = None
+    cache_config: Optional[Dict[str, Any]] = None,
 ) -> InformationProcessor:
     """
     Create and configure an information processor instance
@@ -1238,6 +1273,7 @@ async def create_information_processor(
 
     if data_manager_config:
         from .data_manager import create_data_manager
+
         data_manager = await create_data_manager(**data_manager_config)
 
     # Create cache
@@ -1253,7 +1289,7 @@ async def create_information_processor(
         dhan_client=dhan_client,
         news_client=news_client,
         weather_client=weather_client,
-        cache=cache
+        cache=cache,
     )
 
     return processor

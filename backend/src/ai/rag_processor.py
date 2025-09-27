@@ -21,7 +21,12 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from ..core.config import get_config
-from .gemma3_integration import Gemma3Client, AnalysisRequest, AnalysisResponse, AnalysisType
+from .gemma3_integration import (
+    Gemma3Client,
+    AnalysisRequest,
+    AnalysisResponse,
+    AnalysisType,
+)
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -29,6 +34,7 @@ logger = structlog.get_logger(__name__)
 
 class KnowledgeType(str, Enum):
     """Types of knowledge in the RAG system"""
+
     MARKET_NEWS = "market_news"
     TECHNICAL_ANALYSIS = "technical_analysis"
     FUNDAMENTAL_ANALYSIS = "fundamental_analysis"
@@ -48,16 +54,20 @@ class KnowledgeType(str, Enum):
 
 class RetrievalMode(str, Enum):
     """Retrieval modes for different scenarios"""
-    SEMANTIC_SEARCH = "semantic_search"      # Semantic similarity search
-    KEYWORD_SEARCH = "keyword_search"        # Traditional keyword matching
-    HYBRID_SEARCH = "hybrid_search"          # Combination of semantic and keyword
-    TEMPORAL_SEARCH = "temporal_search"      # Time-based retrieval
+
+    SEMANTIC_SEARCH = "semantic_search"  # Semantic similarity search
+    KEYWORD_SEARCH = "keyword_search"  # Traditional keyword matching
+    HYBRID_SEARCH = "hybrid_search"  # Combination of semantic and keyword
+    TEMPORAL_SEARCH = "temporal_search"  # Time-based retrieval
     CONTEXTUAL_SEARCH = "contextual_search"  # Context-aware retrieval
 
 
 class RagProcessorError(Exception):
     """Base exception for RAG processor errors"""
-    def __init__(self, message: str, error_code: str = None, context: Dict[str, Any] = None):
+
+    def __init__(
+        self, message: str, error_code: str = None, context: Dict[str, Any] = None
+    ):
         self.message = message
         self.error_code = error_code
         self.context = context or {}
@@ -66,27 +76,32 @@ class RagProcessorError(Exception):
 
 class VectorDatabaseError(RagProcessorError):
     """Exception for vector database operations"""
+
     pass
 
 
 class EmbeddingError(RagProcessorError):
     """Exception for embedding generation errors"""
+
     pass
 
 
 class RetrievalError(RagProcessorError):
     """Exception for knowledge retrieval errors"""
+
     pass
 
 
 class IngestionError(RagProcessorError):
     """Exception for knowledge ingestion errors"""
+
     pass
 
 
 @dataclass
 class KnowledgeItem:
     """Individual knowledge item in the RAG system"""
+
     id: str
     content: str
     knowledge_type: KnowledgeType
@@ -116,46 +131,47 @@ class KnowledgeItem:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage"""
         return {
-            'id': self.id,
-            'content': self.content,
-            'knowledge_type': self.knowledge_type.value,
-            'title': self.title,
-            'summary': self.summary,
-            'source': self.source,
-            'timestamp': self.timestamp.isoformat(),
-            'symbols': self.symbols,
-            'sectors': self.sectors,
-            'tags': self.tags,
-            'metadata': self.metadata,
-            'confidence_score': self.confidence_score,
-            'relevance_score': self.relevance_score,
-            'content_hash': self.content_hash
+            "id": self.id,
+            "content": self.content,
+            "knowledge_type": self.knowledge_type.value,
+            "title": self.title,
+            "summary": self.summary,
+            "source": self.source,
+            "timestamp": self.timestamp.isoformat(),
+            "symbols": self.symbols,
+            "sectors": self.sectors,
+            "tags": self.tags,
+            "metadata": self.metadata,
+            "confidence_score": self.confidence_score,
+            "relevance_score": self.relevance_score,
+            "content_hash": self.content_hash,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'KnowledgeItem':
+    def from_dict(cls, data: Dict[str, Any]) -> "KnowledgeItem":
         """Create KnowledgeItem from dictionary"""
         return cls(
-            id=data['id'],
-            content=data['content'],
-            knowledge_type=KnowledgeType(data['knowledge_type']),
-            title=data.get('title'),
-            summary=data.get('summary'),
-            source=data.get('source'),
-            timestamp=datetime.fromisoformat(data['timestamp']),
-            symbols=data.get('symbols', []),
-            sectors=data.get('sectors', []),
-            tags=data.get('tags', []),
-            metadata=data.get('metadata', {}),
-            confidence_score=data.get('confidence_score', 1.0),
-            relevance_score=data.get('relevance_score', 0.0),
-            content_hash=data.get('content_hash')
+            id=data["id"],
+            content=data["content"],
+            knowledge_type=KnowledgeType(data["knowledge_type"]),
+            title=data.get("title"),
+            summary=data.get("summary"),
+            source=data.get("source"),
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            symbols=data.get("symbols", []),
+            sectors=data.get("sectors", []),
+            tags=data.get("tags", []),
+            metadata=data.get("metadata", {}),
+            confidence_score=data.get("confidence_score", 1.0),
+            relevance_score=data.get("relevance_score", 0.0),
+            content_hash=data.get("content_hash"),
         )
 
 
 @dataclass
 class RetrievalQuery:
     """Query for knowledge retrieval"""
+
     query_text: str
     knowledge_types: Optional[List[KnowledgeType]] = None
     symbols: Optional[List[str]] = None
@@ -170,6 +186,7 @@ class RetrievalQuery:
 @dataclass
 class RetrievalResult:
     """Result from knowledge retrieval"""
+
     items: List[KnowledgeItem]
     query: RetrievalQuery
     total_found: int
@@ -196,7 +213,8 @@ class VectorDatabase:
             self.connection.execute("PRAGMA foreign_keys = ON")
 
             # Create knowledge items table
-            self.connection.execute("""
+            self.connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS knowledge_items (
                     id TEXT PRIMARY KEY,
                     content TEXT NOT NULL,
@@ -217,10 +235,12 @@ class VectorDatabase:
                     INDEX(timestamp),
                     INDEX(content_hash)
                 )
-            """)
+            """
+            )
 
             # Create embeddings table
-            self.connection.execute("""
+            self.connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS embeddings (
                     item_id TEXT PRIMARY KEY,
                     embedding TEXT NOT NULL,  -- JSON array of floats
@@ -229,10 +249,12 @@ class VectorDatabase:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (item_id) REFERENCES knowledge_items (id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
 
             # Create search index table for better performance
-            self.connection.execute("""
+            self.connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS search_index (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     item_id TEXT NOT NULL,
@@ -242,7 +264,8 @@ class VectorDatabase:
                     INDEX(term),
                     INDEX(item_id)
                 )
-            """)
+            """
+            )
 
             self.connection.commit()
             logger.info("Vector database initialized", db_path=self.db_path)
@@ -255,49 +278,61 @@ class VectorDatabase:
         """Store knowledge item with its embedding"""
         try:
             # Store knowledge item
-            self.connection.execute("""
+            self.connection.execute(
+                """
                 INSERT OR REPLACE INTO knowledge_items
                 (id, content, knowledge_type, title, summary, source, timestamp, symbols,
                  sectors, tags, metadata, confidence_score, relevance_score, content_hash)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item.id,
-                item.content,
-                item.knowledge_type.value,
-                item.title,
-                item.summary,
-                item.source,
-                item.timestamp.isoformat(),
-                json.dumps(item.symbols),
-                json.dumps(item.sectors),
-                json.dumps(item.tags),
-                json.dumps(item.metadata),
-                item.confidence_score,
-                item.relevance_score,
-                item.content_hash
-            ))
+            """,
+                (
+                    item.id,
+                    item.content,
+                    item.knowledge_type.value,
+                    item.title,
+                    item.summary,
+                    item.source,
+                    item.timestamp.isoformat(),
+                    json.dumps(item.symbols),
+                    json.dumps(item.sectors),
+                    json.dumps(item.tags),
+                    json.dumps(item.metadata),
+                    item.confidence_score,
+                    item.relevance_score,
+                    item.content_hash,
+                ),
+            )
 
             # Store embedding
-            self.connection.execute("""
+            self.connection.execute(
+                """
                 INSERT OR REPLACE INTO embeddings
                 (item_id, embedding, dimension, model_name)
                 VALUES (?, ?, ?, ?)
-            """, (
-                item.id,
-                json.dumps(embedding),
-                len(embedding),
-                "sentence-transformers"
-            ))
+            """,
+                (
+                    item.id,
+                    json.dumps(embedding),
+                    len(embedding),
+                    "sentence-transformers",
+                ),
+            )
 
             self.connection.commit()
             return True
 
         except Exception as e:
-            logger.error("Failed to store knowledge item", item_id=item.id, error=str(e))
+            logger.error(
+                "Failed to store knowledge item", item_id=item.id, error=str(e)
+            )
             raise VectorDatabaseError(f"Failed to store item {item.id}: {str(e)}")
 
-    def similarity_search(self, query_embedding: List[float], top_k: int = 10,
-                          filters: Dict[str, Any] = None) -> List[Tuple[str, float]]:
+    def similarity_search(
+        self,
+        query_embedding: List[float],
+        top_k: int = 10,
+        filters: Dict[str, Any] = None,
+    ) -> List[Tuple[str, float]]:
         """Perform similarity search"""
         try:
             # Build base query
@@ -314,22 +349,22 @@ class VectorDatabase:
 
             # Apply filters
             if filters:
-                if 'knowledge_types' in filters and filters['knowledge_types']:
-                    placeholders = ','.join(['?' for _ in filters['knowledge_types']])
+                if "knowledge_types" in filters and filters["knowledge_types"]:
+                    placeholders = ",".join(["?" for _ in filters["knowledge_types"]])
                     conditions.append(f"k.knowledge_type IN ({placeholders})")
-                    params.extend([kt.value for kt in filters['knowledge_types']])
+                    params.extend([kt.value for kt in filters["knowledge_types"]])
 
-                if 'symbols' in filters and filters['symbols']:
+                if "symbols" in filters and filters["symbols"]:
                     # Search for symbols in the JSON array
                     symbol_conditions = []
-                    for symbol in filters['symbols']:
+                    for symbol in filters["symbols"]:
                         symbol_conditions.append("k.symbols LIKE ?")
                         params.append(f'%"{symbol}"%')
                     if symbol_conditions:
                         conditions.append(f"({' OR '.join(symbol_conditions)})")
 
-                if 'time_range' in filters and filters['time_range']:
-                    start_time, end_time = filters['time_range']
+                if "time_range" in filters and filters["time_range"]:
+                    start_time, end_time = filters["time_range"]
                     conditions.append("k.timestamp >= ? AND k.timestamp <= ?")
                     params.extend([start_time.isoformat(), end_time.isoformat()])
 
@@ -344,7 +379,9 @@ class VectorDatabase:
             results = []
             for row in rows:
                 stored_embedding = json.loads(row[12])  # embedding column
-                similarity = self._calculate_cosine_similarity(query_embedding, stored_embedding)
+                similarity = self._calculate_cosine_similarity(
+                    query_embedding, stored_embedding
+                )
 
                 # Create KnowledgeItem
                 item = KnowledgeItem(
@@ -359,7 +396,7 @@ class VectorDatabase:
                     sectors=json.loads(row[8]) if row[8] else [],
                     tags=json.loads(row[9]) if row[9] else [],
                     metadata=json.loads(row[10]) if row[10] else {},
-                    confidence_score=row[11]
+                    confidence_score=row[11],
                 )
                 item.relevance_score = similarity
 
@@ -373,7 +410,9 @@ class VectorDatabase:
             logger.error("Similarity search failed", error=str(e))
             raise VectorDatabaseError(f"Similarity search failed: {str(e)}")
 
-    def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+    def _calculate_cosine_similarity(
+        self, vec1: List[float], vec2: List[float]
+    ) -> float:
         """Calculate cosine similarity between two vectors"""
         try:
             vec1_np = np.array(vec1)
@@ -402,7 +441,9 @@ class VectorDatabase:
     def delete_item(self, item_id: str) -> bool:
         """Delete knowledge item and its embedding"""
         try:
-            self.connection.execute("DELETE FROM knowledge_items WHERE id = ?", (item_id,))
+            self.connection.execute(
+                "DELETE FROM knowledge_items WHERE id = ?", (item_id,)
+            )
             self.connection.commit()
             return True
         except Exception as e:
@@ -428,11 +469,11 @@ class RAGProcessor:
         self.gemma3_client = gemma3_client
 
         # Configuration
-        self.db_path = get_config('ai.rag.database_path', 'data/rag_knowledge.db')
-        self.model_name = get_config('ai.rag.embedding_model', 'all-MiniLM-L6-v2')
-        self.max_context_length = get_config('ai.rag.max_context_length', 8000)
-        self.default_top_k = get_config('ai.rag.default_top_k', 5)
-        self.cache_ttl = get_config('ai.rag.cache_ttl', 3600)  # 1 hour
+        self.db_path = get_config("ai.rag.database_path", "data/rag_knowledge.db")
+        self.model_name = get_config("ai.rag.embedding_model", "all-MiniLM-L6-v2")
+        self.max_context_length = get_config("ai.rag.max_context_length", 8000)
+        self.default_top_k = get_config("ai.rag.default_top_k", 5)
+        self.cache_ttl = get_config("ai.rag.cache_ttl", 3600)  # 1 hour
 
         # Initialize components
         self.vector_db = None
@@ -450,7 +491,7 @@ class RAGProcessor:
             "RAG processor initialized",
             db_path=self.db_path,
             embedding_model=self.model_name,
-            max_context_length=self.max_context_length
+            max_context_length=self.max_context_length,
         )
 
     async def __aenter__(self):
@@ -471,8 +512,7 @@ class RAGProcessor:
             # Initialize embedding model in thread pool
             loop = asyncio.get_event_loop()
             self.embedding_model = await loop.run_in_executor(
-                self.executor,
-                self._load_embedding_model
+                self.executor, self._load_embedding_model
             )
 
             logger.info("RAG processor components initialized successfully")
@@ -486,12 +526,15 @@ class RAGProcessor:
         try:
             # Import here to avoid import errors if not installed
             from sentence_transformers import SentenceTransformer
+
             model = SentenceTransformer(self.model_name)
             logger.info("Embedding model loaded", model_name=self.model_name)
             return model
         except ImportError as e:
             logger.error("sentence-transformers not installed", error=str(e))
-            raise EmbeddingError("sentence-transformers library is required for RAG functionality")
+            raise EmbeddingError(
+                "sentence-transformers library is required for RAG functionality"
+            )
         except Exception as e:
             logger.error("Failed to load embedding model", error=str(e))
             raise EmbeddingError(f"Failed to load embedding model: {str(e)}")
@@ -534,7 +577,7 @@ class RAGProcessor:
             # Process items in batches for better performance
             batch_size = 10
             for i in range(0, len(items), batch_size):
-                batch = items[i:i + batch_size]
+                batch = items[i : i + batch_size]
 
                 try:
                     await self._process_batch(batch)
@@ -542,7 +585,11 @@ class RAGProcessor:
                 except Exception as e:
                     failed_count += len(batch)
                     errors.append(f"Batch {i//batch_size + 1}: {str(e)}")
-                    logger.error("Batch processing failed", batch_num=i // batch_size + 1, error=str(e))
+                    logger.error(
+                        "Batch processing failed",
+                        batch_num=i // batch_size + 1,
+                        error=str(e),
+                    )
 
             processing_time = (time.time() - start_time) * 1000
 
@@ -551,17 +598,17 @@ class RAGProcessor:
             self.successful_ingestions += successful_count
 
             result = {
-                'total_items': len(items),
-                'successful': successful_count,
-                'failed': failed_count,
-                'processing_time_ms': processing_time,
-                'errors': errors,
-                'database_size': self.vector_db.get_item_count()
+                "total_items": len(items),
+                "successful": successful_count,
+                "failed": failed_count,
+                "processing_time_ms": processing_time,
+                "errors": errors,
+                "database_size": self.vector_db.get_item_count(),
             }
 
             logger.info(
                 "Knowledge ingestion completed",
-                **{k: v for k, v in result.items() if k != 'errors'}
+                **{k: v for k, v in result.items() if k != "errors"},
             )
 
             return result
@@ -578,9 +625,7 @@ class RAGProcessor:
 
             loop = asyncio.get_event_loop()
             embeddings = await loop.run_in_executor(
-                self.executor,
-                self.embedding_model.encode,
-                texts
+                self.executor, self.embedding_model.encode, texts
             )
 
             # Store items with embeddings
@@ -591,7 +636,11 @@ class RAGProcessor:
                 # Store in vector database
                 self.vector_db.store_item(processed_item, embedding.tolist())
 
-                logger.debug("Knowledge item stored", item_id=item.id, type=item.knowledge_type.value)
+                logger.debug(
+                    "Knowledge item stored",
+                    item_id=item.id,
+                    type=item.knowledge_type.value,
+                )
 
         except Exception as e:
             logger.error("Batch processing failed", error=str(e))
@@ -623,7 +672,9 @@ class RAGProcessor:
             return " | ".join(text_parts)
 
         except Exception as e:
-            logger.warning("Failed to prepare text for embedding", item_id=item.id, error=str(e))
+            logger.warning(
+                "Failed to prepare text for embedding", item_id=item.id, error=str(e)
+            )
             return item.content  # Fallback to content only
 
     def _preprocess_knowledge_item(self, item: KnowledgeItem) -> KnowledgeItem:
@@ -639,10 +690,14 @@ class RAGProcessor:
                 item.summary = self._clean_text(item.summary)
 
             # Normalize symbols (uppercase)
-            item.symbols = [symbol.upper().strip() for symbol in item.symbols if symbol.strip()]
+            item.symbols = [
+                symbol.upper().strip() for symbol in item.symbols if symbol.strip()
+            ]
 
             # Normalize sectors
-            item.sectors = [sector.title().strip() for sector in item.sectors if sector.strip()]
+            item.sectors = [
+                sector.title().strip() for sector in item.sectors if sector.strip()
+            ]
 
             # Clean tags
             item.tags = [tag.lower().strip() for tag in item.tags if tag.strip()]
@@ -658,7 +713,9 @@ class RAGProcessor:
             return item
 
         except Exception as e:
-            logger.error("Failed to preprocess knowledge item", item_id=item.id, error=str(e))
+            logger.error(
+                "Failed to preprocess knowledge item", item_id=item.id, error=str(e)
+            )
             return item  # Return original item if preprocessing fails
 
     def _clean_text(self, text: str) -> str:
@@ -667,11 +724,11 @@ class RAGProcessor:
             return ""
 
         # Remove excessive whitespace
-        text = ' '.join(text.split())
+        text = " ".join(text.split())
 
         # Remove common artifacts
-        text = text.replace('\x00', '')  # Remove null characters
-        text = text.replace('\r\n', '\n')  # Normalize line endings
+        text = text.replace("\x00", "")  # Remove null characters
+        text = text.replace("\r\n", "\n")  # Normalize line endings
 
         return text.strip()
 
@@ -692,41 +749,44 @@ class RAGProcessor:
         self.total_retrievals += 1
 
         try:
-            logger.debug("Starting knowledge retrieval", query_text=query.query_text[:100])
+            logger.debug(
+                "Starting knowledge retrieval", query_text=query.query_text[:100]
+            )
 
             # Generate query embedding
             loop = asyncio.get_event_loop()
             query_embedding = await loop.run_in_executor(
-                self.executor,
-                self.embedding_model.encode,
-                [query.query_text]
+                self.executor, self.embedding_model.encode, [query.query_text]
             )
 
             # Prepare filters
             filters = {}
             if query.knowledge_types:
-                filters['knowledge_types'] = query.knowledge_types
+                filters["knowledge_types"] = query.knowledge_types
             if query.symbols:
-                filters['symbols'] = query.symbols
+                filters["symbols"] = query.symbols
             if query.time_range:
-                filters['time_range'] = query.time_range
+                filters["time_range"] = query.time_range
 
             # Perform similarity search
             search_results = self.vector_db.similarity_search(
                 query_embedding[0].tolist(),
                 top_k=query.max_results * 2,  # Get more results for filtering
-                filters=filters
+                filters=filters,
             )
 
             # Filter by minimum relevance score
             filtered_results = [
-                (item, score) for item, score in search_results
+                (item, score)
+                for item, score in search_results
                 if score >= query.min_relevance_score
             ]
 
             # Sort and limit results
             filtered_results.sort(key=lambda x: x[1], reverse=True)
-            final_results = [item for item, score in filtered_results[:query.max_results]]
+            final_results = [
+                item for item, score in filtered_results[: query.max_results]
+            ]
 
             processing_time = (time.time() - start_time) * 1000
 
@@ -740,18 +800,26 @@ class RAGProcessor:
                 total_found=len(search_results),
                 retrieval_time_ms=processing_time,
                 metadata={
-                    'filtered_count': len(filtered_results),
-                    'avg_relevance_score': np.mean([score for _, score in filtered_results]) if filtered_results else 0.0,
-                    'max_relevance_score': max([score for _, score in filtered_results], default=0.0),
-                    'min_relevance_score': min([score for _, score in filtered_results], default=0.0)
-                }
+                    "filtered_count": len(filtered_results),
+                    "avg_relevance_score": (
+                        np.mean([score for _, score in filtered_results])
+                        if filtered_results
+                        else 0.0
+                    ),
+                    "max_relevance_score": max(
+                        [score for _, score in filtered_results], default=0.0
+                    ),
+                    "min_relevance_score": min(
+                        [score for _, score in filtered_results], default=0.0
+                    ),
+                },
             )
 
             logger.info(
                 "Knowledge retrieval completed",
                 results_count=len(final_results),
                 processing_time_ms=processing_time,
-                avg_relevance=result.metadata['avg_relevance_score']
+                avg_relevance=result.metadata["avg_relevance_score"],
             )
 
             return result
@@ -766,13 +834,17 @@ class RAGProcessor:
             if self.total_retrievals == 1:
                 self.average_retrieval_time = processing_time
             else:
-                total_time = self.average_retrieval_time * (self.total_retrievals - 1) + processing_time
+                total_time = (
+                    self.average_retrieval_time * (self.total_retrievals - 1)
+                    + processing_time
+                )
                 self.average_retrieval_time = total_time / self.total_retrievals
         except Exception:
             pass  # Don't fail the operation for metrics update
 
-    async def augment_analysis(self, analysis_request: AnalysisRequest,
-                               max_context_items: int = None) -> AnalysisRequest:
+    async def augment_analysis(
+        self, analysis_request: AnalysisRequest, max_context_items: int = None
+    ) -> AnalysisRequest:
         """
         Augment analysis request with relevant knowledge
 
@@ -788,8 +860,7 @@ class RAGProcessor:
 
             # Create retrieval query based on analysis request
             retrieval_query = self._create_retrieval_query_from_analysis(
-                analysis_request,
-                max_items
+                analysis_request, max_items
             )
 
             # Retrieve relevant knowledge
@@ -801,8 +872,7 @@ class RAGProcessor:
 
             # Build context from retrieved knowledge
             context = self._build_context_from_knowledge(
-                retrieval_result.items,
-                analysis_request.analysis_type
+                retrieval_result.items, analysis_request.analysis_type
             )
 
             # Augment the analysis request
@@ -811,24 +881,26 @@ class RAGProcessor:
                 input_data=analysis_request.input_data,
                 context={
                     **(analysis_request.context or {}),
-                    'retrieved_knowledge': context,
-                    'knowledge_metadata': {
-                        'items_count': len(retrieval_result.items),
-                        'avg_relevance': retrieval_result.metadata.get('avg_relevance_score', 0.0),
-                        'retrieval_time_ms': retrieval_result.retrieval_time_ms
-                    }
+                    "retrieved_knowledge": context,
+                    "knowledge_metadata": {
+                        "items_count": len(retrieval_result.items),
+                        "avg_relevance": retrieval_result.metadata.get(
+                            "avg_relevance_score", 0.0
+                        ),
+                        "retrieval_time_ms": retrieval_result.retrieval_time_ms,
+                    },
                 },
                 parameters=analysis_request.parameters,
                 max_tokens=analysis_request.max_tokens,
                 temperature=analysis_request.temperature,
                 confidence_threshold=analysis_request.confidence_threshold,
-                timeout=analysis_request.timeout
+                timeout=analysis_request.timeout,
             )
 
             logger.info(
                 "Analysis request augmented with knowledge",
                 knowledge_items=len(retrieval_result.items),
-                context_size=len(str(context))
+                context_size=len(str(context)),
             )
 
             return enhanced_request
@@ -838,8 +910,9 @@ class RAGProcessor:
             # Return original request if augmentation fails
             return analysis_request
 
-    def _create_retrieval_query_from_analysis(self, analysis_request: AnalysisRequest,
-                                              max_results: int) -> RetrievalQuery:
+    def _create_retrieval_query_from_analysis(
+        self, analysis_request: AnalysisRequest, max_results: int
+    ) -> RetrievalQuery:
         """Create retrieval query from analysis request"""
         try:
             # Extract query text from input data
@@ -850,23 +923,31 @@ class RAGProcessor:
                 for key, value in analysis_request.input_data.items():
                     if isinstance(value, str) and len(value) > 0:
                         query_parts.append(f"{key}: {value}")
-                    elif key in ['symbol', 'symbols'] and value:
+                    elif key in ["symbol", "symbols"] and value:
                         query_parts.append(f"symbols: {value}")
 
-            query_text = " ".join(query_parts) if query_parts else str(analysis_request.input_data)
+            query_text = (
+                " ".join(query_parts)
+                if query_parts
+                else str(analysis_request.input_data)
+            )
 
             # Determine relevant knowledge types
-            knowledge_types = self._get_relevant_knowledge_types(analysis_request.analysis_type)
+            knowledge_types = self._get_relevant_knowledge_types(
+                analysis_request.analysis_type
+            )
 
             # Extract symbols if available
             symbols = []
-            if 'symbol' in analysis_request.input_data:
-                symbols.append(str(analysis_request.input_data['symbol']).upper())
-            if 'symbols' in analysis_request.input_data:
-                if isinstance(analysis_request.input_data['symbols'], list):
-                    symbols.extend([str(s).upper() for s in analysis_request.input_data['symbols']])
+            if "symbol" in analysis_request.input_data:
+                symbols.append(str(analysis_request.input_data["symbol"]).upper())
+            if "symbols" in analysis_request.input_data:
+                if isinstance(analysis_request.input_data["symbols"], list):
+                    symbols.extend(
+                        [str(s).upper() for s in analysis_request.input_data["symbols"]]
+                    )
                 else:
-                    symbols.append(str(analysis_request.input_data['symbols']).upper())
+                    symbols.append(str(analysis_request.input_data["symbols"]).upper())
 
             # Set time range for recent information
             time_range = (datetime.utcnow() - timedelta(days=30), datetime.utcnow())
@@ -878,74 +959,81 @@ class RAGProcessor:
                 time_range=time_range,
                 max_results=max_results,
                 min_relevance_score=0.3,
-                retrieval_mode=RetrievalMode.SEMANTIC_SEARCH
+                retrieval_mode=RetrievalMode.SEMANTIC_SEARCH,
             )
 
         except Exception as e:
             logger.error("Failed to create retrieval query", error=str(e))
             # Return basic query as fallback
             return RetrievalQuery(
-                query_text=str(analysis_request.input_data),
-                max_results=max_results
+                query_text=str(analysis_request.input_data), max_results=max_results
             )
 
-    def _get_relevant_knowledge_types(self, analysis_type: AnalysisType) -> List[KnowledgeType]:
+    def _get_relevant_knowledge_types(
+        self, analysis_type: AnalysisType
+    ) -> List[KnowledgeType]:
         """Get relevant knowledge types for analysis type"""
         knowledge_type_mapping = {
             AnalysisType.MARKET_SENTIMENT: [
                 KnowledgeType.MARKET_NEWS,
                 KnowledgeType.MARKET_COMMENTARY,
-                KnowledgeType.ANALYST_RATING
+                KnowledgeType.ANALYST_RATING,
             ],
             AnalysisType.PRICE_PREDICTION: [
                 KnowledgeType.TECHNICAL_ANALYSIS,
                 KnowledgeType.FUNDAMENTAL_ANALYSIS,
                 KnowledgeType.PATTERN_RECOGNITION,
-                KnowledgeType.MARKET_NEWS
+                KnowledgeType.MARKET_NEWS,
             ],
             AnalysisType.TECHNICAL_ANALYSIS: [
                 KnowledgeType.TECHNICAL_ANALYSIS,
                 KnowledgeType.PATTERN_RECOGNITION,
-                KnowledgeType.TRADING_STRATEGY
+                KnowledgeType.TRADING_STRATEGY,
             ],
             AnalysisType.NEWS_ANALYSIS: [
                 KnowledgeType.MARKET_NEWS,
                 KnowledgeType.REGULATORY_NEWS,
-                KnowledgeType.EARNINGS_DATA
+                KnowledgeType.EARNINGS_DATA,
             ],
             AnalysisType.RISK_ASSESSMENT: [
                 KnowledgeType.RISK_ANALYSIS,
                 KnowledgeType.MARKET_COMMENTARY,
-                KnowledgeType.MACRO_ECONOMIC
+                KnowledgeType.MACRO_ECONOMIC,
             ],
             AnalysisType.STRATEGY_RECOMMENDATION: [
                 KnowledgeType.TRADING_STRATEGY,
                 KnowledgeType.MARKET_COMMENTARY,
-                KnowledgeType.TECHNICAL_ANALYSIS
-            ]
+                KnowledgeType.TECHNICAL_ANALYSIS,
+            ],
         }
 
-        return knowledge_type_mapping.get(analysis_type, [
-            KnowledgeType.MARKET_NEWS,
-            KnowledgeType.TECHNICAL_ANALYSIS,
-            KnowledgeType.MARKET_COMMENTARY
-        ])
+        return knowledge_type_mapping.get(
+            analysis_type,
+            [
+                KnowledgeType.MARKET_NEWS,
+                KnowledgeType.TECHNICAL_ANALYSIS,
+                KnowledgeType.MARKET_COMMENTARY,
+            ],
+        )
 
-    def _build_context_from_knowledge(self, items: List[KnowledgeItem],
-                                      analysis_type: AnalysisType) -> Dict[str, Any]:
+    def _build_context_from_knowledge(
+        self, items: List[KnowledgeItem], analysis_type: AnalysisType
+    ) -> Dict[str, Any]:
         """Build context from retrieved knowledge items"""
         try:
             context = {
-                'relevant_information': [],
-                'sources': [],
-                'symbols_mentioned': set(),
-                'sectors_mentioned': set(),
-                'knowledge_types': set(),
-                'time_range': {'earliest': None, 'latest': None}
+                "relevant_information": [],
+                "sources": [],
+                "symbols_mentioned": set(),
+                "sectors_mentioned": set(),
+                "knowledge_types": set(),
+                "time_range": {"earliest": None, "latest": None},
             }
 
             total_content_length = 0
-            max_content_per_item = self.max_context_length // len(items) if items else 1000
+            max_content_per_item = (
+                self.max_context_length // len(items) if items else 1000
+            )
 
             for item in items:
                 # Limit content length to prevent token overflow
@@ -958,45 +1046,55 @@ class RAGProcessor:
                     break
 
                 info = {
-                    'content': content,
-                    'type': item.knowledge_type.value,
-                    'title': item.title,
-                    'source': item.source,
-                    'timestamp': item.timestamp.isoformat(),
-                    'relevance_score': round(item.relevance_score, 3),
-                    'symbols': item.symbols,
-                    'sectors': item.sectors
+                    "content": content,
+                    "type": item.knowledge_type.value,
+                    "title": item.title,
+                    "source": item.source,
+                    "timestamp": item.timestamp.isoformat(),
+                    "relevance_score": round(item.relevance_score, 3),
+                    "symbols": item.symbols,
+                    "sectors": item.sectors,
                 }
 
-                context['relevant_information'].append(info)
+                context["relevant_information"].append(info)
                 total_content_length += len(content)
 
                 # Aggregate metadata
                 if item.source:
-                    context['sources'].append(item.source)
-                context['symbols_mentioned'].update(item.symbols)
-                context['sectors_mentioned'].update(item.sectors)
-                context['knowledge_types'].add(item.knowledge_type.value)
+                    context["sources"].append(item.source)
+                context["symbols_mentioned"].update(item.symbols)
+                context["sectors_mentioned"].update(item.sectors)
+                context["knowledge_types"].add(item.knowledge_type.value)
 
                 # Track time range
-                if context['time_range']['earliest'] is None or item.timestamp < datetime.fromisoformat(context['time_range']['earliest']):
-                    context['time_range']['earliest'] = item.timestamp.isoformat()
-                if context['time_range']['latest'] is None or item.timestamp > datetime.fromisoformat(context['time_range']['latest']):
-                    context['time_range']['latest'] = item.timestamp.isoformat()
+                if context["time_range"][
+                    "earliest"
+                ] is None or item.timestamp < datetime.fromisoformat(
+                    context["time_range"]["earliest"]
+                ):
+                    context["time_range"]["earliest"] = item.timestamp.isoformat()
+                if context["time_range"][
+                    "latest"
+                ] is None or item.timestamp > datetime.fromisoformat(
+                    context["time_range"]["latest"]
+                ):
+                    context["time_range"]["latest"] = item.timestamp.isoformat()
 
             # Convert sets to lists for JSON serialization
-            context['sources'] = list(set(context['sources']))
-            context['symbols_mentioned'] = list(context['symbols_mentioned'])
-            context['sectors_mentioned'] = list(context['sectors_mentioned'])
-            context['knowledge_types'] = list(context['knowledge_types'])
+            context["sources"] = list(set(context["sources"]))
+            context["symbols_mentioned"] = list(context["symbols_mentioned"])
+            context["sectors_mentioned"] = list(context["sectors_mentioned"])
+            context["knowledge_types"] = list(context["knowledge_types"])
 
             return context
 
         except Exception as e:
             logger.error("Failed to build context from knowledge", error=str(e))
-            return {'relevant_information': [], 'error': str(e)}
+            return {"relevant_information": [], "error": str(e)}
 
-    async def enhanced_analysis(self, analysis_request: AnalysisRequest) -> AnalysisResponse:
+    async def enhanced_analysis(
+        self, analysis_request: AnalysisRequest
+    ) -> AnalysisResponse:
         """
         Perform enhanced analysis using RAG
 
@@ -1008,7 +1106,9 @@ class RAGProcessor:
         """
         try:
             if not self.gemma3_client:
-                raise RagProcessorError("Gemma3 client not available for enhanced analysis")
+                raise RagProcessorError(
+                    "Gemma3 client not available for enhanced analysis"
+                )
 
             # Augment request with knowledge
             enhanced_request = await self.augment_analysis(analysis_request)
@@ -1018,9 +1118,11 @@ class RAGProcessor:
 
             # Add RAG metadata to response
             if response.metadata:
-                response.metadata['rag_enhanced'] = True
-                if 'knowledge_metadata' in (enhanced_request.context or {}):
-                    response.metadata.update(enhanced_request.context['knowledge_metadata'])
+                response.metadata["rag_enhanced"] = True
+                if "knowledge_metadata" in (enhanced_request.context or {}):
+                    response.metadata.update(
+                        enhanced_request.context["knowledge_metadata"]
+                    )
 
             return response
 
@@ -1037,66 +1139,70 @@ class RAGProcessor:
         try:
             ingestion_success_rate = (
                 self.successful_ingestions / self.total_ingestions
-                if self.total_ingestions > 0 else 0.0
+                if self.total_ingestions > 0
+                else 0.0
             )
 
             retrieval_success_rate = (
                 self.successful_retrievals / self.total_retrievals
-                if self.total_retrievals > 0 else 0.0
+                if self.total_retrievals > 0
+                else 0.0
             )
 
             return {
-                'ingestion': {
-                    'total_ingestions': self.total_ingestions,
-                    'successful_ingestions': self.successful_ingestions,
-                    'success_rate': ingestion_success_rate
+                "ingestion": {
+                    "total_ingestions": self.total_ingestions,
+                    "successful_ingestions": self.successful_ingestions,
+                    "success_rate": ingestion_success_rate,
                 },
-                'retrieval': {
-                    'total_retrievals': self.total_retrievals,
-                    'successful_retrievals': self.successful_retrievals,
-                    'success_rate': retrieval_success_rate,
-                    'average_retrieval_time_ms': self.average_retrieval_time
+                "retrieval": {
+                    "total_retrievals": self.total_retrievals,
+                    "successful_retrievals": self.successful_retrievals,
+                    "success_rate": retrieval_success_rate,
+                    "average_retrieval_time_ms": self.average_retrieval_time,
                 },
-                'database': {
-                    'total_items': self.vector_db.get_item_count() if self.vector_db else 0,
-                    'database_path': self.db_path
+                "database": {
+                    "total_items": (
+                        self.vector_db.get_item_count() if self.vector_db else 0
+                    ),
+                    "database_path": self.db_path,
                 },
-                'configuration': {
-                    'embedding_model': self.model_name,
-                    'max_context_length': self.max_context_length,
-                    'default_top_k': self.default_top_k
-                }
+                "configuration": {
+                    "embedding_model": self.model_name,
+                    "max_context_length": self.max_context_length,
+                    "default_top_k": self.default_top_k,
+                },
             }
 
         except Exception as e:
             logger.error("Failed to get performance metrics", error=str(e))
-            return {'error': str(e)}
+            return {"error": str(e)}
 
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on RAG processor"""
         try:
             health = {
-                'status': 'healthy',
-                'components': {},
-                'timestamp': datetime.utcnow().isoformat()
+                "status": "healthy",
+                "components": {},
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
             # Check vector database
             try:
                 if self.vector_db:
                     item_count = self.vector_db.get_item_count()
-                    health['components']['vector_database'] = {
-                        'status': 'healthy',
-                        'item_count': item_count
+                    health["components"]["vector_database"] = {
+                        "status": "healthy",
+                        "item_count": item_count,
                     }
                 else:
-                    health['components']['vector_database'] = {
-                        'status': 'not_initialized'
+                    health["components"]["vector_database"] = {
+                        "status": "not_initialized"
                     }
             except Exception as e:
-                health['components']['vector_database'] = {
-                    'status': 'unhealthy',
-                    'error': str(e)
+                health["components"]["vector_database"] = {
+                    "status": "unhealthy",
+                    "error": str(e),
                 }
 
             # Check embedding model
@@ -1104,51 +1210,52 @@ class RAGProcessor:
                 if self.embedding_model:
                     # Test embedding generation
                     test_embedding = await asyncio.get_event_loop().run_in_executor(
-                        self.executor,
-                        self.embedding_model.encode,
-                        ["test"]
+                        self.executor, self.embedding_model.encode, ["test"]
                     )
-                    health['components']['embedding_model'] = {
-                        'status': 'healthy',
-                        'model_name': self.model_name,
-                        'embedding_dimension': len(test_embedding[0])
+                    health["components"]["embedding_model"] = {
+                        "status": "healthy",
+                        "model_name": self.model_name,
+                        "embedding_dimension": len(test_embedding[0]),
                     }
                 else:
-                    health['components']['embedding_model'] = {
-                        'status': 'not_initialized'
+                    health["components"]["embedding_model"] = {
+                        "status": "not_initialized"
                     }
             except Exception as e:
-                health['components']['embedding_model'] = {
-                    'status': 'unhealthy',
-                    'error': str(e)
+                health["components"]["embedding_model"] = {
+                    "status": "unhealthy",
+                    "error": str(e),
                 }
 
             # Check Gemma3 client
             if self.gemma3_client:
                 gemma3_health = await self.gemma3_client.health_check()
-                health['components']['gemma3_client'] = gemma3_health
+                health["components"]["gemma3_client"] = gemma3_health
             else:
-                health['components']['gemma3_client'] = {
-                    'status': 'not_configured'
-                }
+                health["components"]["gemma3_client"] = {"status": "not_configured"}
 
             # Determine overall status
-            component_statuses = [comp.get('status') for comp in health['components'].values()]
-            if any(status == 'unhealthy' for status in component_statuses):
-                health['status'] = 'unhealthy'
-            elif any(status in ['not_initialized', 'not_configured'] for status in component_statuses):
-                health['status'] = 'degraded'
+            component_statuses = [
+                comp.get("status") for comp in health["components"].values()
+            ]
+            if any(status == "unhealthy" for status in component_statuses):
+                health["status"] = "unhealthy"
+            elif any(
+                status in ["not_initialized", "not_configured"]
+                for status in component_statuses
+            ):
+                health["status"] = "degraded"
 
             # Add performance metrics
-            health['metrics'] = self.get_performance_metrics()
+            health["metrics"] = self.get_performance_metrics()
 
             return health
 
         except Exception as e:
             return {
-                'status': 'unhealthy',
-                'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
 
@@ -1163,21 +1270,27 @@ async def ingest_market_knowledge(items: List[KnowledgeItem]) -> Dict[str, Any]:
         return await rag_processor.ingest_knowledge(items)
 
 
-async def retrieve_market_knowledge(query: str, knowledge_types: List[KnowledgeType] = None,
-                                    symbols: List[str] = None, max_results: int = 5) -> RetrievalResult:
+async def retrieve_market_knowledge(
+    query: str,
+    knowledge_types: List[KnowledgeType] = None,
+    symbols: List[str] = None,
+    max_results: int = 5,
+) -> RetrievalResult:
     """Retrieve market knowledge"""
     retrieval_query = RetrievalQuery(
         query_text=query,
         knowledge_types=knowledge_types,
         symbols=symbols,
-        max_results=max_results
+        max_results=max_results,
     )
 
     async with rag_processor:
         return await rag_processor.retrieve_knowledge(retrieval_query)
 
 
-async def enhanced_market_analysis(analysis_request: AnalysisRequest) -> AnalysisResponse:
+async def enhanced_market_analysis(
+    analysis_request: AnalysisRequest,
+) -> AnalysisResponse:
     """Perform enhanced market analysis with RAG"""
     from .gemma3_integration import gemma3_client
 
@@ -1205,7 +1318,7 @@ async def example_usage():
             symbols=["BANKNIFTY"],
             sectors=["Banking"],
             tags=["bullish", "rsi", "uptrend"],
-            metadata={"analyst": "NIRAJ", "confidence": 0.85}
+            metadata={"analyst": "NIRAJ", "confidence": 0.85},
         ),
         KnowledgeItem(
             id="news_002",
@@ -1215,8 +1328,8 @@ async def example_usage():
             symbols=["BANKNIFTY", "SBIN", "HDFCBANK"],
             sectors=["Banking"],
             tags=["rbi", "policy", "interest_rates"],
-            metadata={"source": "Economic Times"}
-        )
+            metadata={"source": "Economic Times"},
+        ),
     ]
 
     async with rag_processor:
@@ -1228,7 +1341,7 @@ async def example_usage():
         retrieval_query = RetrievalQuery(
             query_text="Bank Nifty technical analysis",
             symbols=["BANKNIFTY"],
-            max_results=5
+            max_results=5,
         )
 
         retrieval_result = await rag_processor.retrieve_knowledge(retrieval_query)
@@ -1243,8 +1356,8 @@ async def example_usage():
                 input_data={
                     "symbol": "BANKNIFTY",
                     "current_price": 45250.0,
-                    "indicators": {"rsi": 68.5, "macd": 0.15}
-                }
+                    "indicators": {"rsi": 68.5, "macd": 0.15},
+                },
             )
 
             enhanced_response = await rag_processor.enhanced_analysis(analysis_request)
@@ -1252,7 +1365,7 @@ async def example_usage():
 
         # Health check
         health = await rag_processor.health_check()
-        print("Health Status:", health['status'])
+        print("Health Status:", health["status"])
 
         # Performance metrics
         metrics = rag_processor.get_performance_metrics()

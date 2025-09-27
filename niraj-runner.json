@@ -1,0 +1,51 @@
+{
+  "services": {
+    "redis": {
+      "command": ["redis-server", "--daemonize", "yes"],
+      "cwd": ".",
+      "env": {},
+      "startup_time": 2,
+      "color": "red"
+    },
+    "ollama": {
+      "command": ["ollama", "serve"],
+      "cwd": ".",
+      "env": {},
+      "startup_time": 5,
+      "color": "green"
+    },
+    "backend": {
+      "command": ["poetry", "run", "uvicorn", "src.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "backend",
+      "env": {"PYTHONPATH": "src"},
+      "health_check_url": "http://localhost:8000/health",
+      "startup_time": 10,
+      "color": "blue"
+    },
+    "frontend": {
+      "command": ["npm", "run", "dev"],
+      "cwd": "frontend",
+      "env": {},
+      "health_check_url": "http://localhost:5173",
+      "startup_time": 15,
+      "color": "cyan"
+    }
+  },
+  "environments": {
+    "development": {
+      "backend": {
+        "command": ["poetry", "run", "uvicorn", "src.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+      }
+    },
+    "production": {
+      "backend": {
+        "command": ["poetry", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+      }
+    },
+    "testing": {
+      "backend": {
+        "command": ["poetry", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
+      }
+    }
+  }
+}

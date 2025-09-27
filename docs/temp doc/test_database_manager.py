@@ -11,7 +11,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import sys
-sys.path.append('/home/pranay/Music/niraj/backend')
+
+sys.path.append("/home/pranay/Music/niraj/backend")
 
 from src.core.database_manager import (
     AdvancedDatabaseManager,
@@ -24,7 +25,7 @@ from src.core.database_manager import (
     MigrationError,
     TransactionError,
     ValidationError,
-    IntegrityError
+    IntegrityError,
 )
 
 
@@ -64,9 +65,9 @@ class TestDatabaseManager:
 
         # Test pool status
         status = db_manager.connection_pool.get_pool_status()
-        assert 'pool_size' in status
-        assert 'checked_out' in status
-        assert 'is_healthy' in status
+        assert "pool_size" in status
+        assert "checked_out" in status
+        assert "is_healthy" in status
 
     async def test_database_initialization(self, db_manager):
         """Test database initialization"""
@@ -82,21 +83,21 @@ class TestDatabaseManager:
         """Test comprehensive health check"""
         health_status = await db_manager.health_check()
 
-        assert 'timestamp' in health_status
-        assert 'database_url' in health_status
-        assert 'connection_pool' in health_status
-        assert 'is_healthy' in health_status
-        assert 'response_time_ms' in health_status
+        assert "timestamp" in health_status
+        assert "database_url" in health_status
+        assert "connection_pool" in health_status
+        assert "is_healthy" in health_status
+        assert "response_time_ms" in health_status
 
     async def test_database_info(self, db_manager):
         """Test database information retrieval"""
         try:
             info = await db_manager.get_database_info()
 
-            assert 'database_version' in info
-            assert 'total_tables' in info
-            assert 'table_names' in info
-            assert 'connection_pool_status' in info
+            assert "database_version" in info
+            assert "total_tables" in info
+            assert "table_names" in info
+            assert "connection_pool_status" in info
 
         except Exception as e:
             # Expected if no tables exist yet
@@ -143,11 +144,7 @@ class TestConnectionPool:
 
     def test_connection_pool_initialization(self, temp_db_url):
         """Test connection pool initialization"""
-        pool = ConnectionPool(
-            database_url=temp_db_url,
-            pool_size=5,
-            max_overflow=10
-        )
+        pool = ConnectionPool(database_url=temp_db_url, pool_size=5, max_overflow=10)
 
         assert pool.database_url == temp_db_url
         assert pool.pool_size == 5
@@ -167,7 +164,7 @@ class TestConnectionPool:
         engine = pool.get_async_engine()
 
         assert engine is not None
-        assert 'aiosqlite' in str(engine.url)
+        assert "aiosqlite" in str(engine.url)
 
     async def test_health_check(self, temp_db_url):
         """Test connection pool health check"""
@@ -251,19 +248,19 @@ class TestDatabaseHealthMonitor:
     def test_health_monitor_initialization(self, health_monitor):
         """Test health monitor initialization"""
         assert isinstance(health_monitor, DatabaseHealthMonitor)
-        assert 'connection_count' in health_monitor.metrics
-        assert 'query_count' in health_monitor.metrics
-        assert 'error_count' in health_monitor.metrics
+        assert "connection_count" in health_monitor.metrics
+        assert "query_count" in health_monitor.metrics
+        assert "error_count" in health_monitor.metrics
 
     def test_get_health_status(self, health_monitor):
         """Test health status retrieval"""
         status = health_monitor.get_health_status()
 
-        assert 'is_healthy' in status
-        assert 'uptime_seconds' in status
-        assert 'connection_pool' in status
-        assert 'metrics' in status
-        assert 'timestamp' in status
+        assert "is_healthy" in status
+        assert "uptime_seconds" in status
+        assert "connection_pool" in status
+        assert "metrics" in status
+        assert "timestamp" in status
 
     def test_monitoring_control(self, health_monitor):
         """Test start/stop monitoring"""
@@ -304,7 +301,9 @@ async def run_basic_tests():
         print("\n5. Testing Migration Manager...")
         await manager.migration_manager.initialize_migration_table()
         applied_migrations = await manager.migration_manager.get_applied_migrations()
-        print(f"✓ Migration system initialized: {len(applied_migrations)} migrations applied")
+        print(
+            f"✓ Migration system initialized: {len(applied_migrations)} migrations applied"
+        )
 
         # Test 6: Database info
         print("\n6. Testing Database Information...")
@@ -342,6 +341,7 @@ async def run_basic_tests():
     finally:
         # Clean up temp directory
         import shutil
+
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -350,9 +350,9 @@ if __name__ == "__main__":
     result = asyncio.run(run_basic_tests())
 
     if result:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("NIRAJ ADVANCED DATABASE MANAGER - IMPLEMENTATION COMPLETE")
-        print("="*60)
+        print("=" * 60)
         print("\n✅ Features Implemented:")
         print("  • Advanced Connection Pooling with Health Monitoring")
         print("  • Comprehensive Error Handling and Recovery")

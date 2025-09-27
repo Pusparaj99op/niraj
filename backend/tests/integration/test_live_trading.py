@@ -26,44 +26,51 @@ from sqlalchemy.orm import Session
 
 class TradingMode(Enum):
     """Trading mode enumeration"""
+
     PAPER = "paper"
     LIVE = "live"
 
 
 class LiveTradingError(Exception):
     """Base exception for live trading errors"""
+
     pass
 
 
 class InvalidPINError(LiveTradingError):
     """Raised when PIN validation fails"""
+
     pass
 
 
 class BrokerConnectionError(LiveTradingError):
     """Raised when broker API connection fails"""
+
     pass
 
 
 class InsufficientBalanceError(LiveTradingError):
     """Raised when live account has insufficient balance"""
+
     pass
 
 
 class RiskAcknowledgmentError(LiveTradingError):
     """Raised when risk acknowledgment is missing"""
+
     pass
 
 
 class ModeTransitionError(LiveTradingError):
     """Raised when mode transition fails"""
+
     pass
 
 
 class MockUser:
     """Mock User model for testing"""
-    def __init__(self, user_id: str = "test_user_001",
-                 email: str = "test@example.com"):
+
+    def __init__(self, user_id: str = "test_user_001", email: str = "test@example.com"):
         self.id = user_id
         self.email = email
         self.is_active = True
@@ -77,6 +84,7 @@ class MockUser:
 
 class MockBrokerAccount:
     """Mock broker account model"""
+
     def __init__(self, user_id: str, broker: str = "angel_one"):
         self.id = f"broker_{user_id}"
         self.user_id = user_id
@@ -89,6 +97,7 @@ class MockBrokerAccount:
 
 class MockAuditLog:
     """Mock audit log model"""
+
     def __init__(self, user_id: str, action: str, details: Dict[str, Any]):
         self.id = f"audit_{datetime.now().timestamp()}"
         self.user_id = user_id
@@ -165,7 +174,7 @@ class TestLiveTradingModeSwitch:
         mock_broker_account,
         live_trading_service,
         broker_service,
-        security_service
+        security_service,
     ):
         """Test successful switch from paper to live trading mode"""
 
@@ -184,9 +193,7 @@ class TestLiveTradingModeSwitch:
             assert not mock_user.live_trading_enabled
 
             # Step 2: PIN validation
-            pin_valid = await security_service.verify_pin(
-                mock_user.id, correct_pin
-            )
+            pin_valid = await security_service.verify_pin(mock_user.id, correct_pin)
             assert pin_valid is True
 
             # Step 3: Risk acknowledgment check
@@ -215,9 +222,7 @@ class TestLiveTradingModeSwitch:
             mock_user.last_mode_switch = datetime.now()
 
             result = await live_trading_service.switch_trading_mode(
-                mock_user.id,
-                TradingMode.LIVE,
-                pin=correct_pin
+                mock_user.id, TradingMode.LIVE, pin=correct_pin
             )
 
             # Step 7: Verify mode switch completed
@@ -231,8 +236,8 @@ class TestLiveTradingModeSwitch:
                 {
                     "from_mode": TradingMode.PAPER.value,
                     "to_mode": TradingMode.LIVE.value,
-                    "timestamp": datetime.now().isoformat()
-                }
+                    "timestamp": datetime.now().isoformat(),
+                },
             )
 
             print("✅ Successful live mode switch completed")
@@ -242,11 +247,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_invalid_pin_error_handling(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service,
-        security_service
+        self, mock_db_session, mock_user, live_trading_service, security_service
     ):
         """Test handling of invalid PIN during mode switch"""
 
@@ -261,9 +262,7 @@ class TestLiveTradingModeSwitch:
         try:
             # Attempt mode switch with invalid PIN
             with pytest.raises(InvalidPINError) as exc_info:
-                await live_trading_service.validate_pin(
-                    mock_user.id, incorrect_pin
-                )
+                await live_trading_service.validate_pin(mock_user.id, incorrect_pin)
 
             assert "Invalid PIN" in str(exc_info.value)
 
@@ -278,11 +277,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_broker_connection_failure(
-        self,
-        mock_db_session,
-        mock_user,
-        broker_service,
-        live_trading_service
+        self, mock_db_session, mock_user, broker_service, live_trading_service
     ):
         """Test handling of broker connection failures"""
 
@@ -294,9 +289,7 @@ class TestLiveTradingModeSwitch:
         try:
             with pytest.raises(BrokerConnectionError) as exc_info:
                 await broker_service.connect_to_broker(
-                    mock_user.id,
-                    "angel_one",
-                    {"api_key": "invalid_key"}
+                    mock_user.id, "angel_one", {"api_key": "invalid_key"}
                 )
 
             assert "Failed to connect" in str(exc_info.value)
@@ -311,11 +304,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_insufficient_balance_error(
-        self,
-        mock_db_session,
-        mock_user,
-        broker_service,
-        live_trading_service
+        self, mock_db_session, mock_user, broker_service, live_trading_service
     ):
         """Test handling of insufficient balance in live account"""
 
@@ -342,10 +331,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_missing_risk_acknowledgment(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service
+        self, mock_db_session, mock_user, live_trading_service
     ):
         """Test handling of missing risk acknowledgment"""
 
@@ -369,11 +355,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_mode_switch_rollback(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service,
-        broker_service
+        self, mock_db_session, mock_user, live_trading_service, broker_service
     ):
         """Test rollback functionality when mode switch fails"""
 
@@ -390,9 +372,7 @@ class TestLiveTradingModeSwitch:
                 await broker_service.verify_account(mock_user.id)
 
             # Execute rollback
-            await live_trading_service.rollback_mode_switch(
-                mock_user.id, original_mode
-            )
+            await live_trading_service.rollback_mode_switch(mock_user.id, original_mode)
 
             # Verify rollback completed
             mock_user.trading_mode = original_mode
@@ -408,10 +388,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_concurrent_mode_switch_prevention(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service
+        self, mock_db_session, mock_user, live_trading_service
     ):
         """Test prevention of concurrent mode switches"""
 
@@ -423,9 +400,7 @@ class TestLiveTradingModeSwitch:
             if switch_in_progress:
                 time_since_last = datetime.now() - mock_user.last_mode_switch
                 if time_since_last < timedelta(minutes=5):
-                    raise ModeTransitionError(
-                        "Mode switch already in progress"
-                    )
+                    raise ModeTransitionError("Mode switch already in progress")
 
         except ModeTransitionError as e:
             assert "already in progress" in str(e)
@@ -433,11 +408,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_live_to_paper_mode_switch(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service,
-        broker_service
+        self, mock_db_session, mock_user, live_trading_service, broker_service
     ):
         """Test switching from live back to paper trading mode"""
 
@@ -461,7 +432,7 @@ class TestLiveTradingModeSwitch:
             result = await live_trading_service.switch_trading_mode(
                 mock_user.id,
                 TradingMode.PAPER,
-                pin=None  # PIN not required for paper mode
+                pin=None,  # PIN not required for paper mode
             )
 
             # Step 4: Verify switch completed
@@ -477,10 +448,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_security_audit_logging(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service
+        self, mock_db_session, mock_user, live_trading_service
     ):
         """Test comprehensive security audit logging"""
 
@@ -501,7 +469,7 @@ class TestLiveTradingModeSwitch:
                 ("RISK_ACKNOWLEDGMENT", {"acknowledged": True}),
                 ("BROKER_CONNECTION", {"broker": "angel_one"}),
                 ("MODE_SWITCH_SUCCESS", {"new_mode": "live"}),
-                ("MODE_SWITCH_ROLLBACK", {"reason": "broker_error"})
+                ("MODE_SWITCH_ROLLBACK", {"reason": "broker_error"}),
             ]
 
             for action, details in security_events:
@@ -514,8 +482,8 @@ class TestLiveTradingModeSwitch:
 
             # Check specific audit log contents
             mode_switch_log = next(
-                (log for log in audit_events
-                 if log.action == "MODE_SWITCH_SUCCESS"), None
+                (log for log in audit_events if log.action == "MODE_SWITCH_SUCCESS"),
+                None,
             )
             assert mode_switch_log is not None
             assert mode_switch_log.details["new_mode"] == "live"
@@ -527,10 +495,7 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_pin_attempts_rate_limiting(
-        self,
-        mock_db_session,
-        mock_user,
-        security_service
+        self, mock_db_session, mock_user, security_service
     ):
         """Test rate limiting for PIN attempts"""
 
@@ -543,8 +508,7 @@ class TestLiveTradingModeSwitch:
 
             if attempt_count > max_attempts:
                 raise InvalidPINError(
-                    f"Too many PIN attempts: {attempt_count}. "
-                    f"Account locked."
+                    f"Too many PIN attempts: {attempt_count}. " f"Account locked."
                 )
 
             return pin == "1937"
@@ -557,9 +521,7 @@ class TestLiveTradingModeSwitch:
 
             for pin in invalid_pins:
                 try:
-                    result = await security_service.verify_pin(
-                        mock_user.id, pin
-                    )
+                    result = await security_service.verify_pin(mock_user.id, pin)
                     if not result and pin != "1937":
                         continue  # Expected failure
                 except InvalidPINError as e:
@@ -572,18 +534,14 @@ class TestLiveTradingModeSwitch:
 
     @pytest.mark.asyncio
     async def test_mode_switch_with_active_positions(
-        self,
-        mock_db_session,
-        mock_user,
-        live_trading_service,
-        broker_service
+        self, mock_db_session, mock_user, live_trading_service, broker_service
     ):
         """Test mode switch validation with active positions"""
 
         # Setup user with active paper positions
         active_positions = [
             {"symbol": "RELIANCE", "quantity": 10, "value": Decimal("25000")},
-            {"symbol": "TCS", "quantity": 5, "value": Decimal("19000")}
+            {"symbol": "TCS", "quantity": 5, "value": Decimal("19000")},
         ]
 
         try:
@@ -624,7 +582,7 @@ class TestLiveTradingModeSwitch:
                 "position_size_limit": Decimal("0.20"),  # 20% of portfolio
                 "pin_required": True,
                 "risk_acknowledgment_required": True,
-                "broker_connection_timeout": 30  # seconds
+                "broker_connection_timeout": 30,  # seconds
             }
 
             # Validate configuration
@@ -651,41 +609,35 @@ def create_mode_switch_scenario(scenario_name: str) -> Dict[str, Any]:
             "balance": Decimal("50000.00"),
             "risk_acknowledged": True,
             "broker_connected": True,
-            "expected_outcome": "success"
+            "expected_outcome": "success",
         },
-
         "invalid_pin": {
             "pin": "0000",
             "balance": Decimal("50000.00"),
             "risk_acknowledged": True,
             "broker_connected": True,
-            "expected_outcome": "invalid_pin_error"
+            "expected_outcome": "invalid_pin_error",
         },
-
         "insufficient_balance": {
             "pin": "1937",
             "balance": Decimal("500.00"),
             "risk_acknowledged": True,
             "broker_connected": True,
-            "expected_outcome": "insufficient_balance_error"
+            "expected_outcome": "insufficient_balance_error",
         },
-
         "broker_connection_failure": {
             "pin": "1937",
             "balance": Decimal("50000.00"),
             "risk_acknowledged": True,
             "broker_connected": False,
-            "expected_outcome": "broker_connection_error"
-        }
+            "expected_outcome": "broker_connection_error",
+        },
     }
 
     return scenarios.get(scenario_name, {})
 
 
-def validate_mode_switch_state(
-    user: MockUser,
-    expected_mode: TradingMode
-) -> bool:
+def validate_mode_switch_state(user: MockUser, expected_mode: TradingMode) -> bool:
     """Validate user state after mode switch"""
 
     try:
@@ -712,12 +664,12 @@ if __name__ == "__main__":
 
     # Run pytest with verbose output
     import subprocess
-    result = subprocess.run([
-        "python", "-m", "pytest",
-        __file__,
-        "-v",
-        "--tb=short"
-    ], capture_output=True, text=True)
+
+    result = subprocess.run(
+        ["python", "-m", "pytest", __file__, "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+    )
 
     print(result.stdout)
     if result.stderr:
