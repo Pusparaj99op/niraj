@@ -1,0 +1,99 @@
+./backend/src/services/portfolio_service.py:8:1: F401 'uuid' imported but unused
+./backend/src/services/strategy_service.py:8:1: F401 'uuid' imported but unused
+./backend/src/services/system_service.py:8:1: F401 'asyncio' imported but unused
+./backend/src/services/system_service.py:611:13: F401 '..core.execution_engine.ExecutionEngine' imported but unused
+./backend/src/strategies/psychological/fear_exploiter.py:15:1: F401 'datetime.timedelta' imported but unused
+./backend/src/strategies/psychological/fear_exploiter.py:16:1: F401 'typing.Tuple' imported but unused
+./backend/src/strategies/psychological/fear_exploiter.py:22:1: F401 'numpy as np' imported but unused
+./backend/src/utils/cache_optimizer.py:17:1: F401 'hashlib' imported but unused
+./backend/src/utils/cache_optimizer.py:18:1: F401 'json' imported but unused
+./backend/src/utils/cache_optimizer.py:22:1: F401 'contextlib.asynccontextmanager' imported but unused
+./backend/src/utils/cache_optimizer.py:25:1: F401 'typing.Union' imported but unused
+./backend/src/utils/cache_optimizer.py:26:1: F401 'weakref' imported but unused
+./backend/src/utils/cache_optimizer.py:29:1: F401 'gc' imported but unused
+./backend/src/utils/cache_optimizer.py:33:1: F401 '..core.cache.RedisCache' imported but unused
+./backend/src/utils/database_optimizer.py:22:1: F401 'collections.deque' imported but unused
+./backend/src/utils/database_optimizer.py:26:1: F401 'typing.Tuple' imported but unused
+./backend/src/utils/database_optimizer.py:26:1: F401 'typing.Union' imported but unused
+./backend/src/utils/database_optimizer.py:27:1: F401 'sqlite3' imported but unused
+./backend/src/utils/database_optimizer.py:32:1: F401 'sqlalchemy.inspect' imported but unused
+./backend/src/utils/database_optimizer.py:35:1: F401 'sqlalchemy.orm.Session' imported but unused
+./backend/src/utils/database_optimizer.py:36:1: F401 'sqlalchemy.exc.SQLAlchemyError' imported but unused
+./backend/src/utils/database_optimizer.py:40:1: F401 '..utils.performance_monitor.get_performance_manager' imported but unused
+./backend/src/utils/load_testing.py:28:1: F401 'collections.deque' imported but unused
+./backend/src/utils/load_testing.py:31:1: F401 'typing.Callable' imported but unused
+./backend/src/utils/load_testing.py:31:1: F401 'typing.Tuple' imported but unused
+./backend/src/utils/load_testing.py:32:1: F401 'concurrent.futures' imported but unused
+./backend/src/utils/load_testing.py:35:1: F401 'string' imported but unused
+./backend/test_dhan_client.py:9:1: F401 'os' imported but unused
+./backend/tests/contract/test_strategies_backtest.py:13:1: F401 'datetime.date' imported but unused
+./backend/tests/contract/test_strategies_backtest.py:13:1: F401 'datetime.datetime' imported but unused
+./backend/tests/contract/test_strategies_backtest.py:14:1: F401 'decimal.Decimal' imported but unused
+./backend/tests/integration/test_frontend_integration.py:22:1: F401 'datetime.timedelta' imported but unused
+./backend/tests/integration/test_frontend_integration.py:24:1: F401 'typing.Optional' imported but unused
+./backend/tests/integration/test_frontend_integration.py:24:1: F401 'typing.Union' imported but unused
+./backend/tests/integration/test_frontend_integration.py:25:1: F401 'unittest.mock.MagicMock' imported but unused
+./backend/tests/integration/test_news_client.py:8:1: F401 'datetime.timedelta' imported but unused
+./backend/tests/integration/test_news_client.py:17:1: F401 'api.news_client.NewsAPIConfig' imported but unused
+./backend/tests/integration/test_news_client.py:17:1: F401 'api.news_client.RSSFeedConfig' imported but unused
+./backend/tests/integration/test_news_client.py:17:1: F401 'api.news_client.NetworkError' imported but unused
+./backend/tests/integration/test_system_startup.py:22:1: F401 'threading' imported but unused
+./backend/tests/integration/test_system_startup.py:24:1: F401 'decimal.Decimal' imported but unused
+./backend/tests/integration/test_system_startup.py:25:1: F401 'typing.List' imported but unused
+./backend/tests/integration/test_system_startup.py:29:1: F401 'uuid' imported but unused
+./backend/tests/integration/test_system_startup.py:30:1: F401 'os' imported but unused
+./backend/tests/integration/test_system_startup.py:31:1: F401 'sys' imported but unused
+./backend/tests/integration/test_system_startup.py:35:1: F401 'sqlalchemy.create_engine' imported but unused
+./backend/tests/integration/test_system_startup.py:36:1: F401 'redis' imported but unused
+./backend/tests/integration/test_weather_integration.py:16:1: F401 'api.weather_client.WeatherUnits' imported but unused
+./backend/tests/integration/test_weather_integration.py:16:1: F401 'api.weather_client.WeatherError' imported but unused
+./backend/tests/unit/test_angel_one_client.py:7:1: F401 'asyncio' imported but unused
+./backend/tests/unit/test_angel_one_client.py:10:1: F401 'json' imported but unused
+./backend/tests/unit/test_angel_one_client.py:14:1: F401 'src.api.angel_one_client.AngelOneError' imported but unused
+./backend/tests/unit/test_news_client.py:7:1: F401 'json' imported but unused
+./backend/tests/unit/test_news_client.py:11:1: F401 'typing.Dict' imported but unused
+./backend/tests/unit/test_news_client.py:11:1: F401 'typing.Any' imported but unused
+./backend/tests/unit/test_news_client.py:11:1: F401 'typing.List' imported but unused
+./backend/tests/unit/test_news_client.py:14:1: F401 'feedparser' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.NewsAPIConfig' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.RSSFeedConfig' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.FinancialModelingPrepConfig' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.NewsError' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.ValidationError' imported but unused
+./backend/tests/unit/test_news_client.py:22:1: F401 'src.api.news_client.ParsingError' imported but unused
+./backend/tests/unit/test_rag_processor.py:12:1: F401 'json' imported but unused
+./backend/tests/unit/test_rag_processor.py:13:1: F401 'datetime.datetime' imported but unused
+./backend/tests/unit/test_rag_processor.py:13:1: F401 'datetime.timedelta' imported but unused
+./backend/tests/unit/test_rag_processor.py:15:1: F401 'typing.List' imported but unused
+./backend/tests/unit/test_rag_processor.py:15:1: F401 'typing.Dict' imported but unused
+./backend/tests/unit/test_rag_processor.py:15:1: F401 'typing.Any' imported but unused
+./backend/tests/unit/test_rag_processor.py:17:1: F401 'src.ai.rag_processor.VectorDatabaseError' imported but unused
+./backend/tests/unit/test_rag_processor.py:17:1: F401 'src.ai.rag_processor.EmbeddingError' imported but unused
+./backend/tests/unit/test_rag_processor.py:17:1: F401 'src.ai.rag_processor.RetrievalError' imported but unused
+./backend/tests/unit/test_rag_processor.py:17:1: F401 'src.ai.rag_processor.IngestionError' imported but unused
+./backend/tests/unit/test_weather_client.py:9:1: F401 'datetime.timedelta' imported but unused
+./backend/tests/unit/test_weather_client.py:18:1: F401 'src.api.weather_client.WeatherAlert' imported but unused
+./backend/tests/unit/test_weather_client.py:18:1: F401 'src.api.weather_client.RateLimitError' imported but unused
+./backend/tests/unit/test_weather_client.py:18:1: F401 'src.api.weather_client.ValidationError' imported but unused
+./backend/validate_angel_one.py:151:5: F401 'src.api.angel_one_client.ValidationError' imported but unused
+./backend/validate_direct.py:8:1: F401 'os' imported but unused
+./demo_news_client.py:7:1: F401 'sys' imported but unused
+./demo_news_client.py:8:1: F401 'os' imported but unused
+./demo_news_client.py:9:1: F401 'datetime.datetime' imported but unused
+./demo_news_client.py:9:1: F401 'datetime.timedelta' imported but unused
+./docs/temp doc/test_database_manager.py:10:1: F401 'pathlib.Path' imported but unused
+./docs/temp doc/test_database_manager.py:11:1: F401 'unittest.mock.Mock' imported but unused
+./docs/temp doc/test_database_manager.py:11:1: F401 'unittest.mock.patch' imported but unused
+./docs/temp doc/test_database_manager.py:17:1: F401 'src.core.database_manager.ConnectionError' imported but unused
+./docs/temp doc/test_database_manager.py:17:1: F401 'src.core.database_manager.MigrationError' imported but unused
+./docs/temp doc/test_database_manager.py:17:1: F401 'src.core.database_manager.TransactionError' imported but unused
+./docs/temp doc/test_database_manager.py:17:1: F401 'src.core.database_manager.ValidationError' imported but unused
+./docs/temp doc/test_database_manager.py:17:1: F401 'src.core.database_manager.IntegrityError' imported but unused
+./fetch_banknifty.py:6:1: F401 'json' imported but unused
+./fetch_banknifty.py:7:1: F401 'time' imported but unused
+./fetch_banknifty.py:8:1: F401 'datetime.datetime' imported but unused
+./fetch_banknifty.py:8:1: F401 'datetime.timedelta' imported but unused
+./fetch_banknifty.py:9:1: F401 'hashlib' imported but unused
+./validate_t065.py:17:1: F401 'backend.src.core.information_processor.AlertSeverity' imported but unused
+./validate_t065.py:17:1: F401 'backend.src.core.information_processor.StreamData' imported but unused
+./validate_t065.py:17:1: F401 'backend.src.core.information_processor.SystemAlert' imported but unused

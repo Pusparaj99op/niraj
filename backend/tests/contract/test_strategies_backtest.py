@@ -10,8 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 import uuid
-from datetime import date, datetime
-from decimal import Decimal
 
 
 class TestStrategiesBacktestContract:

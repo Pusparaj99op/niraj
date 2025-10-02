@@ -5,7 +5,6 @@ Provides comprehensive strategy management including CRUD operations,
 validation, backtesting, and performance tracking.
 """
 
-import uuid
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Dict, Any, List, Optional, Tuple

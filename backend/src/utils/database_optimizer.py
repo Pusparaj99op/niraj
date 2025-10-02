@@ -19,25 +19,22 @@ import hashlib
 import json
 import time
 import threading
-from collections import defaultdict, deque
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-import sqlite3
+from typing import Any, Dict, List, Optional, Set
 import pickle
 import zlib
 
 # SQLAlchemy imports
-from sqlalchemy import create_engine, text, event, inspect
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool, QueuePool
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 
 # Internal imports
 from ..utils.logger import get_structured_logger
-from ..utils.performance_monitor import get_performance_manager
 from ..core.cache import CacheManager
 
 logger = get_structured_logger(__name__)
@@ -286,8 +283,6 @@ class QueryAnalyzer:
 
         # Track column usage patterns
         where_columns = defaultdict(int)
-        join_columns = defaultdict(int)
-        order_columns = defaultdict(int)
 
         total_executions = 0
         slow_query_time = 0

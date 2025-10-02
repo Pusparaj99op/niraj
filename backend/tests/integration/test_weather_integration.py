@@ -8,17 +8,10 @@ import asyncio
 import os
 from datetime import datetime
 
-# Add path for imports
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
-
-from api.weather_client import (
+from ...src.api.weather_client import (
     WeatherClient,
     WeatherConfig,
     LocationQuery,
-    WeatherUnits,
-    WeatherError,
     AuthenticationError,
     DataNotFoundError,
     get_weather_for_trading,

@@ -46,6 +46,7 @@ import {
   Filler,
   ArcElement,
 } from 'chart.js';
+import type { TooltipItem } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
@@ -255,13 +256,13 @@ const PerformanceChart: React.FC<{
         backgroundColor: 'rgba(107, 114, 128, 0.1)',
         fill: false,
         tension: 0.4,
-      } as any);
+      });
     }
 
     return { datasets };
   }, [data, chartType, showBenchmark]);
 
-  const options: any = {
+  const options = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -276,9 +277,9 @@ const PerformanceChart: React.FC<{
         mode: 'index' as const,
         intersect: false,
         callbacks: {
-          label: (context: any) => {
+          label: (context: TooltipItem<'line' | 'bar'>) => {
             const value = context.parsed.y;
-            return `${context.dataset.label}: ${formatPercentage(value / 100)}`;
+            return `${context.dataset.label || ''}: ${formatPercentage(value / 100)}`;
           },
         },
       },
@@ -287,7 +288,7 @@ const PerformanceChart: React.FC<{
       x: {
         type: 'time' as const,
         time: {
-          unit: (timeframe === 'day' ? 'hour' : 'day') as any,
+          unit: (timeframe === 'day' ? 'hour' : 'day') as 'hour' | 'day',
         },
         title: {
           display: true,
@@ -300,7 +301,7 @@ const PerformanceChart: React.FC<{
           text: 'Cumulative Return (%)',
         },
         ticks: {
-          callback: (value: any) => formatPercentage(value / 100),
+          callback: (value: string | number) => formatPercentage(Number(value) / 100),
         },
       },
     },
@@ -1068,7 +1069,7 @@ const StrategyPerformance: React.FC<StrategyPerformanceProps> = ({
           {/* Timeframe filter */}
           <select
             value={filters.timeframe}
-            onChange={(e) => setFilters(prev => ({ ...prev, timeframe: e.target.value as any }))}
+            onChange={(e) => setFilters(prev => ({ ...prev, timeframe: e.target.value as 'day' | 'week' | 'month' | 'quarter' | 'year' | 'ytd' | 'all' }))}
             className="border rounded px-3 py-1 text-sm"
             title="Select timeframe"
           >
@@ -1238,7 +1239,7 @@ const StrategyPerformance: React.FC<StrategyPerformanceProps> = ({
               <div className="flex items-center space-x-3">
                 <select
                   value={chartType}
-                  onChange={(e) => setChartType(e.target.value as any)}
+                  onChange={(e) => setChartType(e.target.value as 'line' | 'bar' | 'area')}
                   className="border rounded px-3 py-1 text-sm"
                   title="Select chart type"
                 >

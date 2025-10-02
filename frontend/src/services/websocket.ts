@@ -79,25 +79,25 @@ class WebSocketLogger {
     return levels[level] >= levels[this.logLevel];
   }
 
-  debug(...args: any[]): void {
+  debug(...args: unknown[]): void {
     if (this.shouldLog('debug')) {
       console.debug('[WebSocket]', ...args);
     }
   }
 
-  info(...args: any[]): void {
+  info(...args: unknown[]): void {
     if (this.shouldLog('info')) {
       console.info('[WebSocket]', ...args);
     }
   }
 
-  warn(...args: any[]): void {
+  warn(...args: unknown[]): void {
     if (this.shouldLog('warn')) {
       console.warn('[WebSocket]', ...args);
     }
   }
 
-  error(...args: any[]): void {
+  error(...args: unknown[]): void {
     if (this.shouldLog('error')) {
       console.error('[WebSocket]', ...args);
     }
@@ -756,7 +756,7 @@ export class AdvancedWebSocketService {
           break;
 
         default:
-          this.logger.warn('Unknown message type:', (message as any).type);
+          this.logger.warn('Unknown message type:', (message as { type?: string }).type);
       }
     } catch (error) {
       this.logger.error('Failed to parse WebSocket message:', error);

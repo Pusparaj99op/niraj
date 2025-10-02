@@ -90,7 +90,7 @@ const WebSocketTestComponent: React.FC = () => {
       const latest = tradeSignals[0];
       addLog(`New trade signal: ${latest.action} ${latest.symbol} (confidence: ${latest.confidence})`);
     }
-  }, [tradeSignals.length]);
+  }, [tradeSignals]);
 
   // Manual connection handlers
   const handleConnect = async () => {

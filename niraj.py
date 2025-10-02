@@ -23,15 +23,29 @@ import sys
 import time
 import threading
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Protocol, runtime_checkable, Mapping
 from dataclasses import dataclass
 
 try:
-    from colorama import Fore, Style, init
+    from colorama import Fore, Style, init  # type: ignore
 
     init(autoreset=True)
     COLORAMA_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
+    # Fallback objects so references to Fore/Style remain valid without colorama.
+    class _ColorFallback:
+        BLACK = RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = ""
+        RESET = RESET_ALL = ""
+
+    class _StyleFallback:
+        BRIGHT = NORMAL = DIM = RESET_ALL = ""
+
+    Fore = _ColorFallback()  # type: ignore
+    Style = _StyleFallback()  # type: ignore
+
+    def init(*_args: object, **_kwargs: object) -> None:  # type: ignore
+        return None
+
     COLORAMA_AVAILABLE = False
 
 # Project root
@@ -40,7 +54,10 @@ PROJECT_ROOT = Path(__file__).parent.absolute()
 
 @dataclass
 class ServiceConfig:
-    """Configuration for a service"""
+    """Configuration for a service.
+
+    color kept as plain string to simplify fallback when colorama not installed.
+    """
 
     name: str
     command: List[str]
@@ -49,7 +66,23 @@ class ServiceConfig:
     health_check_url: Optional[str] = None
     health_check_timeout: int = 30
     startup_time: int = 5
-    color: str = Fore.BLUE
+    color: str = getattr(Fore, "BLUE", "")
+
+
+@runtime_checkable
+class ProcessLike(Protocol):
+    """Subset of subprocess.Popen interface used by the runner."""
+    def poll(self) -> Optional[int]:  # noqa: D401
+        ...
+
+    def terminate(self) -> None:
+        ...
+
+    def kill(self) -> None:
+        ...
+
+    def wait(self, timeout: Optional[float] = None) -> Optional[int]:
+        ...
 
 
 class NirajRunner:
@@ -58,7 +91,8 @@ class NirajRunner:
     def __init__(self, mode: str = "development", config_file: Optional[str] = None):
         self.mode = mode
         self.config_file = config_file or "niraj-runner.json"
-        self.processes: Dict[str, subprocess.Popen] = {}
+        # May contain real Popen instances or lightweight stand‑ins.
+        self.processes: Dict[str, ProcessLike] = {}
         self.services: Dict[str, ServiceConfig] = {}
         self.monitoring_active = False
         self.monitor_thread: Optional[threading.Thread] = None
@@ -66,7 +100,7 @@ class NirajRunner:
         # Load configuration
         self.load_config()
 
-    def log(self, message: str, level: str = "info", service: str = ""):
+    def log(self, message: str, level: str = "info", service: str = "") -> None:
         """Log message with color coding"""
         timestamp = time.strftime("%H:%M:%S")
         prefix = f"[{timestamp}]"
@@ -92,7 +126,7 @@ class NirajRunner:
         else:
             print(f"{prefix}[{level.upper()}] {message}")
 
-    def load_config(self):
+    def load_config(self) -> None:
         """Load configuration from file or use defaults"""
         config_path = PROJECT_ROOT / self.config_file
 
@@ -219,14 +253,36 @@ class NirajRunner:
                 "magenta": Fore.MAGENTA,
             }
 
+            # Defensive extraction & validation (silent skip on invalid config).
+            command_val = service_data.get("command")
+            if not isinstance(command_val, list) or not all(isinstance(c, str) for c in command_val):
+                continue
+            cwd_val = service_data.get("cwd", ".")
+            if not isinstance(cwd_val, str):
+                cwd_val = str(cwd_val)
+            env_val = service_data.get("env", {})
+            env_clean: Dict[str, str] = {}
+            if isinstance(env_val, Mapping):
+                for k, v in env_val.items():
+                    if isinstance(k, str):
+                        env_clean[k] = str(v)
+            startup_time_val = service_data.get("startup_time", 5)
+            if not isinstance(startup_time_val, int):
+                try:
+                    startup_time_val = int(startup_time_val)  # type: ignore[arg-type]
+                except (ValueError, TypeError):
+                    startup_time_val = 5
+            color_key = service_data.get("color", "blue")
+            if not isinstance(color_key, str):
+                color_key = str(color_key)
             self.services[service_name] = ServiceConfig(
                 name=service_name,
-                command=service_data["command"],
-                cwd=PROJECT_ROOT / service_data["cwd"],
-                env=service_data["env"],
+                command=command_val,
+                cwd=PROJECT_ROOT / cwd_val,
+                env=env_clean,
                 health_check_url=service_data.get("health_check_url"),
-                startup_time=service_data["startup_time"],
-                color=color_map.get(service_data["color"], Fore.BLUE),
+                startup_time=startup_time_val,
+                color=color_map.get(color_key, getattr(Fore, "BLUE", "")),
             )
 
     def _merge_configs(
@@ -316,7 +372,7 @@ class NirajRunner:
         except Exception:
             return False
 
-    def set_environment(self):
+    def set_environment(self) -> None:
         """Set environment variables based on mode"""
         os.environ["ENVIRONMENT"] = self.mode
         os.environ["PYTHONPATH"] = str(PROJECT_ROOT / "backend" / "src")
@@ -336,15 +392,21 @@ class NirajRunner:
 
         self.log(f"🌍 Environment set to: {self.mode}", "info")
 
-    def _load_env_file(self, env_file: Path):
+    def _load_env_file(self, env_file: Path) -> None:
         """Load environment variables from .env file"""
         try:
             with open(env_file, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        key, value = line.split("=", 1)
-                        os.environ[key.strip()] = value.strip()
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    if not key:
+                        continue
+                    os.environ[key] = value.strip()
             self.log(f"📄 Loaded environment from {env_file}", "info")
         except Exception as e:
             self.log(f"Failed to load env file {env_file}: {e}", "warning")
@@ -364,18 +426,19 @@ class NirajRunner:
 
                 # Create a dummy process entry to track it
                 class DummyProcess:
+                    """Lightweight stand‑in for an already‑running system service."""
 
-                    def poll(self):
-                        return None  # Always return None (running)
+                    def poll(self) -> Optional[int]:
+                        return None
 
-                    def terminate(self):
-                        pass
+                    def terminate(self) -> None:  # no-op
+                        return None
 
-                    def kill(self):
-                        pass
+                    def kill(self) -> None:  # no-op
+                        return None
 
-                    def wait(self, timeout=None):
-                        pass
+                    def wait(self, timeout: Optional[float] = None) -> Optional[int]:  # noqa: D401,E501
+                        return None
 
                 self.processes[service_name] = DummyProcess()
                 return True
@@ -396,7 +459,7 @@ class NirajRunner:
             env.update(service.env)
 
             # Start process
-            self.processes[service_name] = subprocess.Popen(
+            popen_obj = subprocess.Popen(
                 service.command,
                 cwd=service.cwd,
                 env=env,
@@ -406,6 +469,7 @@ class NirajRunner:
                 bufsize=1,
                 universal_newlines=True,
             )
+            self.processes[service_name] = popen_obj
 
             # Wait for startup
             self.log(
@@ -415,7 +479,8 @@ class NirajRunner:
             time.sleep(service.startup_time)
 
             # Check if process is still running
-            if self.processes[service_name].poll() is None:
+            process_ref = self.processes[service_name]
+            if process_ref.poll() is None:
                 # Perform health check if configured
                 if self._check_service_health(service):
                     self.log(f"✅ {service_name} started successfully", "success")
@@ -425,8 +490,11 @@ class NirajRunner:
                     self.stop_service(service_name)
                     return False
             else:
-                stdout, _ = self.processes[service_name].communicate()
-                self.log(f"❌ {service_name} failed to start: {stdout}", "error")
+                if isinstance(process_ref, subprocess.Popen):
+                    stdout, _ = process_ref.communicate()
+                    self.log(f"❌ {service_name} failed to start: {stdout}", "error")
+                else:
+                    self.log(f"❌ {service_name} failed to start (unknown process type)", "error")
                 return False
 
         except Exception as e:
@@ -460,7 +528,7 @@ class NirajRunner:
         # If health check fails, assume service is healthy (for now)
         return True
 
-    def stop_service(self, service_name: str):
+    def stop_service(self, service_name: str) -> None:
         """Stop a specific service"""
         if service_name not in self.processes:
             self.log(f"Service {service_name} not running", "warning")
@@ -485,7 +553,7 @@ class NirajRunner:
         finally:
             del self.processes[service_name]
 
-    def stop_all(self):
+    def stop_all(self) -> None:
         """Stop all running processes"""
         self.log("🛑 Stopping all services...", "header")
 
@@ -494,7 +562,7 @@ class NirajRunner:
 
         self.log("✅ All services stopped", "success")
 
-    def show_status(self):
+    def show_status(self) -> None:
         """Show status of all services"""
         self.log("📊 Service Status", "header")
 
@@ -525,7 +593,7 @@ class NirajRunner:
         print()
         print()
 
-    def start_monitoring(self):
+    def start_monitoring(self) -> None:
         """Start monitoring thread"""
         self.monitoring_active = True
         self.monitor_thread = threading.Thread(
@@ -534,13 +602,13 @@ class NirajRunner:
         self.monitor_thread.start()
         self.log("👀 Service monitoring started", "info")
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """Stop monitoring thread"""
         self.monitoring_active = False
         if self.monitor_thread:
             self.monitor_thread.join(timeout=5)
 
-    def _monitor_services(self):
+    def _monitor_services(self) -> None:
         """Monitor running services"""
         while self.monitoring_active:
             for service_name, process in list(self.processes.items()):
@@ -550,7 +618,7 @@ class NirajRunner:
                     del self.processes[service_name]
             time.sleep(2)
 
-    def run(self, services_to_start: List[str]):
+    def run(self, services_to_start: List[str]) -> None:
         """Run the NIRAJ system"""
 
         self.log("🚀 Starting NIRAJ Trading System", "header")
@@ -596,7 +664,7 @@ class NirajRunner:
             self.stop_monitoring()
             self.stop_all()
 
-    def install_dependencies(self):
+    def install_dependencies(self) -> None:
         """Install project dependencies"""
         self.log("📦 Installing dependencies...", "header")
 

@@ -5,7 +5,7 @@ Redis setup for caching and real-time data storage
 
 import json
 import pickle
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, AsyncGenerator
 import os
 from contextlib import asynccontextmanager
 
@@ -53,8 +53,8 @@ class RedisCache:
 
     def __init__(self, redis_url: str = REDIS_URL):
         self.redis_url = redis_url
-        self.redis_pool = None
-        self.redis_client = None
+        self.redis_pool: Optional[redis.ConnectionPool] = None
+        self.redis_client: Optional[redis.Redis] = None
         self._connected = False
 
     async def connect(self):
@@ -93,16 +93,21 @@ class RedisCache:
         logger.info("Redis connection closed")
 
     @asynccontextmanager
-    async def get_connection(self):
+    async def get_connection(self) -> AsyncGenerator[redis.Redis, None]:
         """Get Redis connection context manager"""
         if not self._connected:
             await self.connect()
+
+        if self.redis_client is None:
+            raise RuntimeError("Redis client is not initialized")
 
         try:
             yield self.redis_client
         except redis.ConnectionError as e:
             logger.error("Redis connection error", error=str(e))
             await self.connect()  # Reconnect
+            if self.redis_client is None:
+                raise RuntimeError("Failed to reconnect to Redis")
             yield self.redis_client
 
     def _make_key(self, prefix: str, key: str) -> str:
@@ -122,19 +127,23 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             # Serialize value
-            if serialize == "json":
-                serialized_value = json.dumps(value, default=str)
-            elif serialize == "pickle":
-                serialized_value = pickle.dumps(value)
-            else:
-                serialized_value = str(value)
+            try:
+                if serialize == "json":
+                    serialized_value = json.dumps(value, default=str)
+                elif serialize == "pickle":
+                    serialized_value = pickle.dumps(value)
+                else:
+                    serialized_value = str(value)
+            except Exception as e:
+                logger.error("Serialization failed", key=key, serialize=serialize, error=str(e))
+                return False
 
             # Set TTL
             if ttl is None:
                 ttl = DEFAULT_TTL.get(prefix, DEFAULT_TTL["temp_data"])
 
             async with self.get_connection() as redis_client:
-                result = await redis_client.setex(full_key, ttl, serialized_value)
+                result: bool = await redis_client.setex(full_key, ttl, serialized_value)
 
             logger.debug("Cache set", key=full_key, ttl=ttl)
             return bool(result)
@@ -155,18 +164,22 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                value = await redis_client.get(full_key)
+                value: Optional[str] = await redis_client.get(full_key)
 
             if value is None:
                 return default
 
             # Deserialize value
-            if deserialize == "json":
-                return json.loads(value)
-            elif deserialize == "pickle":
-                return pickle.loads(value)
-            else:
-                return value
+            try:
+                if deserialize == "json":
+                    return json.loads(value)
+                elif deserialize == "pickle":
+                    return pickle.loads(value)
+                else:
+                    return value
+            except Exception as e:
+                logger.error("Deserialization failed", key=key, deserialize=deserialize, error=str(e))
+                return default
 
         except Exception as e:
             logger.error("Cache get failed", key=key, error=str(e))
@@ -178,7 +191,7 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                result = await redis_client.delete(full_key)
+                result: int = await redis_client.delete(full_key)
 
             logger.debug("Cache delete", key=full_key)
             return bool(result)
@@ -193,7 +206,7 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                result = await redis_client.exists(full_key)
+                result: int = await redis_client.exists(full_key)
 
             return bool(result)
 
@@ -209,7 +222,7 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                result = await redis_client.incrby(full_key, amount)
+                result: int = await redis_client.incrby(full_key, amount)
 
             return result
 
@@ -229,10 +242,14 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             # Convert values to strings
-            string_mapping = {k: json.dumps(v, default=str) for k, v in mapping.items()}
+            try:
+                string_mapping = {k: json.dumps(v, default=str) for k, v in mapping.items()}
+            except Exception as e:
+                logger.error("Hash serialization failed", key=key, error=str(e))
+                return False
 
             async with self.get_connection() as redis_client:
-                await redis_client.hset(full_key, mapping=string_mapping)
+                result: int = await redis_client.hset(full_key, mapping=string_mapping)
 
                 if ttl is None:
                     ttl = DEFAULT_TTL.get(prefix, DEFAULT_TTL["temp_data"])
@@ -251,14 +268,15 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                hash_data = await redis_client.hgetall(full_key)
+                hash_data: Dict[str, str] = await redis_client.hgetall(full_key)
 
             # Deserialize values
             result = {}
             for k, v in hash_data.items():
                 try:
                     result[k] = json.loads(v)
-                except:
+                except Exception as e:
+                    logger.warning("Failed to deserialize hash value", key=k, error=str(e))
                     result[k] = v
 
             return result
@@ -270,10 +288,14 @@ class RedisCache:
     async def publish(self, channel: str, message: Any) -> int:
         """Publish message to Redis channel"""
         try:
-            serialized_message = json.dumps(message, default=str)
+            try:
+                serialized_message = json.dumps(message, default=str)
+            except Exception as e:
+                logger.error("Message serialization failed", channel=channel, error=str(e))
+                return 0
 
             async with self.get_connection() as redis_client:
-                result = await redis_client.publish(channel, serialized_message)
+                result: int = await redis_client.publish(channel, serialized_message)
 
             logger.debug("Message published", channel=channel, subscribers=result)
             return result
@@ -298,8 +320,8 @@ class RedisCache:
         """Check Redis connectivity"""
         try:
             async with self.get_connection() as redis_client:
-                response = await redis_client.ping()
-                return response == True
+                response: bool = await redis_client.ping()
+                return response is True
         except Exception as e:
             logger.error("Redis health check failed", error=str(e))
             return False
@@ -308,7 +330,7 @@ class RedisCache:
         """Get Redis statistics"""
         try:
             async with self.get_connection() as redis_client:
-                info = await redis_client.info()
+                info: Dict[str, Any] = await redis_client.info()
 
                 return {
                     "connected_clients": info.get("connected_clients", 0),
@@ -329,9 +351,9 @@ class RedisCache:
             pattern = f"{CACHE_PREFIXES.get(prefix, prefix)}*"
 
             async with self.get_connection() as redis_client:
-                keys = await redis_client.keys(pattern)
+                keys: List[str] = await redis_client.keys(pattern)
                 if keys:
-                    result = await redis_client.delete(*keys)
+                    result: int = await redis_client.delete(*keys)
                     logger.info(
                         "Cache prefix cleared", prefix=prefix, keys_deleted=result
                     )
@@ -341,6 +363,19 @@ class RedisCache:
         except Exception as e:
             logger.error("Cache prefix clear failed", prefix=prefix, error=str(e))
             return 0
+
+    async def get_ttl(self, key: str, prefix: str = "temp_data") -> int:
+        """Get TTL for a cache key"""
+        try:
+            full_key = self._make_key(prefix, key)
+
+            async with self.get_connection() as redis_client:
+                ttl: int = await redis_client.ttl(full_key)
+                return ttl if ttl >= 0 else -1  # -1 if key doesn't exist or no TTL
+
+        except Exception as e:
+            logger.error("Cache TTL get failed", key=key, error=str(e))
+            return -1
 
 
 # Market data specific cache functions
@@ -372,6 +407,11 @@ class MarketDataCache:
             key, data, prefix="market_data", ttl=60
         )  # 1 minute TTL
 
+    async def get_latest_price(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get cached latest price for symbol"""
+        key = f"{symbol}:latest"
+        return await self.cache.get(key, prefix="market_data", default=None)
+
 
 # Global cache instances
 redis_cache = RedisCache()
@@ -392,15 +432,15 @@ class CacheManager:
         """Disconnect from Redis"""
         await self.redis_cache.disconnect()
 
-    async def get(self, key: str, default=None):
+    async def get(self, key: str, default: Any = None) -> Any:
         """Get value from cache"""
         return await self.redis_cache.get(key, default=default)
 
-    async def set(self, key: str, value, ttl: int = 300):
+    async def set(self, key: str, value: Any, ttl: int = 300) -> bool:
         """Set value in cache with TTL"""
         return await self.redis_cache.set(key, value, ttl=ttl)
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> bool:
         """Delete value from cache"""
         return await self.redis_cache.delete(key)
 

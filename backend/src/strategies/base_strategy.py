@@ -11,19 +11,23 @@ All trading strategies must inherit from this class and implement the required m
 import abc
 import uuid
 import structlog
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from datetime import datetime, time as datetime_time
+from typing import Dict, Any, List, Optional, Protocol, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 
-try:
+# Type checking imports
+if TYPE_CHECKING:
     from ai.learning_engine import LearningEngine, AdaptationTrigger
+else:
+    try:
+        from ai.learning_engine import LearningEngine, AdaptationTrigger
+        HAS_LEARNING_ENGINE = True
+    except ImportError:
+        LearningEngine = None  # type: ignore
+        AdaptationTrigger = None  # type: ignore
+        HAS_LEARNING_ENGINE = False
 
-    HAS_LEARNING_ENGINE = True
-except ImportError:
-    LearningEngine = None
-    AdaptationTrigger = None
-    HAS_LEARNING_ENGINE = False
 from models.strategy import StrategyStatus
 from models.strategy_signal import SignalType
 from models.trade import Trade, TradeType
@@ -37,13 +41,13 @@ logger = structlog.get_logger(__name__)
 class StrategyType(str, Enum):
     """Types of trading strategies"""
 
-    PREDATORY = "predatory"  # Aggressive profit-taking strategies
-    PSYCHOLOGICAL = "psychological"  # Emotion-based market exploitation
-    QUANTITATIVE = "quantitative"  # Mathematical/model-based strategies
-    ARBITRAGE = "arbitrage"  # Price inefficiency exploitation
-    MOMENTUM = "momentum"  # Trend-following strategies
-    MEAN_REVERSION = "mean_reversion"  # Statistical arbitrage
-    MACHINE_LEARNING = "machine_learning"  # AI/ML based strategies
+    PREDATORY = "predatory"
+    PSYCHOLOGICAL = "psychological"
+    QUANTITATIVE = "quantitative"
+    ARBITRAGE = "arbitrage"
+    MOMENTUM = "momentum"
+    MEAN_REVERSION = "mean_reversion"
+    MACHINE_LEARNING = "machine_learning"
 
 
 class StrategyPhase(str, Enum):
@@ -63,7 +67,7 @@ class StrategyPhase(str, Enum):
 class StrategyError(Exception):
     """Base exception for strategy errors"""
 
-    def __init__(self, message: str, strategy_id: str = None, error_code: str = None):
+    def __init__(self, message: str, strategy_id: Optional[str] = None, error_code: Optional[str] = None):
         self.message = message
         self.strategy_id = strategy_id
         self.error_code = error_code
@@ -98,21 +102,21 @@ class StrategyConfig:
     strategy_type: StrategyType = StrategyType.MACHINE_LEARNING
 
     # Risk parameters
-    max_position_size: float = 0.1  # Max position as % of portfolio
-    max_drawdown_limit: float = 0.05  # Max drawdown before stopping
-    stop_loss_percentage: float = 0.02  # Stop loss percentage
-    take_profit_percentage: float = 0.05  # Take profit percentage
+    max_position_size: float = 0.1
+    max_drawdown_limit: float = 0.05
+    stop_loss_percentage: float = 0.02
+    take_profit_percentage: float = 0.05
 
     # Trading parameters
-    min_signal_strength: float = 0.6  # Minimum signal confidence
+    min_signal_strength: float = 0.6
     max_trades_per_day: int = 10
-    trading_hours_start: str = "09:15"  # IST
-    trading_hours_end: str = "15:30"  # IST
+    trading_hours_start: str = "09:15"
+    trading_hours_end: str = "15:30"
 
     # AI/ML parameters
     learning_enabled: bool = True
     adaptation_interval_minutes: int = 60
-    model_update_threshold: float = 0.05  # Performance improvement threshold
+    model_update_threshold: float = 0.05
 
     # Market parameters
     supported_symbols: List[str] = field(default_factory=lambda: ["NIFTY", "BANKNIFTY"])
@@ -220,18 +224,22 @@ class BaseStrategy(abc.ABC):
     with AI learning engine for continuous strategy improvement.
     """
 
-    def __init__(self, config: StrategyConfig, learning_engine: Optional[Any] = None):
+    def __init__(
+        self,
+        config: StrategyConfig,
+        learning_engine: Optional["LearningEngine"] = None
+    ) -> None:
         """Initialize the trading strategy"""
-        self.config = config
-        self.learning_engine = learning_engine
+        self.config: StrategyConfig = config
+        self.learning_engine: Optional["LearningEngine"] = learning_engine
 
         # Strategy state
-        self.strategy_id = config.strategy_id
-        self.status = StrategyStatus.INACTIVE
-        self.current_phase = StrategyPhase.INITIALIZING
+        self.strategy_id: str = config.strategy_id
+        self.status: StrategyStatus = StrategyStatus.INACTIVE
+        self.current_phase: StrategyPhase = StrategyPhase.INITIALIZING
 
         # Performance tracking
-        self.performance = StrategyPerformance(strategy_id=self.strategy_id)
+        self.performance: StrategyPerformance = StrategyPerformance(strategy_id=self.strategy_id)
 
         # Active signals and positions
         self.active_signals: Dict[str, TradingSignal] = {}
@@ -242,13 +250,13 @@ class BaseStrategy(abc.ABC):
         self.last_analysis: Dict[str, MarketAnalysis] = {}
 
         # Learning state
-        self.last_adaptation = datetime.utcnow()
+        self.last_adaptation: datetime = datetime.utcnow()
         self.learning_sessions: List[str] = []
 
         # Error handling
-        self.error_count = 0
+        self.error_count: int = 0
         self.last_error: Optional[str] = None
-        self.consecutive_failures = 0
+        self.consecutive_failures: int = 0
 
         logger.info(
             "Strategy initialized",
@@ -340,7 +348,7 @@ class BaseStrategy(abc.ABC):
                 return False
 
             # Check risk parameters
-            if signal.stop_loss_price and signal.entry_price:
+            if signal.stop_loss_price is not None and signal.entry_price is not None:
                 stop_loss_pct = (
                     abs(signal.stop_loss_price - signal.entry_price)
                     / signal.entry_price
@@ -356,16 +364,15 @@ class BaseStrategy(abc.ABC):
 
             # Check trading hours
             current_time = datetime.utcnow()
-            # Add IST offset (+5:30)
             ist_time = current_time  # Simplified, should convert to IST
 
-            trading_start = datetime.strptime(
+            trading_start: datetime_time = datetime.strptime(
                 self.config.trading_hours_start, "%H:%M"
             ).time()
-            trading_end = datetime.strptime(
+            trading_end: datetime_time = datetime.strptime(
                 self.config.trading_hours_end, "%H:%M"
             ).time()
-            current_time_only = ist_time.time()
+            current_time_only: datetime_time = ist_time.time()
 
             if not (trading_start <= current_time_only <= trading_end):
                 logger.debug("Outside trading hours", signal_id=signal.signal_id)
@@ -400,6 +407,10 @@ class BaseStrategy(abc.ABC):
 
             # Calculate position size
             position_size = await self.calculate_position_size(signal, portfolio)
+
+            # Validate signal has required fields
+            if signal.entry_price is None:
+                raise ExecutionError("Signal missing entry price", self.strategy_id)
 
             # Create trade object
             trade = Trade(
@@ -469,7 +480,7 @@ class BaseStrategy(abc.ABC):
         """
         try:
             self.current_phase = StrategyPhase.RISK_CHECK
-            actions_taken = []
+            actions_taken: List[str] = []
 
             # Check portfolio drawdown
             if portfolio.current_drawdown > self.config.max_drawdown_limit:
@@ -478,12 +489,12 @@ class BaseStrategy(abc.ABC):
 
             # Check individual position risks
             for position_id, position_data in self.active_positions.items():
-                trade = position_data["trade"]
+                trade: Trade = position_data["trade"]
                 current_price = await self._get_current_price(trade.symbol)
 
-                if current_price:
+                if current_price is not None:
                     # Check stop loss
-                    stop_loss_triggered = trade.stop_loss and (
+                    stop_loss_triggered = trade.stop_loss is not None and (
                         (
                             trade.trade_type == TradeType.BUY
                             and current_price <= trade.stop_loss
@@ -498,7 +509,7 @@ class BaseStrategy(abc.ABC):
                         actions_taken.append(f"stop_loss_triggered_{position_id}")
 
                     # Check take profit
-                    take_profit_triggered = trade.take_profit and (
+                    take_profit_triggered = trade.take_profit is not None and (
                         (
                             trade.trade_type == TradeType.BUY
                             and current_price >= trade.take_profit
@@ -513,13 +524,12 @@ class BaseStrategy(abc.ABC):
                         actions_taken.append(f"take_profit_triggered_{position_id}")
 
             # Check concentration limits
-            symbol_exposure = {}
+            symbol_exposure: Dict[str, float] = {}
             for position_data in self.active_positions.values():
-                symbol = position_data["trade"].symbol
-                exposure = (
-                    position_data["trade"].quantity * position_data["trade"].price
-                )
-                symbol_exposure[symbol] = symbol_exposure.get(symbol, 0) + exposure
+                trade_obj: Trade = position_data["trade"]
+                symbol = trade_obj.symbol
+                exposure = trade_obj.quantity * trade_obj.price
+                symbol_exposure[symbol] = symbol_exposure.get(symbol, 0.0) + exposure
 
             max_exposure_pct = 0.25  # Max 25% exposure per symbol
             for symbol, exposure in symbol_exposure.items():
@@ -572,29 +582,30 @@ class BaseStrategy(abc.ABC):
                 and time_since_last_adaptation
                 >= self.config.adaptation_interval_minutes
             ):
-                # Trigger adaptation
-                session_id = await self.learning_engine.trigger_adaptation(
-                    model_id=self.strategy_id,
-                    trigger=AdaptationTrigger.PERFORMANCE_DEGRADATION,
-                    trigger_data={
-                        "current_performance": current_performance,
-                        "threshold": adaptation_threshold,
-                        "strategy_type": self.config.strategy_type.value,
-                    },
-                )
-
-                if session_id:
-                    self.learning_sessions.append(session_id)
-                    self.last_adaptation = datetime.utcnow()
-                    self.performance.adaptation_count += 1
-
-                    logger.info(
-                        "Strategy adaptation triggered",
-                        strategy_id=self.strategy_id,
-                        session_id=session_id,
+                # Trigger adaptation - requires proper type guard
+                if TYPE_CHECKING or (self.learning_engine is not None and AdaptationTrigger is not None):
+                    session_id = await self.learning_engine.trigger_adaptation(
+                        model_id=self.strategy_id,
+                        trigger=AdaptationTrigger.PERFORMANCE_DEGRADATION,
+                        trigger_data={
+                            "current_performance": current_performance,
+                            "threshold": adaptation_threshold,
+                            "strategy_type": self.config.strategy_type.value,
+                        },
                     )
 
-                    return True
+                    if session_id:
+                        self.learning_sessions.append(session_id)
+                        self.last_adaptation = datetime.utcnow()
+                        self.performance.adaptation_count += 1
+
+                        logger.info(
+                            "Strategy adaptation triggered",
+                            strategy_id=self.strategy_id,
+                            session_id=session_id,
+                        )
+
+                        return True
 
             return False
 
@@ -602,7 +613,7 @@ class BaseStrategy(abc.ABC):
             logger.error("Strategy adaptation failed", error=str(e))
             return False
 
-    async def update_performance(self, trade_result: Dict[str, Any]):
+    async def update_performance(self, trade_result: Dict[str, Any]) -> None:
         """
         Update strategy performance metrics.
 
@@ -613,7 +624,6 @@ class BaseStrategy(abc.ABC):
             pnl = trade_result.get("pnl", 0.0)
             is_win = pnl > 0
 
-            self.performance.total_trades += 1
             if is_win:
                 self.performance.winning_trades += 1
                 self.performance.avg_win = (
@@ -628,10 +638,12 @@ class BaseStrategy(abc.ABC):
                 ) / self.performance.losing_trades
 
             # Update ratios
-            self.performance.win_rate = (
-                self.performance.winning_trades / self.performance.total_trades
-            )
-            if self.performance.avg_loss > 0:
+            if self.performance.total_trades > 0:
+                self.performance.win_rate = (
+                    self.performance.winning_trades / self.performance.total_trades
+                )
+
+            if self.performance.avg_loss > 0 and self.performance.total_trades > 0:
                 self.performance.profit_factor = (
                     self.performance.avg_win
                     * self.performance.win_rate
@@ -644,7 +656,7 @@ class BaseStrategy(abc.ABC):
         except Exception as e:
             logger.error("Performance update failed", error=str(e))
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Cleanup strategy resources"""
         try:
             self.current_phase = StrategyPhase.CLEANUP
@@ -720,24 +732,22 @@ class BaseStrategy(abc.ABC):
         logger.info("Trade execution placeholder", trade_id=trade.trade_id)
         return True
 
-    async def _close_position(self, position_id: str, reason: str):
+    async def _close_position(self, position_id: str, reason: str) -> None:
         """Close an active position"""
         if position_id in self.active_positions:
-            # position_data = self.active_positions[position_id]  # Not used in this placeholder implementation
-            # trade = position_data['trade']  # Not used in this placeholder implementation
-
-            # Placeholder - execute closing trade
             logger.info("Position closed", position_id=position_id, reason=reason)
-
-            # Update performance
-            # This would calculate actual P&L
-
             del self.active_positions[position_id]
 
     async def _get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for symbol"""
         # Placeholder - integrate with market data API
         return 100.0  # Dummy price
+
+    async def _emergency_stop(self, reason: str) -> None:
+        """Emergency stop for strategy"""
+        logger.critical("Emergency stop triggered", strategy_id=self.strategy_id, reason=reason)
+        self.status = StrategyStatus.INACTIVE
+        await self.cleanup()
 
     # Strategy lifecycle methods
 
@@ -788,11 +798,11 @@ class BaseStrategy(abc.ABC):
         """Get configuration value"""
         return self.config.custom_params.get(key, default)
 
-    def set_config_value(self, key: str, value: Any):
+    def set_config_value(self, key: str, value: Any) -> None:
         """Set configuration value"""
         self.config.custom_params[key] = value
 
-    def log_strategy_event(self, event: str, data: Dict[str, Any] = None):
+    def log_strategy_event(self, event: str, data: Optional[Dict[str, Any]] = None) -> None:
         """Log strategy-specific event"""
         logger.info(
             "Strategy event", strategy_id=self.strategy_id, event=event, data=data or {}

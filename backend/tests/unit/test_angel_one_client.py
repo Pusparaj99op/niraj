@@ -4,10 +4,9 @@ Comprehensive tests for all functionality with mocking
 """
 
 import pytest
-import asyncio
+
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
-import json
 
 import httpx
 
@@ -15,7 +14,6 @@ from src.api.angel_one_client import (
     AngelOneClient,
     AngelOneConfig,
     AuthTokens,
-    AngelOneError,
     AuthenticationError,
     AuthorizationError,
     RateLimitError,

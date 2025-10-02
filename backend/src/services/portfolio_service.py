@@ -5,13 +5,14 @@ Provides comprehensive portfolio management including position tracking,
 P&L calculations, risk management, and performance analytics.
 """
 
-import uuid
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, cast
 
 from sqlalchemy import select, and_, desc
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from ..core.database import DatabaseManager
 from ..core.cache import CacheManager
@@ -33,13 +34,62 @@ logger = structlog.get_logger(__name__)
 
 
 class PortfolioServiceError(Exception):
-    """Base exception for portfolio service errors"""
+    """Base exception for portfolio service errors
 
-    def __init__(self, message: str, portfolio_id: str = None, error_code: str = None):
-        self.message = message
-        self.portfolio_id = portfolio_id
-        self.error_code = error_code
+    Args:
+        message: Human readable error message
+        portfolio_id: Optional related portfolio identifier
+        error_code: Optional machine readable error code
+    """
+
+    def __init__(
+        self,
+        message: str,
+        portfolio_id: Optional[str] = None,
+        error_code: Optional[str] = None,
+    ) -> None:
+        self.message: str = message
+        self.portfolio_id: Optional[str] = portfolio_id
+        self.error_code: Optional[str] = error_code
         super().__init__(self.message)
+
+
+# ----- Typed result contracts (improve Pylance precision & edge clarity) ----- #
+class UpdatedPosition(TypedDict):
+    portfolio_id: str
+    symbol: str
+    old_price: float
+    new_price: float
+    pnl_change: float
+
+
+class PriceUpdateSummary(TypedDict):
+    updated_positions_count: int
+    total_pnl_change: float
+    updated_positions: List[UpdatedPosition]
+    affected_users: List[str]
+
+
+class ClosePositionResult(TypedDict):
+    portfolio_id: str
+    symbol: str
+    close_price: float
+    realized_pnl: float
+    total_pnl: float
+    reason: Optional[str]
+    closed_at: str
+
+
+class RiskValidationResult(TypedDict):
+    is_valid: bool
+    violations: List[Any]
+    total_positions: int
+    validated_at: str
+
+
+# Generic type variables/helpers
+TPortfolioCache = Tuple[List[PortfolioResponse], PortfolioAggregateResponse]
+_PortfolioTuple = Tuple[List[PortfolioResponse], PortfolioAggregateResponse]
 
 
 class PortfolioService:
@@ -66,7 +116,7 @@ class PortfolioService:
 
     async def get_user_portfolio(
         self, user_id: str, include_inactive: bool = False
-    ) -> Tuple[List[PortfolioResponse], PortfolioAggregateResponse]:
+    ) -> _PortfolioTuple:
         """
         Get complete user portfolio with positions and summary
 
@@ -82,15 +132,16 @@ class PortfolioService:
         """
         try:
             # Check cache first
-            cache_key = (
-                f"{self._user_portfolio_cache_prefix}{user_id}:{include_inactive}"
-            )
-            cached_result = await self.cache_manager.get(cache_key)
-            if cached_result:
-                logger.debug("Portfolio retrieved from cache", user_id=user_id)
-                return cached_result
+            cache_key = f"{self._user_portfolio_cache_prefix}{user_id}:{include_inactive}"
+            cached_any = await self.cache_manager.get(cache_key)
+            if isinstance(cached_any, tuple) and len(cached_any) == 2:
+                poss, summ = cached_any
+                if isinstance(poss, list):
+                    logger.debug("Portfolio retrieved from cache", user_id=user_id)
+                    return cast(_PortfolioTuple, cached_any)
 
-            async with self.db_manager.get_session() as session:
+            # Use async session for proper non-blocking IO
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 # Build query
                 query = select(PortfolioORM).where(PortfolioORM.user_id == user_id)
 
@@ -101,8 +152,8 @@ class PortfolioService:
 
                 query = query.order_by(desc(PortfolioORM.last_updated))
 
-                result = await session.execute(query)
-                portfolio_orms = result.scalars().all()
+                exec_result = await session.execute(query)
+                portfolio_orms = exec_result.scalars().all()
 
                 # Convert to business objects
                 portfolios = []
@@ -171,12 +222,12 @@ class PortfolioService:
                 )
                 return cached_result
 
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 query = select(PortfolioORM).where(
                     PortfolioORM.portfolio_id == portfolio_id
                 )
-                result = await session.execute(query)
-                portfolio_orm = result.scalar_one_or_none()
+                sql_result = await session.execute(query)
+                portfolio_orm = sql_result.scalar_one_or_none()
 
                 if not portfolio_orm:
                     raise PortfolioNotFoundError(portfolio_id)
@@ -223,7 +274,7 @@ class PortfolioService:
             PortfolioServiceError: If creation fails
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 # Create portfolio business object
                 portfolio = Portfolio(
                     user_id=create_request.user_id,
@@ -292,13 +343,13 @@ class PortfolioService:
             PortfolioServiceError: If update fails
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 # Get existing position
                 query = select(PortfolioORM).where(
                     PortfolioORM.portfolio_id == portfolio_id
                 )
-                result = await session.execute(query)
-                portfolio_orm = result.scalar_one_or_none()
+                sql_result = await session.execute(query)
+                portfolio_orm = sql_result.scalar_one_or_none()
 
                 if not portfolio_orm:
                     raise PortfolioNotFoundError(portfolio_id)
@@ -318,7 +369,7 @@ class PortfolioService:
 
                 # Update ORM
                 updated_orm = self._portfolio_to_orm(portfolio)
-                session.merge(updated_orm)
+                await session.merge(updated_orm)
                 await session.commit()
 
                 # Convert to response
@@ -352,7 +403,7 @@ class PortfolioService:
 
     async def update_position_prices(
         self, price_updates: Dict[str, Decimal]
-    ) -> Dict[str, Any]:
+    ) -> PriceUpdateSummary:
         """
         Update current prices for multiple symbols and recalculate P&L
 
@@ -369,7 +420,7 @@ class PortfolioService:
             updated_positions = []
             total_pnl_change = Decimal("0")
 
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 for symbol, new_price in price_updates.items():
                     # Get all active positions for this symbol
                     query = select(PortfolioORM).where(
@@ -378,8 +429,8 @@ class PortfolioService:
                             PortfolioORM.position_status == PositionStatus.ACTIVE.value,
                         )
                     )
-                    result = await session.execute(query)
-                    position_orms = result.scalars().all()
+                    sql_result = await session.execute(query)
+                    position_orms = sql_result.scalars().all()
 
                     for orm in position_orms:
                         portfolio = self._orm_to_portfolio(orm)
@@ -390,16 +441,16 @@ class PortfolioService:
 
                         # Update ORM
                         updated_orm = self._portfolio_to_orm(portfolio)
-                        session.merge(updated_orm)
+                        await session.merge(updated_orm)
 
                         updated_positions.append(
-                            {
-                                "portfolio_id": portfolio.portfolio_id,
-                                "symbol": symbol,
-                                "old_price": update_result["old_price"],
-                                "new_price": update_result["new_price"],
-                                "pnl_change": update_result["pnl_change"],
-                            }
+                            UpdatedPosition(
+                                portfolio_id=portfolio.portfolio_id,
+                                symbol=symbol,
+                                old_price=float(update_result["old_price"]),
+                                new_price=float(update_result["new_price"]),
+                                pnl_change=float(update_result["pnl_change"]),
+                            )
                         )
 
                 await session.commit()
@@ -416,10 +467,10 @@ class PortfolioService:
                 for user_id in affected_users:
                     await self._invalidate_user_portfolio_cache(user_id)
 
-                result = {
+                result: PriceUpdateSummary = {
                     "updated_positions_count": len(updated_positions),
                     "total_pnl_change": float(total_pnl_change),
-                    "updated_positions": updated_positions,
+                    "updated_positions": updated_positions,  # type: ignore[arg-type]
                     "affected_users": list(affected_users),
                 }
 
@@ -444,8 +495,8 @@ class PortfolioService:
             )
 
     async def close_portfolio_position(
-        self, portfolio_id: str, close_price: Decimal, reason: str = None
-    ) -> Dict[str, Any]:
+        self, portfolio_id: str, close_price: Decimal, reason: Optional[str] = None
+    ) -> ClosePositionResult:
         """
         Close a portfolio position
 
@@ -462,13 +513,13 @@ class PortfolioService:
             PortfolioServiceError: If close fails
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:  # type: ignore[attr-defined]
                 # Get position
                 query = select(PortfolioORM).where(
                     PortfolioORM.portfolio_id == portfolio_id
                 )
-                result = await session.execute(query)
-                portfolio_orm = result.scalar_one_or_none()
+                sql_result = await session.execute(query)
+                portfolio_orm = sql_result.scalar_one_or_none()
 
                 if not portfolio_orm:
                     raise PortfolioNotFoundError(portfolio_id)
@@ -477,18 +528,18 @@ class PortfolioService:
                 portfolio = self._orm_to_portfolio(portfolio_orm)
 
                 # Close position
-                realized_pnl = portfolio.close_position(close_price, reason)
+                realized_pnl = portfolio.close_position(close_price, reason or "")
 
                 # Update ORM
                 updated_orm = self._portfolio_to_orm(portfolio)
-                session.merge(updated_orm)
+                await session.merge(updated_orm)
                 await session.commit()
 
                 # Invalidate caches
                 await self._invalidate_portfolio_cache(portfolio_id)
                 await self._invalidate_user_portfolio_cache(portfolio.user_id)
 
-                result = {
+                result: ClosePositionResult = {
                     "portfolio_id": portfolio_id,
                     "symbol": portfolio.symbol,
                     "close_price": float(close_price),
@@ -566,7 +617,7 @@ class PortfolioService:
                 error_code="SUMMARY_FAILED",
             )
 
-    async def validate_portfolio_risks(self, user_id: str) -> Dict[str, Any]:
+    async def validate_portfolio_risks(self, user_id: str) -> RiskValidationResult:
         """
         Validate portfolio against risk management rules
 
@@ -628,9 +679,9 @@ class PortfolioService:
                 max_sector_concentration,
             )
 
-            result = {
+            result: RiskValidationResult = {
                 "is_valid": len(violations) == 0,
-                "violations": violations,
+                "violations": cast(List[Any], violations),
                 "total_positions": len(portfolio_objects),
                 "validated_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -655,11 +706,15 @@ class PortfolioService:
 
     def _orm_to_portfolio(self, orm: PortfolioORM) -> Portfolio:
         """Convert ORM object to business Portfolio object"""
-        return Portfolio(
-            portfolio_id=orm.portfolio_id,
-            user_id=orm.user_id,
-            symbol=orm.symbol,
-            quantity=orm.quantity,
+        # Cast SQLAlchemy instrumented attributes for type checkers. At runtime these are plain values.
+        # Helper casts for SQLAlchemy attributes (instrumented) to satisfy type checker
+        stop_loss_val = getattr(orm, "stop_loss_level")
+        take_profit_val = getattr(orm, "take_profit_level")
+        portfolio = Portfolio(
+            portfolio_id=str(getattr(orm, "portfolio_id")),
+            user_id=str(getattr(orm, "user_id")),
+            symbol=str(getattr(orm, "symbol")),
+            quantity=int(getattr(orm, "quantity")),
             average_price=Decimal(str(orm.average_price)),
             current_price=Decimal(str(orm.current_price)),
             market_value=Decimal(str(orm.market_value)),
@@ -668,26 +723,23 @@ class PortfolioService:
             total_pnl=Decimal(str(orm.total_pnl)),
             position_risk=Decimal(str(orm.position_risk)),
             margin_used=Decimal(str(orm.margin_used)),
-            first_entry=orm.first_entry,
-            last_updated=orm.last_updated,
-            associated_strategies=orm.associated_strategies or [],
-            is_paper_position=orm.is_paper_position,
+            first_entry=getattr(orm, "first_entry"),  # datetime
+            last_updated=getattr(orm, "last_updated"),  # datetime
+            associated_strategies=list(getattr(orm, "associated_strategies") or []),
+            is_paper_position=bool(getattr(orm, "is_paper_position")),
             position_type=PositionType(orm.position_type),
             position_status=PositionStatus(orm.position_status),
-            stop_loss_level=(
-                Decimal(str(orm.stop_loss_level)) if orm.stop_loss_level else None
-            ),
-            take_profit_level=(
-                Decimal(str(orm.take_profit_level)) if orm.take_profit_level else None
-            ),
+            stop_loss_level=Decimal(str(stop_loss_val)) if stop_loss_val is not None else None,
+            take_profit_level=Decimal(str(take_profit_val)) if take_profit_val is not None else None,
             risk_level=RiskLevel(orm.risk_level),
             daily_pnl=Decimal(str(orm.daily_pnl)),
             max_profit=Decimal(str(orm.max_profit)),
             max_loss=Decimal(str(orm.max_loss)),
-            days_held=orm.days_held,
-            notes=orm.notes,
-            created_at=orm.created_at,
+            days_held=int(getattr(orm, "days_held")),
+            notes=getattr(orm, "notes"),
+            created_at=getattr(orm, "created_at"),
         )
+        return portfolio
 
     def _portfolio_to_orm(self, portfolio: Portfolio) -> PortfolioORM:
         """Convert Portfolio object to ORM object"""
@@ -727,12 +779,12 @@ class PortfolioService:
             created_at=portfolio.created_at,
         )
 
-    async def _invalidate_portfolio_cache(self, portfolio_id: str):
+    async def _invalidate_portfolio_cache(self, portfolio_id: str) -> None:
         """Invalidate portfolio-specific cache"""
         cache_key = f"{self._portfolio_cache_prefix}{portfolio_id}"
         await self.cache_manager.delete(cache_key)
 
-    async def _invalidate_user_portfolio_cache(self, user_id: str):
+    async def _invalidate_user_portfolio_cache(self, user_id: str) -> None:
         """Invalidate user portfolio cache for all variants"""
         cache_keys = [
             f"{self._user_portfolio_cache_prefix}{user_id}:True",

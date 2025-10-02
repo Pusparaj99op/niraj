@@ -25,14 +25,12 @@ import aiohttp
 import json
 import time
 import statistics
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple
-import concurrent.futures
+from typing import Any, Dict, List, Optional
 import websockets
 import random
-import string
 
 # Internal imports
 from ..utils.logger import get_structured_logger

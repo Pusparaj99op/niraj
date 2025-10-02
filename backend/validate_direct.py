@@ -5,8 +5,8 @@ Tests the implementation directly with minimal dependencies
 
 import asyncio
 import sys
-import os
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 # Add src to path
 sys.path.insert(0, "/home/pranay/Music/niraj/backend/src")
@@ -28,9 +28,6 @@ class MockLogger:
 
 
 # Mock the imports before importing our module
-import sys
-from unittest.mock import MagicMock
-
 # Create mock modules
 utils_mock = MagicMock()
 logger_mock = MagicMock()

@@ -12,230 +12,30 @@ Real-time market microstructure analysis
 
 import time
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List, Optional, Literal
 from dataclasses import dataclass, field
 from enum import Enum
 import structlog
 import uuid
+import json
 
-try:
-    from core.config import get_config
-    from models.strategy import StrategyConfig, StrategyType
-    from models.strategy_signal import SignalType
-    from models.market_data import MarketData
-    from models.technical_indicator import IndicatorType
-    from utils.technical_indicators import TechnicalIndicatorsCalculator
-    from ai.gemma3_integration import Gemma3Client, AnalysisType, AnalysisRequest
-    from ai.confidence_tracker import AdvancedConfidenceTracker
-    from ..base_strategy import (
-        BaseStrategy,
-        MarketAnalysis,
-        TradingSignal,
-        StrategyPhase,
-        SignalGenerationError,
-        RiskManagementError,
-    )
-except ImportError as e:
-    # Handle imports for isolated testing - define minimal interfaces
-    print(f"Some imports failed, using minimal interfaces: {str(e)}")
-
-    # Mock get_config function
-    def get_config(key: str, default=None):
-        """Mock configuration getter for testing"""
-        config_defaults = {
-            "strategy.predator.min_order_book_depth": 10,
-            "strategy.predator.institutional_size_threshold": 1000,
-            "strategy.predator.front_running_window": 5,
-            "strategy.predator.max_slippage": 0.1,
-            "strategy.predator.min_confidence": 0.8,
-            "strategy.predator.max_history_size": 100,
-            "strategy.predator.pattern_recognition_window": 30,
-            "strategy.predator.max_active_opportunities": 5,
-            "strategy.predator.max_concurrent_positions": 1,
-            "strategy.predator.emergency_stop_multiplier": 2.0,
-            "strategy.predator.profit_taking_levels": [0.5, 1.0, 2.0, 5.0, 10.0],
-            "strategy.predator.max_consecutive_failures": 5,
-        }
-        return config_defaults.get(key, default)
-
-    # Define minimal required classes
-    class StrategyType(str, Enum):
-        PREDATORY = "predatory"
-        PSYCHOLOGICAL = "psychological"
-        QUANTITATIVE = "quantitative"
-
-    @dataclass
-    class StrategyConfig:
-        name: str = ""
-        description: str = ""
-        strategy_type: StrategyType = StrategyType.PREDATORY
-        max_position_size: float = 0.1
-        max_drawdown_limit: float = 0.15
-        stop_loss_percentage: float = 0.05
-        take_profit_percentage: float = 0.10
-        min_signal_strength: float = 0.8
-        max_trades_per_day: int = 50
-        supported_symbols: List[str] = None
-        custom_params: Dict[str, Any] = None
-
-        def __post_init__(self):
-            if self.supported_symbols is None:
-                self.supported_symbols = []
-            if self.custom_params is None:
-                self.custom_params = {}
-
-    @dataclass
-    class MarketData:
-        symbol: str
-        timestamp: datetime
-        open: float = 0.0
-        high: float = 0.0
-        low: float = 0.0
-        close: float = 0.0
-        volume: int = 0
-
-    # Mock classes for dependencies
-    class TechnicalIndicatorsCalculator:
-        def calculate_indicator(self, indicator_type, data_points, **kwargs):
-            class MockResult:
-                value = 0.5
-                values = [0.5]
-
-            return MockResult()
-
-    class Gemma3Client:
-        def __init__(self):
-            pass
-
-        async def connect(self):
-            pass
-
-        async def analyze(self, request):
-            class MockResponse:
-                result = {
-                    "confidence": 0.5,
-                    "key_points": [],
-                    "risk_level": "medium",
-                    "rationale": "Mock response",
-                }
-                confidence_score = 0.5
-                processing_time_ms = 100
-
-            return MockResponse()
-
-        @property
-        def is_connected(self):
-            return True
-
-    class AdvancedConfidenceTracker:
-        pass
-
-    # Mock enums
-    class IndicatorType(str, Enum):
-        PREDATOR_SIGNAL = "predator_signal"
-        VOLUME_WEIGHTED_AVERAGE_PRICE = "vwap"
-        BOLLINGER_BANDS = "bollinger_bands"
-        RSI = "rsi"
-        MACD = "macd"
-        ATR = "atr"
-        CHAIKIN_MF = "chaikin_mf"
-
-    class AnalysisType(str, Enum):
-        PATTERN_RECOGNITION = "pattern_recognition"
-
-    @dataclass
-    class AnalysisRequest:
-        analysis_type: AnalysisType
-        input_data: Dict[str, Any]
-        confidence_threshold: float = 0.5
-
-    # Define minimal BaseStrategy interface for testing
-    class BaseStrategy:
-        def __init__(self, config, learning_engine=None):
-            self.config = config
-            self.learning_engine = learning_engine
-            self.strategy_id = str(uuid.uuid4())
-            self.status = type("Status", (), {"ACTIVE": "active", "PAUSED": "paused"})()
-            self.current_phase = StrategyPhase.INITIALIZING
-            self.active_positions = {}
-            self.performance = type(
-                "Performance",
-                (),
-                {"total_return": 0.0, "total_trades": 0, "win_rate": 0.0},
-            )()
-            self.last_analysis = {}
-
-        async def initialize(self):
-            return True
-
-        async def manage_risk(self, portfolio):
-            return []
-
-        async def update_performance(self, trade_result):
-            pass
-
-        async def health_check(self):
-            return {"status": "unknown"}
-
-        async def cleanup(self):
-            pass
-
-        def log_strategy_event(self, event_type, data):
-            pass
-
-    # Define other minimal classes
-    @dataclass
-    class MarketAnalysis:
-        symbol: str
-        analysis_type: str = ""
-        indicators: Dict[str, Any] = None
-        ai_insights: Dict[str, Any] = None
-        sentiment_score: float = 0.0
-        volatility: float = 0.0
-        liquidity_score: float = 1.0
-        confidence_score: float = 0.5
-        processing_time_ms: float = 0.0
-
-        def __post_init__(self):
-            if self.indicators is None:
-                self.indicators = {}
-            if self.ai_insights is None:
-                self.ai_insights = {}
-
-    @dataclass
-    class TradingSignal:
-        strategy_id: str
-        symbol: str
-        signal_type: Any
-        strength: float
-        entry_price: float
-        stop_loss_price: float
-        take_profit_price: float
-        position_size_percentage: float
-        quantity: int
-        reasoning: str
-        supporting_data: Dict[str, Any] = None
-        expiry_minutes: int = 60
-        signal_id: str = ""
-
-        def __post_init__(self):
-            if self.supporting_data is None:
-                self.supporting_data = {}
-            if not self.signal_id:
-                self.signal_id = str(uuid.uuid4())
-
-    # Define minimal enums and exceptions
-    class StrategyPhase(str, Enum):
-        INITIALIZING = "initializing"
-        ANALYZING = "analyzing"
-        SIGNAL_GENERATION = "signal_generation"
-
-    class SignalGenerationError(Exception):
-        pass
-
-    class RiskManagementError(Exception):
-        pass
+# Remove aliases and import directly
+from src.models.strategy import StrategyConfig, StrategyType
+from src.utils.config_manager import ConfigManager
+from src.models.market_data import MarketData
+from src.models.technical_indicator import IndicatorType
+from src.utils.technical_indicators import TechnicalIndicatorsCalculator
+from src.ai.gemma3_integration import Gemma3Client, AnalysisType, AnalysisRequest
+from src.ai.confidence_tracker import AdvancedConfidenceTracker
+from src.strategies.base_strategy import (
+    BaseStrategy,
+    MarketAnalysis,
+    TradingSignal,
+    StrategyPhase,
+    SignalGenerationError,
+    RiskManagementError,
+)
 
 
 # Configure structured logging
@@ -499,17 +299,37 @@ class FrontRunningOpportunity:
     market_conditions: Dict[str, Any] = field(default_factory=dict)
 
 
+class PredatorConfig:
+    """Configuration for predator strategy"""
+
+    def __init__(self):
+        self.min_spread_threshold: float = 0.0005
+        self.volume_threshold: int = 1000
+        self.position_size: float = 0.1
+        self.stop_loss: float = 0.02
+        self.take_profit: float = 0.05
+        self.max_positions: int = 3
+        self.order_book_levels: int = 5
+        self.confidence_threshold: float = 0.65
+        self.market_impact_threshold: float = 0.01
+
+        # Initialize with empty dicts/lists instead of None
+        self.risk_params: Dict[str, Any] = {}
+        self.indicators: List[str] = []
+        self.thresholds: Dict[str, Any] = {}
+
+        # ...existing code...
+
+        self.advanced_features: Dict[str, Any] = {}
+        self.ml_params: Dict[str, Any] = {}
+
+        # ...existing code...
+
+        self.signal_config: Dict[str, Any] = {}
+
+
 class PredatorStrategy(BaseStrategy):
-    """
-    Predator Strategy: Order Book Analysis and Institutional Front-Running
-
-    This strategy implements advanced order book analysis to detect institutional
-    trading patterns and front-run them for high-profit potential trades.
-
-    Key Components:
-    - Real-time order book monitoring and analysis - Institutional order pattern recognition - Front-running signal generation - Ultra-fast execution with risk management -
-    AI-powered confidence scoring
-    """
+    """Advanced predatory trading strategy"""
 
     def __init__(self, config: StrategyConfig, learning_engine=None):
         """Initialize the Predator strategy with comprehensive validation"""
@@ -686,7 +506,7 @@ class PredatorStrategy(BaseStrategy):
                 f"Failed to initialize Predator strategy: {str(e)}"
             )
 
-    async def initialize(self) -> bool:
+    async def initialize(self) -> Literal[True]:  # Change return type
         """
         Initialize the Predator strategy with required resources
 
@@ -2088,22 +1908,18 @@ class PredatorStrategy(BaseStrategy):
 
     # Resource Management and Cleanup Methods
 
-    async def cleanup(self):
-        """
-        Comprehensive cleanup of resources
-
-        Ensures all connections are properly closed and resources are freed
-        """
+    async def cleanup(self) -> None:
+        """Cleanup strategy resources"""
         try:
-            logger.info("Starting Predator strategy cleanup")
+            self.logger.info("Cleaning up predator strategy...")
 
             # Close AI client connection
             if self.ai_client:
                 try:
                     await self.ai_client.disconnect()
-                    logger.debug("AI client disconnected")
+                    self.logger.debug("AI client disconnected")
                 except Exception as e:
-                    logger.warning("Failed to disconnect AI client", error=str(e))
+                    self.logger.warning("Failed to disconnect AI client", error=str(e))
 
             # Clear active opportunities
             self.active_opportunities.clear()
@@ -2121,10 +1937,10 @@ class PredatorStrategy(BaseStrategy):
             # Call parent cleanup
             await super().cleanup()
 
-            logger.info("Predator strategy cleanup completed")
+            self.logger.info("Predator strategy cleanup completed")
 
         except Exception as e:
-            logger.error("Predator strategy cleanup failed", error=str(e))
+            self.logger.error("Predator strategy cleanup failed", error=str(e))
             raise ResourceError(f"Cleanup failed: {str(e)}")
 
     async def __aenter__(self):
@@ -2135,7 +1951,7 @@ class PredatorStrategy(BaseStrategy):
                 raise ResourceError("Failed to initialize strategy in context manager")
             return self
         except Exception as e:
-            logger.error("Failed to enter strategy context", error=str(e))
+            self.logger.error("Failed to enter strategy context", error=str(e))
             raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -2143,7 +1959,7 @@ class PredatorStrategy(BaseStrategy):
         try:
             await self.cleanup()
         except Exception as e:
-            logger.error("Failed to exit strategy context cleanly", error=str(e))
+            self.logger.error("Failed to exit strategy context cleanly", error=str(e))
             # Don't raise cleanup errors in context manager exit
 
     def __del__(self):
@@ -2200,6 +2016,190 @@ class PredatorStrategy(BaseStrategy):
             # Clean up old order book history (keep last 24 hours)
             cutoff_time = current_time.replace(hour=current_time.hour - 24)
             self.order_book_history = [
+                ob for ob in self.order_book_history if ob.timestamp > cutoff_time
+            ]
+
+            # Clean up old detection history (keep last 1000)
+            if len(self.detection_history) > 1000:
+                self.detection_history = self.detection_history[-1000:]
+
+            # Clean up old executed trades (keep last 1000)
+            if len(self.executed_front_runs) > 1000:
+                self.executed_front_runs = self.executed_front_runs[-1000:]
+
+            # Clean up expired opportunities
+            expired_opportunities = []
+            for opp_id, opportunity in self.active_opportunities.items():
+                if (
+                    current_time - opportunity.expiry_seconds
+                ).seconds > opportunity.expiry_seconds:
+                    expired_opportunities.append(opp_id)
+
+            for opp_id in expired_opportunities:
+                del self.active_opportunities[opp_id]
+
+            logger.debug(
+                "Resource optimization completed",
+                cleaned_opportunities=len(expired_opportunities),
+            )
+
+        except Exception as e:
+            logger.error("Resource optimization failed", error=str(e))
+
+
+# Factory function for creating predator strategy instances
+def create_predator_strategy(
+    config: StrategyConfig, learning_engine=None
+) -> PredatorStrategy:
+    """
+    Create a Predator strategy instance
+
+    Args:
+        config: Strategy configuration
+        learning_engine: Optional learning engine
+
+    Returns:
+        PredatorStrategy: Configured predator strategy instance
+    """
+    return PredatorStrategy(config, learning_engine)
+
+
+# Example usage and testing functions
+async def example_predator_usage():
+    """Example usage of the Predator strategy"""
+
+    # Create strategy configuration
+    config = StrategyConfig(
+        name="NIRAJ Predator Strategy",
+        description="High-risk institutional front-running strategy",
+        strategy_type=StrategyType.PREDATORY,
+        max_position_size=0.1,
+        max_drawdown_limit=0.15,  # Higher drawdown limit for high-risk strategy
+        stop_loss_percentage=0.05,
+        take_profit_percentage=0.10,
+        min_signal_strength=0.8,
+        max_trades_per_day=50,
+        supported_symbols=["BANKNIFTY", "NIFTY"],
+        custom_params={
+            "front_running_window": 5,
+            "institutional_threshold": 1000,
+            "min_confidence": 0.8,
+        },
+    )
+
+    # Create strategy instance
+    predator = create_predator_strategy(config)
+
+    try:
+        # Initialize strategy
+        initialized = await predator.initialize()
+        if not initialized:
+            print("Failed to initialize predator strategy")
+            return
+
+        print("Predator strategy initialized successfully")
+
+        # Example market data
+        # from ...models.market_data import MarketData
+        # from datetime import datetime
+
+        # For example purposes, create a mock market data object
+        class MockMarketData:
+            def __init__(self):
+                self.symbol = "BANKNIFTY"
+                self.timestamp = datetime.utcnow()
+                self.open = 45000.0
+                self.high = 45200.0
+                self.low = 44900.0
+                self.close = 45150.0
+                self.volume = 150000
+
+        market_data = MockMarketData()
+
+        # Analyze market
+        analysis = await predator.analyze_market(market_data)
+        print(
+            f"Market analysis completed with confidence: {analysis.confidence_score:.3f}"
+        )
+
+        # Generate signals
+        signals = await predator.generate_signals(analysis)
+        print(f"Generated {len(signals)} trading signals")
+
+        for signal in signals:
+            print(
+                f"Signal: {signal.signal_type.value} {signal.symbol} at {signal.entry_price} (strength: {signal.strength:.3f})"
+            )
+
+        # Health check
+        health = await predator.health_check()
+        print(f"Strategy health: {health['status']}")
+
+        # Cleanup
+        await predator.cleanup()
+
+    except Exception as e:
+        print(f"Error in predator strategy example: {str(e)}")
+
+
+if __name__ == "__main__":
+    # Run example usage
+    asyncio.run(example_predator_usage())
+
+# Fix test at the end if it exists
+async def test_predator_strategy():
+    """Test the predator strategy"""
+    try:
+        config = StrategyConfig(
+            name="Test Predator Strategy",
+            description="Test strategy for predator functionality",
+            strategy_type=StrategyType.PREDATORY,
+            max_position_size=0.1,
+            max_drawdown_limit=0.1,
+            stop_loss_percentage=0.02,
+            take_profit_percentage=0.05,
+            min_signal_strength=0.7,
+            max_trades_per_day=10,
+            supported_symbols=["BTC/USD"],
+            custom_params={
+                "front_running_window": 10,
+                "institutional_threshold": 500,
+                "min_confidence": 0.75,
+            },
+        )
+
+        strategy = create_predator_strategy(config)
+
+        # Initialize strategy
+        await strategy.initialize()
+
+        # Create proper MarketData instead of MockMarketData
+        market_data = MarketData(
+            symbol="BTC/USD",
+            timestamp=datetime.now(timezone.utc),
+            bid=50000.0,
+            ask=50001.0,
+            last_price=50000.5,
+            volume=1000.0,
+        )
+
+        analysis = await strategy.analyze_market(market_data)
+
+        print(f"Analysis: {analysis}")
+
+        signals = await strategy.generate_signals(analysis)
+
+        print(f"Generated signals: {signals}")
+
+        # Perform health check
+        health = await strategy.health_check()
+        print(f"Health status: {health}")
+
+        # Cleanup
+        await strategy.cleanup()
+
+    except Exception as e:
+        print(f"Error in test: {e}")
                 ob for ob in self.order_book_history if ob.timestamp > cutoff_time
             ]
 

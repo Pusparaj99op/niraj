@@ -2,11 +2,9 @@
 Simple script to fetch BankNifty data from Angel One API
 """
 
+
 import asyncio
-import json
-import time
-from datetime import datetime, timedelta
-import hashlib
+
 import secrets
 import httpx
 import pyotp
@@ -79,7 +77,7 @@ class SimpleAngelOneClient:
         try:
             response_data = response.json()
             print(f"Response data: {response_data}")
-        except:
+        except Exception:
             print(f"Response text: {response.text}")
             raise Exception(f"Invalid response: {response.text}")
 
@@ -172,7 +170,7 @@ async def main():
     try:
         # Login
         print("Logging in to Angel One...")
-        login_result = await client.login()
+        await client.login()
         print("Login successful!")
 
         # Test profile endpoint
@@ -245,7 +243,6 @@ async def main():
         traceback.print_exc()
     finally:
         await client.close()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -2,8 +2,16 @@
 Advanced User Management Service for NIRAJ Trading System
 
 This service provides comprehensive user management capabilities including:
-- Complete CRUD operations with advanced validation - User profile management and preferences - Trading settings and risk configuration - Account security and PIN management - User activity tracking and audit logging - User search and filtering capabilities - Bulk operations for administrative tasks - Advanced error handling with detailed context - Performance optimization with caching -
-Multi-tenancy support for future expansion
+- Complete CRUD operations with advanced validation
+- User profile management and preferences
+- Trading settings and risk configuration
+- Account security and PIN management
+- User activity tracking and audit logging
+- User search and filtering capabilities
+- Bulk operations for administrative tasks
+- Advanced error handling with detailed context
+- Performance optimization with caching
+- Multi-tenancy support for future expansion
 """
 
 import json
@@ -11,7 +19,7 @@ import time
 import asyncio
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union, Tuple, Callable
 from dataclasses import dataclass, field
 import re
 from functools import wraps
@@ -31,7 +39,8 @@ from ..models.user import (
     PinChangeRequest,
     generate_default_preferences,
 )
-from ..models.audit_log import AuditLog, AuditEventType, AuditSeverity
+from ..models.audit_log import AuditEventType, AuditSeverity
+from ..services.audit_service import get_audit_service
 from ..core.database_manager import DatabaseManager
 from ..core.cache import CacheManager
 from ..utils.logger import (
@@ -115,6 +124,78 @@ class UserAccountLockedError(UserServiceError):
             {
                 "user_id": user_id,
                 "locked_until": locked_until.isoformat() if locked_until else None,
+                "lock_reason": "Too many failed login attempts",
+            },
+        )
+
+
+class UserValidationError(UserServiceError):
+    """User validation error"""
+
+    def __init__(
+        self,
+        field: str,
+        value: Any,
+        reason: str,
+        suggestions: List[str] = None
+    ):
+        super().__init__(
+            f"Validation failed for {field}: {reason}",
+            "USER_VALIDATION_ERROR",
+            {
+                "field": field,
+                "value": str(value),
+                "reason": reason,
+                "suggestions": suggestions or [],
+            },
+        )
+
+
+class UserAuthorizationError(UserServiceError):
+    """User authorization error"""
+
+    def __init__(self, action: str, user_id: str, required_permissions: List[str] = None):
+        super().__init__(
+            f"User {user_id} is not authorized to perform action: {action}",
+            "USER_AUTHORIZATION_ERROR",
+            {
+                "user_id": user_id,
+                "action": action,
+                "required_permissions": required_permissions or [],
+            },
+        )
+
+
+class UserRateLimitError(UserServiceError):
+    """User rate limit exceeded error"""
+
+    def __init__(self, user_id: str, action: str, limit: int, window_seconds: int, reset_time: datetime):
+        super().__init__(
+            f"Rate limit exceeded for {action}. Limit: {limit} per {window_seconds}s",
+            "USER_RATE_LIMIT_ERROR",
+            {
+                "user_id": user_id,
+                "action": action,
+                "limit": limit,
+                "window_seconds": window_seconds,
+                "reset_time": reset_time.isoformat(),
+                "retry_after": int((reset_time - datetime.now(timezone.utc)).total_seconds()),
+            },
+        )
+
+
+class UserSessionError(UserServiceError):
+    """User session error"""
+
+    def __init__(self, session_id: str, reason: str, user_id: str = None):
+        super().__init__(
+            f"Session error: {reason}",
+            "USER_SESSION_ERROR",
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "reason": reason,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -323,7 +404,472 @@ class AdvancedUserService:
             "user_activity": lambda user_id: f"{self.config['cache_prefix']}activity:{user_id}",
         }
 
-    # CRUD Operations with Advanced Features
+    # Authentication Methods
+    @log_performance("user_service.authenticate_user")
+    async def authenticate_user(
+        self,
+        username: str,
+        pin: str,
+        ip_address: str = None,
+        user_agent: str = None,
+        context: Optional[UserOperationContext] = None,
+    ) -> Dict[str, Any]:
+        """
+        Authenticate user with PIN and create session
+
+        Args:
+            username: Username to authenticate
+            pin: PIN for authentication
+            ip_address: Client IP address
+            user_agent: Client user agent
+            context: Operation context
+
+        Returns:
+            Dict containing authentication result with session info
+
+        Raises:
+            UserNotFoundError: If user not found
+            UserAuthenticationError: If authentication fails
+            UserAccountLockedError: If account is locked
+        """
+        try:
+            with LogContext(
+                operation="authenticate_user",
+                username=username,
+                ip_address=ip_address,
+            ):
+                # Get user by username
+                user = await self.get_user_by_username(username)
+
+                # Check if account is locked
+                if user.login_attempts >= self.config.get("max_login_attempts", 5):
+                    lockout_duration = self.config.get("account_lockout_duration", 900)
+                    locked_until = user.updated_at + timedelta(seconds=lockout_duration)
+
+                    if datetime.now(timezone.utc) < locked_until:
+                        raise UserAccountLockedError(user.user_id, locked_until)
+
+                    # Reset attempts if lockout period has passed
+                    await self._reset_login_attempts(user.user_id)
+
+                # Verify PIN
+                if not bcrypt.checkpw(pin.encode("utf-8"), user.pin_hash.encode("utf-8")):
+                    # Increment failed attempts
+                    await self._increment_login_attempts(user.user_id)
+
+                    # Create audit log for failed attempt
+                    await self._create_audit_log(
+                        None,  # No session yet
+                        user.user_id,
+                        AuditEventType.SECURITY_ALERT,
+                        AuditSeverity.WARNING,
+                        {
+                            "event": "Failed login attempt",
+                            "ip_address": ip_address,
+                            "user_agent": user_agent,
+                            "attempts_remaining": max(
+                                0,
+                                self.config.get("max_login_attempts", 5) - user.login_attempts - 1
+                            ),
+                        },
+                    )
+
+                    attempts_remaining = max(
+                        0,
+                        self.config.get("max_login_attempts", 5) - user.login_attempts - 1
+                    )
+
+                    if attempts_remaining == 0:
+                        raise UserAccountLockedError(
+                            user.user_id,
+                            datetime.now(timezone.utc) + timedelta(
+                                seconds=self.config.get("account_lockout_duration", 900)
+                            )
+                        )
+
+                    raise UserAuthenticationError(
+                        f"Invalid PIN. {attempts_remaining} attempts remaining.",
+                        user.user_id,
+                        attempts_remaining,
+                    )
+
+                # Authentication successful
+                session_id = self._generate_session_id()
+                session_token = self._generate_session_token()
+
+                # Update user login info
+                async with self.db_manager.get_transaction() as session:
+                    user_orm = await self.db_manager.read(session, UserORM, user.user_id)
+                    await self.db_manager.update(
+                        session,
+                        user_orm,
+                        {
+                            "last_login": datetime.now(timezone.utc),
+                            "login_attempts": 0,  # Reset on successful login
+                            "updated_at": datetime.now(timezone.utc),
+                        },
+                    )
+
+                    # Create audit log for successful login
+                    await self._create_audit_log(
+                        session,
+                        user.user_id,
+                        AuditEventType.LOGIN_SUCCESS,
+                        AuditSeverity.INFO,
+                        {
+                            "ip_address": ip_address,
+                            "user_agent": user_agent,
+                            "session_id": session_id,
+                        },
+                    )
+
+                # Cache session info
+                await self._cache_session(session_id, user.user_id, session_token)
+
+                # Clear user cache to refresh login info
+                await self._invalidate_user_cache(user.user_id, user.username)
+
+                self.logger.info(
+                    "User authenticated successfully",
+                    user_id=user.user_id,
+                    username=username,
+                    ip_address=ip_address,
+                )
+
+                return {
+                    "authenticated": True,
+                    "user_id": user.user_id,
+                    "username": user.username,
+                    "session_id": session_id,
+                    "session_token": session_token,
+                    "trading_mode": user.trading_mode,
+                    "last_login": user.last_login.isoformat() if user.last_login else None,
+                    "authenticated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+        except (UserNotFoundError, UserAuthenticationError, UserAccountLockedError):
+            raise
+        except Exception as e:
+            self.logger.error(f"Authentication failed: {str(e)}")
+            log_error(e, {"username": username})
+            raise UserServiceError(f"Authentication failed: {str(e)}")
+
+    @log_performance("user_service.logout_user")
+    async def logout_user(
+        self,
+        session_id: str,
+        context: Optional[UserOperationContext] = None,
+    ) -> Dict[str, Any]:
+        """
+        Logout user and invalidate session
+
+        Args:
+            session_id: Session to invalidate
+            context: Operation context
+
+        Returns:
+            Dict containing logout confirmation
+
+        Raises:
+            UserSessionError: If session invalidation fails
+        """
+        try:
+            with LogContext(operation="logout_user", session_id=session_id):
+                # Get user from session
+                user_id = await self._get_user_from_session(session_id)
+                if not user_id:
+                    raise UserSessionError(session_id, "Invalid session")
+
+                # Invalidate session
+                await self._invalidate_session(session_id)
+
+                # Create audit log
+                await self._create_audit_log(
+                    None,
+                    user_id,
+                    AuditEventType.LOGIN_SUCCESS,  # Using LOGIN_SUCCESS as closest match for logout
+                    AuditSeverity.INFO,
+                    {
+                        "action": "logout",
+                        "session_id": session_id,
+                        "ip_address": context.ip_address if context else None,
+                    },
+                )
+
+                self.logger.info("User logged out", user_id=user_id, session_id=session_id)
+
+                return {
+                    "logged_out": True,
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "logged_out_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+        except UserSessionError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Logout failed: {str(e)}")
+            log_error(e, {"session_id": session_id})
+            raise UserServiceError(f"Logout failed: {str(e)}")
+
+    @log_performance("user_service.validate_session")
+    async def validate_session(
+        self,
+        session_id: str,
+        session_token: str = None,
+        extend_session: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Validate user session
+
+        Args:
+            session_id: Session ID to validate
+            session_token: Session token for additional validation
+            extend_session: Whether to extend session TTL
+
+        Returns:
+            Dict containing validation result
+
+        Raises:
+            UserSessionError: If session is invalid
+        """
+        try:
+            with LogContext(operation="validate_session", session_id=session_id):
+                # Get user from session
+                user_id = await self._get_user_from_session(session_id)
+                if not user_id:
+                    raise UserSessionError(session_id, "Session not found or expired")
+
+                # Validate token if provided
+                if session_token:
+                    cached_token = await self._get_session_token(session_id)
+                    if cached_token != session_token:
+                        raise UserSessionError(session_id, "Invalid session token")
+
+                # Get user info
+                user = await self.get_user(user_id)
+
+                # Extend session if requested
+                if extend_session:
+                    await self._extend_session(session_id)
+
+                return {
+                    "valid": True,
+                    "session_id": session_id,
+                    "user_id": user.user_id,
+                    "username": user.username,
+                    "trading_mode": user.trading_mode,
+                    "validated_at": datetime.now(timezone.utc).isoformat(),
+                    "session_extended": extend_session,
+                }
+
+        except UserSessionError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Session validation failed: {str(e)}")
+            log_error(e, {"session_id": session_id})
+            raise UserServiceError(f"Session validation failed: {str(e)}")
+
+    # Session Management Helpers
+    def _generate_session_id(self) -> str:
+        """Generate unique session ID"""
+        import uuid
+        return str(uuid.uuid4())
+
+    def _generate_session_token(self) -> str:
+        """Generate session token"""
+        import secrets
+        return secrets.token_urlsafe(32)
+
+    async def _cache_session(self, session_id: str, user_id: str, token: str):
+        """Cache session information"""
+        if not self.cache:
+            return
+
+        try:
+            session_key = f"{self.config['cache_prefix']}session:{session_id}"
+            token_key = f"{self.config['cache_prefix']}token:{session_id}"
+
+            session_data = {
+                "user_id": user_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_activity": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Session TTL (24 hours)
+            ttl = 86400
+
+            await asyncio.gather(
+                self.cache.set(session_key, json.dumps(session_data), ttl=ttl),
+                self.cache.set(token_key, token, ttl=ttl),
+                # Keep track of user's active sessions (limit to 5)
+                self._add_user_session(user_id, session_id),
+                return_exceptions=True,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to cache session: {str(e)}")
+
+    async def _get_user_from_session(self, session_id: str) -> Optional[str]:
+        """Get user ID from session"""
+        if not self.cache:
+            return None
+
+        try:
+            session_key = f"{self.config['cache_prefix']}session:{session_id}"
+            cached_data = await self.cache.get(session_key)
+
+            if cached_data:
+                if isinstance(cached_data, str):
+                    session_data = json.loads(cached_data)
+                else:
+                    session_data = cached_data
+
+                return session_data.get("user_id")
+
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to get session: {str(e)}")
+            return None
+
+    async def _get_session_token(self, session_id: str) -> Optional[str]:
+        """Get session token"""
+        if not self.cache:
+            return None
+
+        try:
+            token_key = f"{self.config['cache_prefix']}token:{session_id}"
+            return await self.cache.get(token_key)
+        except Exception as e:
+            self.logger.warning(f"Failed to get session token: {str(e)}")
+            return None
+
+    async def _invalidate_session(self, session_id: str):
+        """Invalidate session"""
+        if not self.cache:
+            return
+
+        try:
+            session_key = f"{self.config['cache_prefix']}session:{session_id}"
+            token_key = f"{self.config['cache_prefix']}token:{session_id}"
+
+            # Get user_id to remove from user sessions
+            user_id = await self._get_user_from_session(session_id)
+            if user_id:
+                await self._remove_user_session(user_id, session_id)
+
+            await asyncio.gather(
+                self.cache.delete(session_key),
+                self.cache.delete(token_key),
+                return_exceptions=True,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to invalidate session: {str(e)}")
+
+    async def _extend_session(self, session_id: str):
+        """Extend session TTL"""
+        if not self.cache:
+            return
+
+        try:
+            session_key = f"{self.config['cache_prefix']}session:{session_id}"
+            cached_data = await self.cache.get(session_key)
+
+            if cached_data:
+                if isinstance(cached_data, str):
+                    session_data = json.loads(cached_data)
+                else:
+                    session_data = cached_data
+
+                # Update last activity
+                session_data["last_activity"] = datetime.now(timezone.utc).isoformat()
+
+                # Extend TTL (24 hours from now)
+                ttl = 86400
+                await self.cache.set(session_key, json.dumps(session_data), ttl=ttl)
+        except Exception as e:
+            self.logger.warning(f"Failed to extend session: {str(e)}")
+
+    async def _add_user_session(self, user_id: str, session_id: str):
+        """Add session to user's active sessions"""
+        if not self.cache:
+            return
+
+        try:
+            user_session_key = f"{self.config['cache_prefix']}user_sessions:{user_id}"
+            cached_sessions = await self.cache.get(user_session_key)
+
+            if cached_sessions:
+                if isinstance(cached_sessions, str):
+                    sessions = json.loads(cached_sessions)
+                else:
+                    sessions = cached_sessions
+            else:
+                sessions = []
+
+            # Add new session
+            if session_id not in sessions:
+                sessions.append(session_id)
+
+            # Keep only last 5 sessions
+            sessions = sessions[-5:]
+
+            ttl = 86400  # 24 hours
+            await self.cache.set(user_session_key, json.dumps(sessions), ttl=ttl)
+        except Exception as e:
+            self.logger.warning(f"Failed to add user session: {str(e)}")
+
+    async def _remove_user_session(self, user_id: str, session_id: str):
+        """Remove session from user's active sessions"""
+        if not self.cache:
+            return
+
+        try:
+            user_session_key = f"{self.config['cache_prefix']}user_sessions:{user_id}"
+            cached_sessions = await self.cache.get(user_session_key)
+
+            if cached_sessions:
+                if isinstance(cached_sessions, str):
+                    sessions = json.loads(cached_sessions)
+                else:
+                    sessions = cached_sessions
+
+                # Remove session
+                if session_id in sessions:
+                    sessions.remove(session_id)
+
+                ttl = 86400  # 24 hours
+                await self.cache.set(user_session_key, json.dumps(sessions), ttl=ttl)
+        except Exception as e:
+            self.logger.warning(f"Failed to remove user session: {str(e)}")
+
+    async def _increment_login_attempts(self, user_id: str):
+        """Increment login attempts counter"""
+        async with self.db_manager.get_transaction() as session:
+            user_orm = await self.db_manager.read(session, UserORM, user_id)
+            if user_orm:
+                await self.db_manager.update(
+                    session,
+                    user_orm,
+                    {
+                        "login_attempts": user_orm.login_attempts + 1,
+                        "updated_at": datetime.now(timezone.utc),
+                    },
+                )
+
+    async def _reset_login_attempts(self, user_id: str):
+        """Reset login attempts counter"""
+        async with self.db_manager.get_transaction() as session:
+            user_orm = await self.db_manager.read(session, UserORM, user_id)
+            if user_orm:
+                await self.db_manager.update(
+                    session,
+                    user_orm,
+                    {
+                        "login_attempts": 0,
+                        "updated_at": datetime.now(timezone.utc),
+                    },
+                )
+
     @log_performance("user_service.create_user")
     async def create_user(
         self,
@@ -1591,27 +2137,64 @@ class AdvancedUserService:
         severity: AuditSeverity,
         details: Dict[str, Any],
     ):
-        """Create audit log entry"""
+        """Create audit log entry using audit service"""
         try:
-            audit_log = AuditLog(
-                user_id=user_id,
-                action=event_type,
-                level=severity,
-                details=details,
-                ip_address=details.get("ip_address"),
-                user_agent=details.get("user_agent"),
-            )
+            # Get audit service instance
+            audit_service = await get_audit_service()
 
-            # This would typically be saved to database
-            # For now, just log it
+            # Map event types and create appropriate audit log
+            if event_type == AuditEventType.USER_CREATED:
+                await audit_service.audit_user_login(
+                    user_id=user_id,
+                    success=True,
+                    ip_address=details.get("ip_address"),
+                    user_agent=details.get("user_agent"),
+                    session_id=details.get("session_id"),
+                    metadata=details,
+                )
+            elif event_type == AuditEventType.USER_UPDATED:
+                # For user updates, create a system event
+                await audit_service.audit_system_event(
+                    event_type=AuditEventType.USER_UPDATED,
+                    description=details.get("changes", "User profile updated"),
+                    severity=severity,
+                    metadata={
+                        **details,
+                        "user_id": user_id,
+                        "entity_type": "user",
+                        "entity_id": user_id,
+                    },
+                )
+            elif event_type == AuditEventType.SECURITY_ALERT:
+                await audit_service.audit_error(
+                    error_message=details.get("event", "Security alert"),
+                    user_id=user_id,
+                    session_id=details.get("session_id"),
+                    metadata=details,
+                )
+            else:
+                # Generic system event
+                await audit_service.audit_system_event(
+                    event_type=event_type,
+                    description=str(details),
+                    severity=severity,
+                    metadata={
+                        **details,
+                        "user_id": user_id,
+                        "entity_type": "user",
+                        "entity_id": user_id,
+                    },
+                )
+
+        except Exception as e:
+            # Fallback to logging if audit service fails
+            self.logger.error(f"Failed to create audit log via service: {str(e)}")
             self.audit_logger.info(
                 f"Audit: {event_type.value}",
                 user_id=user_id,
                 severity=severity.value,
                 details=details,
             )
-        except Exception as e:
-            self.logger.error(f"Failed to create audit log: {str(e)}")
 
     def get_service_metrics(self) -> Dict[str, Any]:
         """Get service performance metrics"""
@@ -1724,6 +2307,10 @@ __all__ = [
     "InvalidUserDataError",
     "UserPermissionError",
     "UserAccountLockedError",
+    "UserValidationError",
+    "UserAuthorizationError",
+    "UserRateLimitError",
+    "UserSessionError",
     "UserSearchRequest",
     "UserStatsResponse",
     "UserActivityResponse",

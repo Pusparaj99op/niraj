@@ -6,6 +6,9 @@ Tests basic functionality without complex dependencies
 import asyncio
 import sys
 import os
+from datetime import datetime, timedelta
+import src.utils.logger
+from src.api.angel_one_client import AngelOneClient, AngelOneConfig, RateLimiter, AngelOneError, AuthenticationError
 
 # Add the backend src to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -49,14 +52,9 @@ class LogContext:
 
 
 # Patch the logger imports
-import src.utils.logger
-
 src.utils.logger.get_logger = get_logger
 src.utils.logger.log_performance = log_performance
 src.utils.logger.LogContext = LogContext
-
-# Now import our client
-from src.api.angel_one_client import AngelOneClient, AngelOneConfig
 
 
 async def test_basic_functionality():
@@ -119,8 +117,6 @@ async def test_basic_functionality():
     print("\n✅ Test 6: Token Expiry Logic")
     print(f"   Token expired (no token): {client._is_token_expired()}")
 
-    from datetime import datetime, timedelta
-
     client.tokens.expires_at = datetime.now() + timedelta(hours=1)
     print(f"   Token expired (future): {client._is_token_expired()}")
 
@@ -129,8 +125,6 @@ async def test_basic_functionality():
 
     # Test 7: Rate Limiter
     print("\n✅ Test 7: Rate Limiter")
-    from src.api.angel_one_client import RateLimiter
-
     limiter = RateLimiter(max_calls=3, window=1)
     print(f"   Initial calls: {len(limiter.calls)}")
 
@@ -148,11 +142,6 @@ async def test_basic_functionality():
 
     # Test 9: Exception classes
     print("\n✅ Test 9: Exception Classes")
-    from src.api.angel_one_client import (
-        AngelOneError,
-        AuthenticationError,
-        ValidationError,
-    )
 
     try:
         raise AuthenticationError("Test auth error", "AG8001", 401)

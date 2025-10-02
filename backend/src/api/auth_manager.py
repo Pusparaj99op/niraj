@@ -3,8 +3,13 @@ Authentication Manager for NIRAJ API Clients
 A comprehensive and secure credential management system for all external APIs
 
 Features:
-- Secure encrypted credential storage - Multi-provider authentication (Angel One, Dhan, News APIs, Weather API) - Automatic token refresh and rotation - Circuit breaker pattern for failed attempts - Comprehensive error handling and recovery - Real-time health monitoring -
-Thread-safe operations
+- Secure encrypted credential storage
+- Multi-provider authentication (Angel One, Dhan, News APIs, Weather API)
+- Automatic token refresh and rotation
+- Circuit breaker pattern for failed attempts
+- Comprehensive error handling and recovery
+- Real-time health monitoring
+- Thread-safe operations
 """
 
 import json
@@ -13,21 +18,21 @@ import base64
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Awaitable, TypeVar, cast
 from enum import Enum
 from pathlib import Path
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator
 
 import pyotp
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-# Global flags for optional imports
-CLIENTS_AVAILABLE = False
-BACKEND_UTILS_AVAILABLE = False
+# Type variable for generic operations
+T = TypeVar('T')
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -44,12 +49,10 @@ def get_logger(name: str) -> logging.Logger:
     return logger
 
 
-def log_performance(name: str = None):
+def log_performance(name: Optional[str] = None) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Performance logging decorator fallback"""
-
-    def decorator(func):
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
         return func
-
     return decorator
 
 
@@ -61,31 +64,29 @@ def get_config(path: str, default: Any = None) -> Any:
 class LogContext:
     """Log context manager fallback"""
 
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, **kwargs: Any) -> None:
+        self.context = kwargs
 
-    def __enter__(self):
+    def __enter__(self) -> "LogContext":
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: Any) -> None:
         pass
 
 
-def _get_angel_one_client():
+def _get_angel_one_client() -> Optional[type]:
     """Lazy import AngelOneClient"""
     try:
         from .angel_one_client import AngelOneClient
-
         return AngelOneClient
     except ImportError:
         return None
 
 
-def _get_dhan_client():
+def _get_dhan_client() -> Optional[type]:
     """Lazy import DhanClient"""
     try:
         from .dhan_client import DhanClient
-
         return DhanClient
     except ImportError:
         return None
@@ -139,7 +140,7 @@ class Credentials:
     usage_count: int = 0
     last_used: Optional[datetime] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Post-initialization validation"""
         if self.auth_type == AuthType.JWT_WITH_TOTP and not self.tertiary_key:
             raise ValueError("JWT_WITH_TOTP requires TOTP secret (tertiary_key)")
@@ -154,7 +155,7 @@ class Credentials:
         """Check if credentials are valid for use"""
         return self.status == CredentialStatus.VALID and not self.is_expired()
 
-    def mark_used(self):
+    def mark_used(self) -> None:
         """Mark credentials as used"""
         self.usage_count += 1
         self.last_used = datetime.now()
@@ -241,15 +242,17 @@ class CredentialStore:
     Secure credential storage with encryption
 
     Features:
-    - AES-256 encryption using Fernet - PBKDF2 key derivation - Atomic file operations -
-    Secure file permissions
+    - AES-256 encryption using Fernet
+    - PBKDF2 key derivation
+    - Atomic file operations
+    - Secure file permissions
     """
 
     def __init__(
         self,
         master_password: Optional[str] = None,
         storage_path: str = "data/credentials.enc",
-    ):
+    ) -> None:
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -288,7 +291,7 @@ class CredentialStore:
         """Serialize credentials to encrypted bytes"""
         try:
             # Convert credentials to serializable format
-            serializable = {}
+            serializable: Dict[str, Dict[str, Any]] = {}
             for provider, cred in credentials.items():
                 serializable[provider] = {
                     "provider": cred.provider.value,
@@ -314,7 +317,7 @@ class CredentialStore:
             return encrypted_data
 
         except Exception as e:
-            raise EncryptionError(f"Failed to serialize credentials: {e}")
+            raise EncryptionError(f"Failed to serialize credentials: {e}") from e
 
     def _deserialize_credentials(self, encrypted_data: bytes) -> Dict[str, Credentials]:
         """Deserialize encrypted credentials"""
@@ -350,7 +353,7 @@ class CredentialStore:
             return credentials
 
         except Exception as e:
-            raise EncryptionError(f"Failed to deserialize credentials: {e}")
+            raise EncryptionError(f"Failed to deserialize credentials: {e}") from e
 
     def save(self, credentials: Dict[str, Credentials]) -> None:
         """Save credentials to encrypted storage"""
@@ -369,7 +372,7 @@ class CredentialStore:
 
         except Exception as e:
             self.logger.error(f"Failed to save credentials: {e}")
-            raise EncryptionError(f"Failed to save credentials: {e}")
+            raise EncryptionError(f"Failed to save credentials: {e}") from e
 
     def load(self) -> Dict[str, Credentials]:
         """Load credentials from encrypted storage"""
@@ -411,7 +414,7 @@ class CircuitBreaker:
         failure_threshold: int = 3,
         recovery_timeout: int = 60,
         success_threshold: int = 2,
-    ):
+    ) -> None:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.success_threshold = success_threshold
@@ -419,11 +422,11 @@ class CircuitBreaker:
         self.failure_count = 0
         self.success_count = 0
         self.last_failure_time: Optional[datetime] = None
-        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self.state: str = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
 
         self.logger = get_logger("niraj.auth_manager.circuit_breaker")
 
-    def call_succeeded(self):
+    def call_succeeded(self) -> None:
         """Record successful operation"""
         if self.state == "HALF_OPEN":
             self.success_count += 1
@@ -432,7 +435,7 @@ class CircuitBreaker:
         elif self.state == "CLOSED":
             self.failure_count = 0
 
-    def call_failed(self):
+    def call_failed(self) -> None:
         """Record failed operation"""
         self.failure_count += 1
         self.last_failure_time = datetime.now()
@@ -441,7 +444,7 @@ class CircuitBreaker:
             if self.failure_count >= self.failure_threshold:
                 self._open_circuit()
 
-    def _open_circuit(self):
+    def _open_circuit(self) -> None:
         """Open the circuit breaker"""
         self.state = "OPEN"
         self.success_count = 0
@@ -449,7 +452,7 @@ class CircuitBreaker:
             f"Circuit breaker OPEN due to repeated failures (count: {self.failure_count})"
         )
 
-    def _close_circuit(self):
+    def _close_circuit(self) -> None:
         """Close the circuit breaker"""
         self.state = "CLOSED"
         self.failure_count = 0
@@ -485,15 +488,21 @@ class AuthenticationManager:
     Comprehensive authentication manager for all external APIs
 
     Features:
-    - Secure credential storage with encryption - Automatic token refresh and rotation - Multiple authentication patterns support - Circuit breaker for failed authentication attempts - Detailed logging and monitoring - Thread-safe operations - Credential validation and health checks -
-    Rate limiting and retry logic
+    - Secure credential storage with encryption
+    - Automatic token refresh and rotation
+    - Multiple authentication patterns support
+    - Circuit breaker for failed authentication attempts
+    - Detailed logging and monitoring
+    - Thread-safe operations
+    - Credential validation and health checks
+    - Rate limiting and retry logic
     """
 
     def __init__(
         self,
         master_password: Optional[str] = None,
         storage_path: str = "data/credentials.enc",
-    ):
+    ) -> None:
         self.logger = get_logger("niraj.auth_manager")
         self.session_id = secrets.token_hex(16)
 
@@ -511,14 +520,14 @@ class AuthenticationManager:
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
 
         # Configuration
-        self.max_retry_attempts = 3
-        self.retry_delay_base = 1.0  # Base delay in seconds
-        self.token_refresh_buffer_minutes = 5
-        self.health_check_interval = 300  # 5 minutes
+        self.max_retry_attempts: int = 3
+        self.retry_delay_base: float = 1.0  # Base delay in seconds
+        self.token_refresh_buffer_minutes: int = 5
+        self.health_check_interval: int = 300  # 5 minutes
 
         # Background tasks
-        self._health_check_task: Optional[asyncio.Task] = None
-        self._token_refresh_task: Optional[asyncio.Task] = None
+        self._health_check_task: Optional[asyncio.Task[None]] = None
+        self._token_refresh_task: Optional[asyncio.Task[None]] = None
 
         # Load existing credentials
         self._load_credentials()
@@ -648,13 +657,16 @@ class AuthenticationManager:
             raise AuthenticationManagerError(f"Failed to generate TOTP: {e}")
 
     async def _retry_with_exponential_backoff(
-        self, operation, provider: AuthProvider, max_attempts: Optional[int] = None
-    ) -> Any:
+        self,
+        operation: Callable[[], Awaitable[T]],
+        provider: AuthProvider,
+        max_attempts: Optional[int] = None
+    ) -> T:
         """Execute operation with exponential backoff retry"""
         if max_attempts is None:
             max_attempts = self.max_retry_attempts
 
-        last_exception = None
+        last_exception: Optional[Exception] = None
 
         for attempt in range(max_attempts):
             try:
@@ -665,19 +677,19 @@ class AuthenticationManager:
                 if attempt < max_attempts - 1:
                     delay = self.retry_delay_base * (2**attempt)
                     self.logger.warning(
-                        f"Attempt {attempt + 1} failed, retrying in {delay}s",
-                        provider=provider.value,
-                        error=str(e),
+                        f"Attempt {attempt + 1} failed, retrying in {delay}s - "
+                        f"provider={provider.value}, error={str(e)}"
                     )
                     await asyncio.sleep(delay)
                 else:
                     self.logger.error(
-                        f"All {max_attempts} attempts failed",
-                        provider=provider.value,
-                        error=str(e),
+                        f"All {max_attempts} attempts failed - "
+                        f"provider={provider.value}, error={str(e)}"
                     )
 
-        raise last_exception
+        if last_exception is not None:
+            raise last_exception
+        raise AuthenticationFailedError("All retry attempts failed", provider)
 
     @log_performance("auth_manager_authenticate")
     async def authenticate(
@@ -766,7 +778,6 @@ class AuthenticationManager:
 
     async def _perform_authentication(self, credentials: Credentials) -> AuthToken:
         """Perform actual authentication based on credential type"""
-
         if credentials.provider == AuthProvider.ANGEL_ONE:
             return await self._authenticate_angel_one(credentials)
         elif credentials.provider == AuthProvider.DHAN:
@@ -780,7 +791,8 @@ class AuthenticationManager:
             return self._authenticate_api_key(credentials)
         else:
             raise AuthenticationManagerError(
-                f"Unsupported provider: {credentials.provider.value}"
+                f"Unsupported provider: {credentials.provider.value}",
+                provider=credentials.provider
             )
 
     async def _authenticate_angel_one(self, credentials: Credentials) -> AuthToken:
@@ -788,7 +800,8 @@ class AuthenticationManager:
         AngelOneClient = _get_angel_one_client()
         if AngelOneClient is None:
             raise AuthenticationManagerError(
-                "Angel One client not available - check imports"
+                "Angel One client not available - check imports",
+                provider=credentials.provider
             )
 
         try:
@@ -799,14 +812,14 @@ class AuthenticationManager:
                     client_code=credentials.metadata.get(
                         "client_code", credentials.primary_key
                     ),
-                    client_pin=credentials.secondary_key,
+                    client_pin=credentials.secondary_key or "",
                     totp_secret=credentials.tertiary_key,
                 )
 
             client = self.clients[credentials.provider.value]
 
             # Generate TOTP if needed
-            totp_code = None
+            totp_code: Optional[str] = None
             if credentials.tertiary_key:
                 totp_code = self._generate_totp_code(credentials.tertiary_key)
 
@@ -820,7 +833,8 @@ class AuthenticationManager:
 
             if not access_token:
                 raise AuthenticationFailedError(
-                    "No access token received from Angel One"
+                    "No access token received from Angel One",
+                    provider=credentials.provider
                 )
 
             # Calculate expiry (Angel One tokens are valid for 28 hours)
@@ -836,19 +850,28 @@ class AuthenticationManager:
             )
 
         except Exception as e:
-            raise AuthenticationFailedError(f"Angel One authentication failed: {e}")
+            raise AuthenticationFailedError(
+                f"Angel One authentication failed: {e}",
+                provider=credentials.provider
+            ) from e
 
     async def _authenticate_dhan(self, credentials: Credentials) -> AuthToken:
         """Authenticate with Dhan (token-based)"""
         DhanClient = _get_dhan_client()
         if DhanClient is None:
             raise AuthenticationManagerError(
-                "Dhan client not available - check imports"
+                "Dhan client not available - check imports",
+                provider=credentials.provider
             )
 
         try:
             # Get or create client
             if credentials.provider.value not in self.clients:
+                if not credentials.secondary_key:
+                    raise AuthenticationFailedError(
+                        "Dhan access token is required",
+                        provider=credentials.provider
+                    )
                 self.clients[credentials.provider.value] = DhanClient(
                     client_id=credentials.primary_key,
                     access_token=credentials.secondary_key,
@@ -865,13 +888,16 @@ class AuthenticationManager:
             return AuthToken(
                 provider=credentials.provider,
                 token_type="Bearer",
-                access_token=credentials.secondary_key,
+                access_token=credentials.secondary_key or "",
                 expires_at=expires_at,
                 metadata={"client_id": credentials.primary_key},
             )
 
         except Exception as e:
-            raise AuthenticationFailedError(f"Dhan authentication failed: {e}")
+            raise AuthenticationFailedError(
+                f"Dhan authentication failed: {e}",
+                provider=credentials.provider
+            ) from e
 
     def _authenticate_api_key(self, credentials: Credentials) -> AuthToken:
         """Authenticate with API key-based services"""
@@ -1122,7 +1148,7 @@ class AuthenticationManager:
             },
         }
 
-    async def start_background_tasks(self):
+    async def start_background_tasks(self) -> None:
         """Start background maintenance tasks"""
         try:
             # Start token refresh task
@@ -1140,7 +1166,7 @@ class AuthenticationManager:
         except Exception as e:
             self.logger.error(f"Failed to start background tasks: {e}")
 
-    async def _token_refresh_loop(self):
+    async def _token_refresh_loop(self) -> None:
         """Background task to refresh tokens before expiry"""
         while True:
             try:
@@ -1170,7 +1196,7 @@ class AuthenticationManager:
                 self.logger.error(f"Error in token refresh loop: {e}")
                 await asyncio.sleep(60)
 
-    async def _health_check_loop(self):
+    async def _health_check_loop(self) -> None:
         """Background task for periodic health checks"""
         while True:
             try:
@@ -1180,8 +1206,7 @@ class AuthenticationManager:
                 overall_status = health_results["overall_status"]
                 if overall_status != "healthy":
                     self.logger.warning(
-                        f"Authentication system health: {overall_status}",
-                        summary=health_results["summary"],
+                        f"Authentication system health: {overall_status}"
                     )
 
                 await asyncio.sleep(self.health_check_interval)
@@ -1224,12 +1249,12 @@ class AuthenticationManager:
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AuthenticationManager":
         """Async context manager entry"""
         await self.start_background_tasks()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit"""
         await self.close()
 
@@ -1316,7 +1341,9 @@ def get_auth_manager() -> AuthenticationManager:
 
 
 @asynccontextmanager
-async def get_authenticated_client(provider: AuthProvider, **kwargs):
+async def get_authenticated_client(
+    provider: AuthProvider, **kwargs: Any
+) -> AsyncGenerator[Any, None]:
     """Context manager for getting authenticated client"""
     auth_manager = get_auth_manager()
 

@@ -3,15 +3,21 @@ Comprehensive tests for Weather API Client
 Tests all functionality including error handling, caching, rate limiting, and trading insights
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
+
 import pytest
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
-import httpx
 
 import sys
 import os
+
+import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
@@ -23,12 +29,9 @@ from src.api.weather_client import (
     WeatherLang,
     CurrentWeather,
     WeatherForecast,
-    WeatherAlert,
     WeatherInsights,
     WeatherError,
     AuthenticationError,
-    RateLimitError,
-    ValidationError,
     NetworkError,
     DataNotFoundError,
     WeatherCache,
@@ -748,7 +751,7 @@ class TestErrorScenarios:
         }
 
         # This should not raise an exception
-        from api.weather_client import WeatherCondition
+        from src.api.weather_client import WeatherCondition
 
         weather_condition = WeatherCondition(**condition)
         assert weather_condition.main == "Clear"

@@ -14,23 +14,18 @@ Version: 1.0.0
 """
 
 import asyncio
-import hashlib
-import json
 import time
 import threading
 from collections import OrderedDict, defaultdict
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-import weakref
+from typing import Any, Callable, Dict, List, Optional, Set
 import pickle
 import zlib
-import gc
 
 # Internal imports
 from ..utils.logger import get_structured_logger
-from ..core.cache import RedisCache, CacheManager
+from ..core.cache import CacheManager
 
 logger = get_structured_logger(__name__)
 

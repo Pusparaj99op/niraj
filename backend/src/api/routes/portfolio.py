@@ -24,7 +24,6 @@ from typing import Dict, Any, List, Optional
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import structlog
 
@@ -129,29 +128,27 @@ async def get_current_user_id() -> str:
 
 
 # Error handling utilities
-def create_error_response(
+def create_http_exception(
     error: str,
     error_code: str,
     message: str,
     status_code: int,
     details: Optional[Dict[str, Any]] = None,
     path: Optional[str] = None,
-) -> JSONResponse:
-    """Create standardized error response"""
-    return JSONResponse(
-        status_code=status_code,
-        content=ErrorResponse(
-            error=error,
-            error_code=error_code,
-            message=message,
-            details=details,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path,
-        ).dict(),
-    )
+) -> HTTPException:
+    """Create standardized HTTP exception"""
+    error_detail = {
+        "error": error,
+        "error_code": error_code,
+        "message": message,
+        "details": details,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "path": path,
+    }
+    return HTTPException(status_code=status_code, detail=error_detail)
 
 
-def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
+def handle_portfolio_error(e: Exception, request_path: str) -> HTTPException:
     """Handle portfolio-related errors with appropriate HTTP status codes"""
     logger.warning(
         "Portfolio operation error",
@@ -179,7 +176,7 @@ def handle_portfolio_error(e: Exception, request_path: str) -> JSONResponse:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
 
-    return create_error_response(
+    return create_http_exception(
         error=type(e).__name__,
         error_code=error_code,
         message=str(e),
@@ -258,8 +255,8 @@ async def get_portfolio(
             return response
 
     except Exception as e:
-        # Handle unexpected errors
-        return handle_portfolio_error(e, "/portfolio")
+        # Raise exception instead of returning JSONResponse
+        raise handle_portfolio_error(e, "/portfolio")
 
 
 @router.get(
@@ -312,7 +309,7 @@ async def get_portfolio_position(
             return position
 
     except Exception as e:
-        return handle_portfolio_error(e, f"/portfolio/{portfolio_id}")
+        raise handle_portfolio_error(e, f"/portfolio/{portfolio_id}")
 
 
 @router.post(
@@ -376,7 +373,7 @@ async def create_portfolio_position(
             return created_position
 
     except Exception as e:
-        return handle_portfolio_error(e, "/portfolio")
+        raise handle_portfolio_error(e, "/portfolio")
 
 
 @router.put(
@@ -433,7 +430,7 @@ async def update_portfolio_position(
             return updated_position
 
     except Exception as e:
-        return handle_portfolio_error(e, f"/portfolio/{portfolio_id}")
+        raise handle_portfolio_error(e, f"/portfolio/{portfolio_id}")
 
 
 @router.post(
@@ -481,11 +478,15 @@ async def close_portfolio_position(
             logger.info("Portfolio position close request")
 
             # TODO: Add ownership validation
+            # Convert float to Decimal and handle optional reason
+            close_price_decimal = Decimal(str(close_request.close_price))
+            reason_str = close_request.reason if close_request.reason is not None else ""
+
             # Close position
             close_result = await portfolio_service.close_portfolio_position(
                 portfolio_id=portfolio_id,
-                close_price=close_request.close_price,
-                reason=close_request.reason,
+                close_price=close_price_decimal,
+                reason=reason_str,
             )
 
             logger.info(
@@ -496,7 +497,7 @@ async def close_portfolio_position(
             return close_result
 
     except Exception as e:
-        return handle_portfolio_error(e, f"/portfolio/{portfolio_id}/close")
+        raise handle_portfolio_error(e, f"/portfolio/{portfolio_id}/close")
 
 
 @router.get(
@@ -550,7 +551,7 @@ async def get_portfolio_summary(
             return summary
 
     except Exception as e:
-        return handle_portfolio_error(e, "/portfolio/summary")
+        raise handle_portfolio_error(e, "/portfolio/summary")
 
 
 @router.post(
@@ -612,7 +613,7 @@ async def validate_portfolio_risks(
             return response
 
     except Exception as e:
-        return handle_portfolio_error(e, "/portfolio/validate")
+        raise handle_portfolio_error(e, "/portfolio/validate")
 
 
 @router.post(
@@ -678,7 +679,7 @@ async def update_position_prices(
             return update_result
 
     except Exception as e:
-        return handle_portfolio_error(e, "/portfolio/update-prices")
+        raise handle_portfolio_error(e, "/portfolio/update-prices")
 
 
 # Initialization functions

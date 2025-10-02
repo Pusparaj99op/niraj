@@ -5,26 +5,23 @@ Tests actual functionality with mocked external APIs
 
 import asyncio
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 
 # Add the backend src to path for imports
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-
 from api.news_client import (
     NewsClient,
     NewsConfig,
-    NewsAPIConfig,
-    RSSFeedConfig,
     Article,
     NewsFilter,
     AuthenticationError,
-    RateLimitError,
-    NetworkError,
+    RateLimitError
 )
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 
 class TestNewsClientIntegration:
@@ -222,7 +219,7 @@ class TestNewsClientIntegration:
 
         with patch.object(
             news_client, "_make_request", return_value=mock_response
-        ) as mock_request:
+        ):
             # First request
             articles1 = await news_client.get_headlines(providers=["newsapi"])
 
@@ -379,8 +376,8 @@ class TestNewsClientIntegration:
         # Test default values
         assert config.default_language == "en"
         assert config.default_country == "in"
-        assert config.newsapi.enabled == True
-        assert config.rss.enabled == True
+        assert config.newsapi.enabled
+        assert config.rss.enabled
 
         # Test NewsAPI configuration
         assert config.newsapi.base_url == "https://newsapi.org/v2"

@@ -22,23 +22,23 @@ interface LegacyWebSocketEvents {
   connect_error: (error: Error) => void;
 
   // Market data events
-  market_data: (data: any) => void;
-  market_data_batch: (data: any[]) => void;
+  market_data: (data: Record<string, unknown>) => void;
+  market_data_batch: (data: Record<string, unknown>[]) => void;
 
   // Portfolio events
-  portfolio_update: (data: any) => void;
+  portfolio_update: (data: Record<string, unknown>) => void;
   portfolio_summary_update: (data: { total_value: number; total_pnl: number; total_pnl_percentage: number }) => void;
 
   // Trade events
-  trade_executed: (data: any) => void;
-  trade_update: (data: any) => void;
+  trade_executed: (data: Record<string, unknown>) => void;
+  trade_update: (data: Record<string, unknown>) => void;
 
   // Strategy events
   strategy_signal: (data: { strategy_id: string; signal: 'BUY' | 'SELL' | 'HOLD'; symbol: string; confidence: number }) => void;
-  strategy_performance_update: (data: { strategy_id: string; performance: any }) => void;
+  strategy_performance_update: (data: { strategy_id: string; performance: Record<string, unknown> }) => void;
 
   // AI events
-  ai_prediction: (data: any) => void;
+  ai_prediction: (data: Record<string, unknown>) => void;
   ai_insight: (data: { symbol: string; insight: string; confidence: number }) => void;
 
   // System events
@@ -53,6 +53,7 @@ interface LegacyWebSocketEvents {
  */
 class LegacyWebSocketWrapper {
   private service: AdvancedWebSocketService;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   private eventListeners: Map<keyof LegacyWebSocketEvents, Function[]> = new Map();
   private subscriptions: Map<string, string> = new Map(); // subscription type -> subscription id
 
@@ -109,7 +110,7 @@ class LegacyWebSocketWrapper {
   }
 
   // Data transformation methods
-  private transformMarketData(data: MarketDataMessage['data']): any {
+  private transformMarketData(data: MarketDataMessage['data']): Record<string, unknown> {
     return {
       symbol: data.symbol,
       price: data.ohlcv.close,
@@ -124,16 +125,16 @@ class LegacyWebSocketWrapper {
     };
   }
 
-  private transformTradeSignal(data: TradeSignalMessage['data']): any {
+  private transformTradeSignal(data: TradeSignalMessage['data']): { strategy_id: string; signal: 'BUY' | 'SELL' | 'HOLD'; symbol: string; confidence: number } {
     return {
       strategy_id: data.strategy_id,
-      signal: data.action,
+      signal: data.action as 'BUY' | 'SELL' | 'HOLD',
       symbol: data.symbol,
       confidence: data.confidence
     };
   }
 
-  private transformPortfolioUpdate(data: PortfolioUpdateMessage['data']): any {
+  private transformPortfolioUpdate(data: PortfolioUpdateMessage['data']): Record<string, unknown> {
     return {
       portfolio_id: 'main', // Legacy field
       total_value: data.total_value,
@@ -142,7 +143,7 @@ class LegacyWebSocketWrapper {
     };
   }
 
-  private transformAIInsight(data: AIInsightMessage['data']): any {
+  private transformAIInsight(data: AIInsightMessage['data']): Record<string, unknown> {
     return {
       prediction_id: data.insight_id,
       symbol: data.symbol,
@@ -190,7 +191,7 @@ class LegacyWebSocketWrapper {
     if (listeners) {
       listeners.forEach(listener => {
         try {
-          (listener as any)(...args);
+          (listener as (...args: unknown[]) => void)(...args);
         } catch (error) {
           console.error(`Error in legacy ${event} listener:`, error);
         }
@@ -211,7 +212,7 @@ class LegacyWebSocketWrapper {
     }
   }
 
-  async unsubscribeFromMarketData(_params: { symbols: string[] }): Promise<void> {
+  async unsubscribeFromMarketData(): Promise<void> {
     const subscriptionId = this.subscriptions.get('market_data');
     if (subscriptionId) {
       try {

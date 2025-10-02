@@ -114,7 +114,10 @@ main() {
         -o -name "*.sh" \) \
         -not -path "*/logs/*" \
         -not -path "*/__pycache__/*" \
+        -not -path "*/__pycache__/*" \
         -not -path "*/node_modules/*" \
+        -not -path "*/.pytest_cache/*" \
+        -not -path "*/.mypy_cache/*" \
         -not -path "*/.git/*" \
         -not -path "*/migrations/*" \
         -not -name "*.lock" \

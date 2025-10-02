@@ -9,9 +9,10 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from sqlalchemy import create_engine, MetaData
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 import structlog
 
 logger = structlog.get_logger()
@@ -114,8 +115,11 @@ async def init_database():
 
         logger.info("Database initialized successfully")
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to initialize database", error=str(e))
+        raise
+    except Exception as e:
+        logger.error("Unexpected error during database initialization", error=str(e))
         raise
 
 
@@ -127,8 +131,11 @@ async def drop_database():
 
         logger.warning("Database dropped successfully")
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to drop database", error=str(e))
+        raise
+    except Exception as e:
+        logger.error("Unexpected error during database drop", error=str(e))
         raise
 
 
@@ -156,22 +163,68 @@ class DatabaseManager:
 
                 await session.execute(text("SELECT 1"))
                 return True
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error("Database health check failed", error=str(e))
+            return False
+        except Exception as e:
+            logger.error("Unexpected error during health check", error=str(e))
             return False
 
     async def get_table_counts(self) -> dict:
         """Get row counts for all tables (development/monitoring)"""
         counts = {}
         try:
-            async with self.async_session_factory() as session:
+            async with self.async_session_factory() as session:  # noqa: F841
                 # This would be populated as models are created
                 # Example: counts['users'] = await session.execute(select(func.count(User.id))).scalar()
                 pass
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error("Failed to get table counts", error=str(e))
+        except Exception as e:
+            logger.error("Unexpected error during table count retrieval", error=str(e))
 
         return counts
+
+    async def get_database_stats(self) -> dict:
+        """Get database statistics (SQLite specific)"""
+        stats = {}
+        try:
+            if "sqlite" not in str(self.async_engine.url):
+                logger.warning("Database stats only available for SQLite")
+                return stats
+
+            async with self.async_session_factory() as session:
+                from sqlalchemy import text
+
+                # Get database file size
+                result = await session.execute(text("PRAGMA page_count"))
+                page_count = result.scalar()
+                result = await session.execute(text("PRAGMA page_size"))
+                page_size = result.scalar()
+                stats["file_size_bytes"] = page_count * page_size if page_count and page_size else 0
+
+                # Get table count
+                result = await session.execute(text("SELECT COUNT(*) FROM sqlite_master WHERE type='table'"))
+                stats["table_count"] = result.scalar() or 0
+
+                # Get total rows (approximate)
+                total_rows = 0
+                result = await session.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+                tables = result.scalars().all()
+                for table in tables:
+                    try:
+                        result = await session.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                        total_rows += result.scalar() or 0
+                    except SQLAlchemyError:
+                        pass  # Skip tables that can't be counted
+                stats["approximate_total_rows"] = total_rows
+
+        except SQLAlchemyError as e:
+            logger.error("Failed to get database stats", error=str(e))
+        except Exception as e:
+            logger.error("Unexpected error during stats retrieval", error=str(e))
+
+        return stats
 
     def backup_database(self, backup_path: Optional[str] = None) -> str:
         """Create database backup (SQLite only)"""
@@ -202,8 +255,8 @@ class DatabaseManager:
     @asynccontextmanager
     async def get_connection(self):
         """Get async database connection context manager"""
-        async with self.async_session_factory() as session:  # noqa: F841
-            yield session
+        async with self.async_session_factory() as _session:
+            yield _session
 
     @asynccontextmanager
     async def get_async_session(self):

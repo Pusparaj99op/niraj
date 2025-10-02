@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component, type ErrorInfo } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -61,7 +61,56 @@ import {
   getEmptyMessage,
 } from '../utils/formatters';
 
-// Register Chart.js components
+// Error Boundary Component for comprehensive error handling
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+  errorInfo?: ErrorInfo;
+}
+
+class AIMonitorErrorBoundary extends Component<React.PropsWithChildren<object>, ErrorBoundaryState> {
+  constructor(props: React.PropsWithChildren<object>) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('AI Monitor Error Boundary caught an error:', error, errorInfo);
+    this.setState({ error, errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 m-4">
+          <div className="flex items-center mb-4">
+            <AlertTriangle className="w-8 h-8 text-red-600 mr-3" />
+            <h2 className="text-xl font-semibold text-red-800">AI Monitor Error</h2>
+          </div>
+          <p className="text-red-700 mb-4">
+            Something went wrong with the AI monitoring dashboard. Please refresh the page or contact support if the problem persists.
+          </p>
+          <div className="bg-red-100 p-3 rounded text-sm text-red-800 mb-4">
+            <strong>Error:</strong> {this.state.error?.message}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium"
+          >
+            Refresh Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -91,7 +140,10 @@ const AISystemHealthCard: React.FC = () => {
     const trainingModels = models.filter(m => m.status === 'training');
 
     const avgAccuracy = activeModels.length > 0
-      ? activeModels.reduce((sum, m) => sum + (m.performance_metrics?.accuracy || 0), 0) / activeModels.length
+      ? activeModels.reduce((sum, m) => {
+          const accuracy = m.performance_metrics?.accuracy;
+          return sum + (typeof accuracy === 'number' ? accuracy : 0);
+        }, 0) / activeModels.length
       : 0;
 
     const totalPredictions = models.reduce((sum, m) => sum + m.total_predictions, 0);
@@ -238,16 +290,22 @@ const AIModelsListCard: React.FC = () => {
 
     return filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'accuracy':
-          return (b.performance_metrics?.accuracy || 0) - (a.performance_metrics?.accuracy || 0);
-        case 'win_rate':
+        case 'accuracy': {
+          const aAccuracy = typeof a.performance_metrics?.accuracy === 'number' ? a.performance_metrics.accuracy : 0;
+          const bAccuracy = typeof b.performance_metrics?.accuracy === 'number' ? b.performance_metrics.accuracy : 0;
+          return bAccuracy - aAccuracy;
+        }
+        case 'win_rate': {
           return b.win_rate - a.win_rate;
-        case 'last_prediction':
+        }
+        case 'last_prediction': {
           const aTime = a.last_prediction_at ? new Date(a.last_prediction_at).getTime() : 0;
           const bTime = b.last_prediction_at ? new Date(b.last_prediction_at).getTime() : 0;
           return bTime - aTime;
-        default:
+        }
+        default: {
           return a.name.localeCompare(b.name);
+        }
       }
     });
   }, [models, sortBy, filterStatus]);
@@ -308,7 +366,7 @@ const AIModelsListCard: React.FC = () => {
           </select>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'accuracy' | 'win_rate' | 'last_prediction')}
             className="text-sm border rounded px-2 py-1"
             aria-label="Sort models by"
           >
@@ -348,7 +406,7 @@ const AIModelsListCard: React.FC = () => {
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Accuracy</p>
-                  <p className="font-medium">{formatPercentage(model.performance_metrics?.accuracy || 0)}</p>
+                  <p className="font-medium">{formatPercentage(typeof model.performance_metrics?.accuracy === 'number' ? model.performance_metrics.accuracy : 0)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Win Rate</p>
@@ -407,8 +465,13 @@ const ConfidenceTrackingCard: React.FC = () => {
   const [selectedMetric, setSelectedMetric] = useState<string>('composite_confidence');
 
   const selectedMetricData = useMemo(() => {
-    if (!confidenceMetrics) return null;
-    return confidenceMetrics.find(m => m.metric_type === selectedMetric) || confidenceMetrics[0];
+    try {
+      if (!confidenceMetrics) return null;
+      return confidenceMetrics.find(m => m.metric_type === selectedMetric) || confidenceMetrics[0];
+    } catch (err) {
+      console.error('Error processing confidence metrics:', err);
+      return null;
+    }
   }, [confidenceMetrics, selectedMetric]);
 
   if (isLoading) {
@@ -495,7 +558,7 @@ const ConfidenceTrackingCard: React.FC = () => {
               <div key={index} className="flex flex-col items-center">
                 <div
                   className={`w-2 bg-blue-500 rounded-t`}
-                  style={{ height: `${point.accuracy * 100}%` }} // eslint-disable-line @typescript-eslint/no-explicit-any
+                  style={{ height: `${point.accuracy * 100}%` }}
                   title={`Confidence: ${formatPercentage(point.confidence)}, Accuracy: ${formatPercentage(point.accuracy)}`}
                 ></div>
                 <span className="text-xs text-gray-500 mt-1">{Math.round(point.confidence * 100)}</span>
@@ -516,20 +579,25 @@ const ModelPerformanceChart: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 
   const chartData = useMemo(() => {
-    if (!performance || !selectedModel) return null;
+    try {
+      if (!performance || !selectedModel) return null;
 
-    const modelData = performance.find(p => p.model_id === selectedModel);
-    if (!modelData) return null;
+      const modelData = performance.find(p => p.model_id === selectedModel);
+      if (!modelData) return null;
 
-    switch (timeRange) {
-      case 'daily':
-        return modelData.daily_performance.slice(-30); // Last 30 days
-      case 'weekly':
-        return modelData.monthly_trends.slice(-12); // Last 12 months (weekly aggregated)
-      case 'monthly':
-        return modelData.monthly_trends.slice(-12);
-      default:
-        return modelData.daily_performance.slice(-30);
+      switch (timeRange) {
+        case 'daily':
+          return modelData.daily_performance.slice(-30); // Last 30 days
+        case 'weekly':
+          return modelData.monthly_trends.slice(-12); // Last 12 months (weekly aggregated)
+        case 'monthly':
+          return modelData.monthly_trends.slice(-12);
+        default:
+          return modelData.daily_performance.slice(-30);
+      }
+    } catch (err) {
+      console.error('Error processing chart data:', err);
+      return null;
     }
   }, [performance, selectedModel, timeRange]);
 
@@ -581,7 +649,7 @@ const ModelPerformanceChart: React.FC = () => {
           </select>
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as any)}
+            onChange={(e) => setTimeRange(e.target.value as 'daily' | 'weekly' | 'monthly')}
             className="text-sm border rounded px-2 py-1"
             aria-label="Select time range"
           >
@@ -598,8 +666,8 @@ const ModelPerformanceChart: React.FC = () => {
           <div className="flex items-end justify-between h-full space-x-1">
             {chartData.map((point, index) => {
               const isDaily = timeRange === 'daily';
-              const accuracy = isDaily ? (point as any).accuracy : (point as any).accuracy_trend;
-              const pnl = isDaily ? (point as any).pnl : (point as any).pnl_trend;
+              const accuracy = isDaily ? (point as { date: string; accuracy: number; pnl: number; trades_count: number }).accuracy : (point as { month: string; accuracy_trend: number; pnl_trend: number }).accuracy_trend;
+              const pnl = isDaily ? (point as { date: string; accuracy: number; pnl: number; trades_count: number }).pnl : (point as { month: string; accuracy_trend: number; pnl_trend: number }).pnl_trend;
 
               return (
                 <div key={index} className="flex-1 flex flex-col items-center">
@@ -607,18 +675,18 @@ const ModelPerformanceChart: React.FC = () => {
                     {/* Accuracy bar */}
                     <div
                       className="w-3 bg-blue-500 rounded-t"
-                      style={{ height: `${Math.max(accuracy * 50, 2)}px` }} // eslint-disable-next-line
+                      style={{ height: `${Math.max(accuracy * 50, 2)}px` }}
                       title={`Accuracy: ${formatPercentage(accuracy)}`}
                     ></div>
                     {/* P&L bar */}
                     <div
                       className={`w-3 rounded-t ${pnl >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
-                      style={{ height: `${Math.max(Math.abs(pnl) * 10, 2)}px` }} // eslint-disable-next-line
+                      style={{ height: `${Math.max(Math.abs(pnl) * 10, 2)}px` }}
                       title={`P&L: ${formatCurrency(pnl)}`}
                     ></div>
                   </div>
                   <span className="text-xs text-gray-500 mt-1 transform -rotate-45 origin-top-left">
-                    {isDaily ? new Date((point as any).date).getDate() : (point as any).month}
+                    {isDaily ? new Date((point as { date: string; accuracy: number; pnl: number; trades_count: number }).date).getDate() : (point as { month: string; accuracy_trend: number; pnl_trend: number }).month}
                   </span>
                 </div>
               );
@@ -1054,9 +1122,20 @@ const AdvancedAnalyticsDashboard: React.FC = () => {
 };
 
 // Real-time Alerts System Component
+interface Alert {
+  id: string;
+  type: 'critical' | 'warning' | 'info';
+  title: string;
+  message: string;
+  timestamp: string;
+  model?: string;
+  symbol?: string;
+  acknowledged: boolean;
+}
+
 const RealTimeAlertsSystem: React.FC = () => {
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [alertHistory, setAlertHistory] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertHistory, setAlertHistory] = useState<Alert[]>([]);
   const [isAlertsEnabled, setIsAlertsEnabled] = useState(true);
   const [alertFilters, setAlertFilters] = useState({
     critical: true,
@@ -1066,7 +1145,7 @@ const RealTimeAlertsSystem: React.FC = () => {
 
   // Mock alerts data - in real implementation, this would come from WebSocket
   useEffect(() => {
-    const mockAlerts = [
+    const mockAlerts: Alert[] = [
       {
         id: '1',
         type: 'critical',
@@ -1431,7 +1510,7 @@ const SystemDiagnostics: React.FC = () => {
                   (systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3,
                   { warning: 60, critical: 80 }
                 )}`}
-                style={{ width: `${((systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3)}%` }} // eslint-disable-next-line
+                style={{ width: `${((systemMetrics.cpu + systemMetrics.memory + systemMetrics.network) / 3)}%` }}
               ></div>
             </div>
             <p className="text-xs text-gray-500">Average system load</p>
@@ -1457,8 +1536,26 @@ const AIMonitor: React.FC = () => {
     { id: 'diagnostics', label: 'Diagnostics', icon: <Cpu className="w-4 h-4" /> },
   ];
 
+  const handleFullscreenToggle = () => {
+    try {
+      setIsFullscreen(!isFullscreen);
+    } catch (err) {
+      console.error('Error toggling fullscreen:', err);
+    }
+  };
+
+  const handleRetry = () => {
+    try {
+      // In a real app, you might want to invalidate queries here
+      window.location.reload();
+    } catch (err) {
+      console.error('Error during retry:', err);
+    }
+  };
+
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-gray-50 p-6 overflow-auto' : ''}`}>
+    <AIMonitorErrorBoundary>
+      <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-gray-50 p-6 overflow-auto' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -1467,11 +1564,18 @@ const AIMonitor: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
+            onClick={handleFullscreenToggle}
             className="p-2 rounded-lg hover:bg-gray-100"
             title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           >
             {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={handleRetry}
+            className="p-2 rounded-lg hover:bg-gray-100 text-blue-600"
+            title="Retry loading data"
+          >
+            <RefreshCw className="w-5 h-5" />
           </button>
           <Settings className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-600" />
         </div>
@@ -1482,7 +1586,7 @@ const AIMonitor: React.FC = () => {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as 'overview' | 'models' | 'performance' | 'predictions' | 'analytics' | 'alerts' | 'diagnostics')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -1555,7 +1659,8 @@ const AIMonitor: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AIMonitorErrorBoundary>
   );
 };
 

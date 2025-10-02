@@ -346,5 +346,7 @@
     "eval": false,
     "Invoke-Expression": false,
     "iex": false
-  }
+  },
+  "files.autoSave": "afterDelay",
+  "python.analysis.typeCheckingMode": "standard"
 }

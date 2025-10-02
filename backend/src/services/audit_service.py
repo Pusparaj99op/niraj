@@ -7,7 +7,7 @@ data integrity, error handling, and performance monitoring.
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Optional, Tuple, Callable, AsyncGenerator
 from contextlib import asynccontextmanager
 import json
 from functools import wraps
@@ -43,7 +43,7 @@ class AuditServiceError(Exception):
     """Base exception for audit service errors"""
 
     def __init__(
-        self, message: str, event_type: str = None, context: Dict[str, Any] = None
+        self, message: str, event_type: Optional[str] = None, context: Optional[dict[str, Any]] = None
     ):
         self.message = message
         self.event_type = event_type
@@ -57,7 +57,7 @@ class AuditBatchError(AuditServiceError):
     def __init__(
         self,
         message: str,
-        failed_logs: List[Dict[str, Any]] = None,
+        failed_logs: Optional[list[dict[str, Any]]] = None,
         partial_success: bool = False,
     ):
         self.failed_logs = failed_logs or []
@@ -129,7 +129,7 @@ class AuditPerformanceMonitor:
         with self._lock:
             self.metrics["retention_cleanups"] += 1
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get performance metrics"""
         with self._lock:
             return self.metrics.copy()
@@ -155,10 +155,10 @@ class AuditBatchProcessor:
     def __init__(self, batch_size: int = 100, max_wait_time: float = 5.0):
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
-        self._batch_queue: List[AuditLog] = []
+        self._batch_queue: list[AuditLog] = []
         self._last_flush = time.time()
         self._lock = asyncio.Lock()
-        self._background_task: Optional[asyncio.Task] = None
+        self._background_task: Optional[asyncio.Task[None]] = None
         self._shutdown = False
 
     async def add_to_batch(self, audit_log: AuditLog) -> bool:
@@ -268,7 +268,7 @@ class AuditService:
         self.executor = ThreadPoolExecutor(max_workers=max_concurrent_operations)
 
         # Cache for frequently accessed data
-        self._user_session_cache = {}
+        self._user_session_cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = asyncio.Lock()
 
         # Service status
@@ -295,7 +295,7 @@ class AuditService:
             await self._ensure_database_schema()
 
             # Start retention cleanup task
-            asyncio.create_task(self._retention_cleanup_task())
+            _: asyncio.Task[None] = asyncio.create_task(self._retention_cleanup_task())
 
             self._initialized = True
             logger.info("Audit service initialization completed")
@@ -317,7 +317,7 @@ class AuditService:
                 await self.batch_processor.stop_background_processing()
 
             # Shutdown thread executor
-            self.executor.shutdown(wait=True, timeout=30)
+            self.executor.shutdown(wait=True)
 
             logger.info("Audit service shutdown completed")
 
@@ -354,13 +354,13 @@ class AuditService:
         session_id: Optional[str] = None,
         entity_type: Optional[str] = None,
         entity_id: Optional[str] = None,
-        request_data: Optional[Dict[str, Any]] = None,
-        response_data: Optional[Dict[str, Any]] = None,
-        old_values: Optional[Dict[str, Any]] = None,
-        new_values: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
-        **kwargs,
+        request_data: Optional[dict[str, Any]] = None,
+        response_data: Optional[dict[str, Any]] = None,
+        old_values: Optional[dict[str, Any]] = None,
+        new_values: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        tags: Optional[list[str]] = None,
+        **kwargs: Any,
     ) -> AuditLogResponse:
         """
         Create a new audit log entry with comprehensive validation and error handling
@@ -382,7 +382,7 @@ class AuditService:
                 response_data=response_data,
                 old_values=old_values,
                 new_values=new_values,
-                metadata=metadata or {},
+                audit_metadata=metadata or {},
                 tags=tags or [],
                 **kwargs,
             )
@@ -395,7 +395,7 @@ class AuditService:
             not_critical = severity not in [AuditSeverity.ERROR, AuditSeverity.CRITICAL]
             use_batch = batch_ok and not_critical
 
-            if use_batch:
+            if use_batch and self.batch_processor is not None:
                 success = await self.batch_processor.add_to_batch(audit_log)
                 if success:
                     duration_ms = (time.time() - start_time) * 1000
@@ -474,7 +474,7 @@ class AuditService:
                     retention_date=audit_log.retention_date,
                     execution_time_ms=audit_log.execution_time_ms,
                     memory_usage_mb=audit_log.memory_usage_mb,
-                    metadata=audit_log.metadata,
+                    metadata=audit_log.audit_metadata,
                     tags=audit_log.tags,
                     timestamp=audit_log.timestamp,
                     created_at=audit_log.created_at,
@@ -516,7 +516,7 @@ class AuditService:
             )
 
     async def _enrich_audit_log(
-        self, audit_log: AuditLog, user_id: str = None, session_id: str = None
+        self, audit_log: AuditLog, user_id: Optional[str] = None, session_id: Optional[str] = None
     ):
         """Enrich audit log with contextual information"""
         try:
@@ -528,11 +528,8 @@ class AuditService:
             if not audit_log.correlation_id:
                 audit_log.correlation_id = str(uuid.uuid4())
 
-            # Add execution context if available
-            if not audit_log.execution_time_ms and hasattr(audit_log, "_start_time"):
-                audit_log.execution_time_ms = int(
-                    (time.time() - audit_log._start_time) * 1000
-                )
+            # Note: execution_time_ms should be set by the caller if needed
+            # as AuditLog does not have a _start_time attribute
 
             # Cache session information for performance
             if user_id and session_id:
@@ -553,8 +550,8 @@ class AuditService:
     # Batch Operations
 
     async def create_audit_logs_batch(
-        self, audit_requests: List[AuditLogCreateRequest]
-    ) -> Tuple[List[AuditLogResponse], List[Dict[str, Any]]]:
+        self, audit_requests: list[AuditLogCreateRequest]
+    ) -> Tuple[list[AuditLogResponse], list[dict[str, Any]]]:
         """
         Create multiple audit logs in a batch operation
         Returns: (successful_logs, failed_logs)
@@ -562,8 +559,8 @@ class AuditService:
         if not audit_requests:
             return [], []
 
-        successful_logs = []
-        failed_logs = []
+        successful_logs: list[AuditLogResponse] = []
+        failed_logs: list[dict[str, Any]] = []
 
         try:
             if self.performance_monitor:
@@ -588,23 +585,21 @@ class AuditService:
                             response_data=request.response_data,
                             old_values=request.old_values,
                             new_values=request.new_values,
-                            metadata=request.metadata,
-                            tags=request.tags,
+                            audit_metadata=request.audit_metadata or {},
+                            tags=request.tags or [],
                         )
 
                         await self._enrich_audit_log(
                             audit_log, request.user_id, request.session_id
                         )
 
-                        # Convert to ORM
-                        orm_log = AuditLogORM(
-                            **{
-                                k: v.value if hasattr(v, "value") else v
-                                for k, v in audit_log.to_dict().items()
-                                if k != "retention_date"  # Handle datetime separately
-                            }
-                        )
-                        orm_log.retention_date = audit_log.retention_date
+                        # Convert to ORM - create dict with all values properly converted
+                        audit_dict = audit_log.to_dict()
+                        orm_dict = {
+                            k: v.value if hasattr(v, "value") else v
+                            for k, v in audit_dict.items()
+                        }
+                        orm_log = AuditLogORM(**orm_dict)
 
                         orm_logs.append(orm_log)
 
@@ -671,7 +666,7 @@ class AuditService:
         self,
         query_request: AuditLogQueryRequest,
         user_has_sensitive_access: bool = False,
-    ) -> Tuple[List[AuditLogResponse], int]:
+    ) -> Tuple[list[AuditLogResponse], int]:
         """
         Query audit logs with advanced filtering and pagination
         Returns: (audit_logs, total_count)
@@ -685,7 +680,7 @@ class AuditService:
                 count_query = select(func.count(AuditLogORM.id))
 
                 # Apply filters
-                filters = []
+                filters: list[Any] = []
 
                 if query_request.event_type:
                     filters.append(
@@ -730,7 +725,7 @@ class AuditService:
                     not user_has_sensitive_access
                     and not query_request.include_sensitive
                 ):
-                    filters.append(AuditLogORM.is_sensitive == False)
+                    filters.append(~AuditLogORM.is_sensitive)
 
                 # Tag filtering (JSON contains)
                 if query_request.tags:
@@ -765,7 +760,7 @@ class AuditService:
                 audit_logs_orm = result.scalars().all()
 
                 # Convert to response objects
-                audit_logs = []
+                audit_logs: list[AuditLogResponse] = []
                 for log_orm in audit_logs_orm:
                     # Create response data
                     response_data = {
@@ -811,7 +806,8 @@ class AuditService:
                     audit_log_response = AuditLogResponse(**response_data)
 
                     # Sanitize sensitive data if needed
-                    if not user_has_sensitive_access and log_orm.is_sensitive:
+                    is_sensitive = bool(log_orm.is_sensitive) if log_orm.is_sensitive is not None else False
+                    if not user_has_sensitive_access and is_sensitive:
                         audit_log_business = AuditLog(**audit_log_response.dict())
                         audit_log_business.sanitize_sensitive_data()
                         audit_log_response = AuditLogResponse(
@@ -861,7 +857,8 @@ class AuditService:
                     return None
 
                 # Check sensitive access
-                if not user_has_sensitive_access and log_orm.is_sensitive:
+                is_sensitive = bool(log_orm.is_sensitive) if log_orm.is_sensitive is not None else False
+                if not user_has_sensitive_access and is_sensitive:
                     logger.warning(
                         "Sensitive audit log access denied", audit_id=audit_id
                     )
@@ -890,7 +887,8 @@ class AuditService:
                 audit_log_response = AuditLogResponse(**response_data)
 
                 # Sanitize if needed
-                if log_orm.is_sensitive and not user_has_sensitive_access:
+                is_sensitive = bool(log_orm.is_sensitive) if log_orm.is_sensitive is not None else False
+                if is_sensitive and not user_has_sensitive_access:
                     audit_log_business = AuditLog(**audit_log_response.dict())
                     audit_log_business.sanitize_sensitive_data()
                     audit_log_response = AuditLogResponse(
@@ -922,7 +920,7 @@ class AuditService:
 
             async with self.db_manager.get_async_session() as session:
                 # Base query filters
-                base_filters = [
+                base_filters: list[Any] = [
                     AuditLogORM.timestamp >= start_date,
                     AuditLogORM.timestamp <= end_date,
                 ]
@@ -944,7 +942,7 @@ class AuditService:
                     .where(and_(*base_filters))
                     .group_by(AuditLogORM.event_type)
                 )
-                events_by_type = dict(events_by_type_result.fetchall())
+                events_by_type: dict[str, int] = {str(row[0]): int(row[1]) for row in events_by_type_result.fetchall()}
 
                 # Events by severity
                 events_by_severity_result = await session.execute(
@@ -952,7 +950,7 @@ class AuditService:
                     .where(and_(*base_filters))
                     .group_by(AuditLogORM.severity)
                 )
-                events_by_severity = dict(events_by_severity_result.fetchall())
+                events_by_severity: dict[str, int] = {str(row[0]): int(row[1]) for row in events_by_severity_result.fetchall()}
 
                 # Events by source
                 events_by_source_result = await session.execute(
@@ -960,10 +958,10 @@ class AuditService:
                     .where(and_(*base_filters))
                     .group_by(AuditLogORM.source)
                 )
-                events_by_source = dict(events_by_source_result.fetchall())
+                events_by_source: dict[str, int] = {str(row[0]): int(row[1]) for row in events_by_source_result.fetchall()}
 
                 # Events by user (if not filtering by specific user)
-                events_by_user = {}
+                events_by_user: dict[str, int] = {}
                 if not user_id:
                     events_by_user_result = await session.execute(
                         select(AuditLogORM.user_id, func.count(AuditLogORM.id))
@@ -972,7 +970,7 @@ class AuditService:
                         .group_by(AuditLogORM.user_id)
                         .limit(10)  # Top 10 users
                     )
-                    events_by_user = dict(events_by_user_result.fetchall())
+                    events_by_user = {str(row[0]): int(row[1]) for row in events_by_user_result.fetchall()}
 
                 # Recent critical events
                 critical_events_result = await session.execute(
@@ -982,7 +980,7 @@ class AuditService:
                     .order_by(desc(AuditLogORM.timestamp))
                     .limit(5)
                 )
-                critical_events = []
+                critical_events: list[dict[str, Any]] = []
                 for log in critical_events_result.scalars():
                     critical_events.append(
                         {
@@ -1025,12 +1023,12 @@ class AuditService:
         start_date: datetime,
         end_date: datetime,
         user_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect suspicious activity patterns"""
-        suspicious_activities = []
+        suspicious_activities: list[dict[str, Any]] = []
 
         try:
-            base_filters = [
+            base_filters: list[Any] = [
                 AuditLogORM.timestamp >= start_date,
                 AuditLogORM.timestamp <= end_date,
             ]
@@ -1048,11 +1046,12 @@ class AuditService:
             )
 
             failed_logins_result = await session.execute(failed_login_query)
-            for user_id, count in failed_logins_result.fetchall():
+            for row in failed_logins_result.fetchall():
+                row_user_id, count = row[0], row[1]
                 suspicious_activities.append(
                     {
                         "type": "multiple_failed_logins",
-                        "user_id": user_id,
+                        "user_id": row_user_id,
                         "count": count,
                         "severity": "high",
                     }
@@ -1083,11 +1082,12 @@ class AuditService:
             )
 
             unusual_hours_result = await session.execute(unusual_hours_query)
-            for user_id, count in unusual_hours_result.fetchall():
+            for row in unusual_hours_result.fetchall():
+                row_user_id, count = row[0], row[1]
                 suspicious_activities.append(
                     {
                         "type": "unusual_trading_hours",
-                        "user_id": user_id,
+                        "user_id": row_user_id,
                         "count": count,
                         "severity": "medium",
                     }
@@ -1100,7 +1100,7 @@ class AuditService:
 
     # Data Retention and Cleanup
 
-    async def cleanup_expired_logs(self) -> Dict[str, Any]:
+    async def cleanup_expired_logs(self) -> dict[str, Any]:
         """Clean up expired audit logs based on retention policy"""
         if self._shutdown:
             return {"cleaned": 0, "error": "Service shutting down"}
@@ -1147,12 +1147,16 @@ class AuditService:
                     if not log_ids:
                         break
 
-                    # Delete batch
+                    # Delete batch - use placeholders for the IN clause
+                    # Convert list to comma-separated string of placeholders
+                    placeholders = ",".join([f":id_{i}" for i in range(len(log_ids))])
                     delete_query = text(
-                        "DELETE FROM audit_logs WHERE id IN :log_ids"
-                    ).bindparam(log_ids=tuple(log_ids))
+                        f"DELETE FROM audit_logs WHERE id IN ({placeholders})"
+                    )
+                    # Bind parameters
+                    params = {f"id_{i}": log_id for i, log_id in enumerate(log_ids)}
 
-                    delete_result = await session.execute(delete_query)
+                    delete_result = await session.execute(delete_query, params)
                     batch_cleaned = delete_result.rowcount
                     total_cleaned += batch_cleaned
 
@@ -1215,17 +1219,19 @@ class AuditService:
                     raise AuditServiceError(f"Audit log not found: {audit_id}")
 
                 # Convert to business object and verify
+                # Note: SQLAlchemy ORM instances have attributes that appear as Column types to Pylance
+                # but at runtime they are the actual Python values
                 audit_log = AuditLog(
-                    id=log_orm.id,
-                    event_type=AuditEventType(log_orm.event_type),
-                    event_description=log_orm.event_description,
-                    severity=AuditSeverity(log_orm.severity),
-                    source=AuditSource(log_orm.source),
-                    user_id=log_orm.user_id,
-                    entity_type=log_orm.entity_type,
-                    entity_id=log_orm.entity_id,
-                    timestamp=log_orm.timestamp,
-                    checksum=log_orm.checksum,
+                    id=str(log_orm.id),  # type: ignore[arg-type]
+                    event_type=AuditEventType(str(log_orm.event_type)),  # type: ignore[arg-type]
+                    event_description=str(log_orm.event_description),  # type: ignore[arg-type]
+                    severity=AuditSeverity(str(log_orm.severity)),  # type: ignore[arg-type]
+                    source=AuditSource(str(log_orm.source)),  # type: ignore[arg-type]
+                    user_id=str(log_orm.user_id) if log_orm.user_id else None,  # type: ignore[arg-type]
+                    entity_type=str(log_orm.entity_type) if log_orm.entity_type else None,  # type: ignore[arg-type]
+                    entity_id=str(log_orm.entity_id) if log_orm.entity_id else None,  # type: ignore[arg-type]
+                    timestamp=log_orm.timestamp,  # type: ignore[arg-type]
+                    checksum=str(log_orm.checksum) if log_orm.checksum else None,  # type: ignore[arg-type]
                 )
 
                 return audit_log.verify_integrity()
@@ -1243,7 +1249,7 @@ class AuditService:
             )
             raise AuditServiceError(f"Integrity verification failed: {str(e)}")
 
-    async def bulk_verify_integrity(self, limit: int = 1000) -> Dict[str, Any]:
+    async def bulk_verify_integrity(self, limit: int = 1000) -> dict[str, Any]:
         """Verify integrity of multiple audit logs"""
         try:
             async with self.db_manager.get_async_session() as session:
@@ -1255,7 +1261,7 @@ class AuditService:
                 )
                 logs = result.scalars().all()
 
-                verification_results = {
+                verification_results: dict[str, Any] = {
                     "total_checked": len(logs),
                     "valid": 0,
                     "invalid": 0,
@@ -1264,16 +1270,16 @@ class AuditService:
 
                 for log_orm in logs:
                     try:
-                        is_valid = await self.verify_audit_log_integrity(log_orm.id)
+                        is_valid = await self.verify_audit_log_integrity(str(log_orm.id))  # type: ignore[arg-type]
                         if is_valid:
                             verification_results["valid"] += 1
                         else:
                             verification_results["invalid"] += 1
                             verification_results["failed_verifications"].append(
                                 {
-                                    "id": log_orm.id,
-                                    "event_type": log_orm.event_type,
-                                    "timestamp": log_orm.timestamp,
+                                    "id": str(log_orm.id),  # type: ignore[arg-type]
+                                    "event_type": str(log_orm.event_type),  # type: ignore[arg-type]
+                                    "timestamp": log_orm.timestamp,  # type: ignore[arg-type]
                                 }
                             )
                     except Exception as e:
@@ -1294,10 +1300,10 @@ class AuditService:
 
     # Service Management
 
-    async def get_service_status(self) -> Dict[str, Any]:
+    async def get_service_status(self) -> dict[str, Any]:
         """Get audit service status and performance metrics"""
         try:
-            status = {
+            status: dict[str, Any] = {
                 "service_name": "NIRAJ Audit Service",
                 "version": "1.0.0",
                 "initialized": self._initialized,
@@ -1343,10 +1349,10 @@ class AuditService:
         self,
         user_id: str,
         success: bool,
-        ip_address: str = None,
-        user_agent: str = None,
-        session_id: str = None,
-        metadata: Dict[str, Any] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> AuditLogResponse:
         """Audit user login attempt"""
         event_type = (
@@ -1374,10 +1380,10 @@ class AuditService:
         trade_id: str,
         symbol: str,
         quantity: str,
-        price: str = None,
-        amount: str = None,
-        session_id: str = None,
-        metadata: Dict[str, Any] = None,
+        price: Optional[str] = None,
+        amount: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> AuditLogResponse:
         """Audit trading action"""
         event_type_mapping = {
@@ -1413,7 +1419,7 @@ class AuditService:
         event_type: AuditEventType,
         description: str,
         severity: AuditSeverity = AuditSeverity.INFO,
-        metadata: Dict[str, Any] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> AuditLogResponse:
         """Audit system event"""
         return await self.create_audit_log(
@@ -1427,12 +1433,12 @@ class AuditService:
     async def audit_error(
         self,
         error_message: str,
-        user_id: str = None,
-        entity_type: str = None,
-        entity_id: str = None,
-        exception_type: str = None,
-        session_id: str = None,
-        metadata: Dict[str, Any] = None,
+        user_id: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
+        exception_type: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> AuditLogResponse:
         """Audit system error"""
         return await self.create_audit_log(
@@ -1458,20 +1464,24 @@ class AuditService:
 
 def audit_endpoint(
     event_type: AuditEventType,
-    description: str = None,
+    description: Optional[str] = None,
     severity: AuditSeverity = AuditSeverity.INFO,
-    extract_user_id: Callable = None,
-    extract_entity: Callable = None,
-):
+    extract_user_id: Optional[Callable[..., Any]] = None,
+    extract_entity: Optional[Callable[..., Any]] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for automatic API endpoint auditing"""
 
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
-            audit_service = None
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            audit_service_optional: Optional[AuditService] = None
             try:
                 # Extract audit service from kwargs or create new one
-                audit_service = kwargs.get("audit_service") or AuditService()
+                audit_service_optional = kwargs.get("audit_service")
+                if audit_service_optional is None:
+                    audit_service_optional = AuditService()
+
+                audit_service = audit_service_optional
                 if not audit_service._initialized:
                     await audit_service.initialize()
 
@@ -1512,11 +1522,13 @@ def audit_endpoint(
                 except Exception as e:
                     # Audit failed execution
                     execution_time_ms = int((time.time() - start_time) * 1000)
+                    entity_type_val = entity_info.get("type")
+                    entity_id_val = entity_info.get("id")
                     await audit_service.audit_error(
                         error_message=str(e),
-                        user_id=user_id,
-                        entity_type=entity_info.get("type"),
-                        entity_id=entity_info.get("id"),
+                        user_id=user_id if user_id else None,
+                        entity_type=str(entity_type_val) if entity_type_val else None,
+                        entity_id=str(entity_id_val) if entity_id_val else None,
                         exception_type=type(e).__name__,
                         metadata={
                             "function": func.__name__,
@@ -1557,11 +1569,11 @@ async def get_audit_service() -> AuditService:
 # Context manager for audit sessions
 @asynccontextmanager
 async def audit_context(
-    user_id: str = None,
-    session_id: str = None,
-    correlation_id: str = None,
-    metadata: Dict[str, Any] = None,
-):
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> AsyncGenerator[AuditService, None]:
     """Context manager for audit logging with shared context"""
     audit_service = await get_audit_service()
 

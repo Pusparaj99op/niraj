@@ -4,9 +4,6 @@ Demonstrates the comprehensive News API client functionality
 """
 
 import asyncio
-import sys
-import os
-from datetime import datetime, timedelta
 
 from backend.src.api.news_client import NewsClient, NewsConfig, NewsFilter
 
@@ -22,14 +19,14 @@ async def demo_news_client():
     config.newsapi.enabled = False  # Disable NewsAPI to avoid needing API key for demo
     config.rss.enabled = True
 
-    print(f"✓ Configuration created")
+    print("✓ Configuration created")
     print(f"  - RSS Feeds: {len(config.rss.feeds)} sources configured")
     print(f"  - Cache enabled with TTL: {config.rss.cache_duration_minutes} minutes")
     print()
 
     # Create client
     async with NewsClient(config) as client:
-        print(f"✓ News client initialized")
+        print("✓ News client initialized")
         print(f"  - Session ID: {client.session_id}")
         print(f"  - Providers available: {len(client.rate_limiters)}")
         print()
@@ -126,7 +123,7 @@ async def demo_news_client():
 
         # Statistics
         stats = client.get_client_stats()
-        print(f"✓ Client Statistics:")
+        print("✓ Client Statistics:")
         print(f"  • Total requests: {stats['statistics']['requests_made']}")
         print(f"  • Articles fetched: {stats['statistics']['articles_fetched']}")
         print(f"  • Cache hits: {stats['statistics']['cache_hits']}")
@@ -174,6 +171,7 @@ async def demo_news_client():
 
 def run_demo():
     """Run the news client demo"""
+
     try:
         asyncio.run(demo_news_client())
     except KeyboardInterrupt:

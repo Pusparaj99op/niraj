@@ -403,7 +403,7 @@ class TestStrategyFlow:
                     print("✅ Signal generation recovered successfully")
                     break
 
-                except SignalGenerationError as e:
+                except SignalGenerationError:
                     if attempt < max_failures:
                         continue  # Expected failure
                     else:
@@ -595,14 +595,6 @@ class TestStrategyFlow:
             "take_profit": 0.15,
             "lookback_period": 20,
             "signal_threshold": 0.70,
-        }
-
-        # Test invalid parameters
-        invalid_params = {
-            "risk_tolerance": 1.50,  # > 100%
-            "max_position_size": -0.05,  # Negative
-            "stop_loss": 0.0,  # Zero stop loss
-            "take_profit": -0.10,  # Negative take profit
         }
 
         try:

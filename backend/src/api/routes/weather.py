@@ -97,7 +97,8 @@ class MultiLocationRequest(BaseModel):
         description="List of locations", max_length=10
     )
     data_types: Optional[List[str]] = Field(
-        default=["current", "forecast", "alerts"], description="Types of data to fetch"
+        default_factory=lambda: ["current", "forecast", "alerts"],
+        description="Types of data to fetch",
     )
     include_insights: bool = Field(default=True, description="Include trading insights")
 
@@ -241,22 +242,27 @@ async def set_cached_weather(key: str, data: Dict[str, Any], ttl: int = 600):
         logger.warning("Weather cache set failed", key=key, error=str(e))
 
 
-def current_weather_to_response(
-    weather: CurrentWeather, units: str
-) -> CurrentWeatherResponse:
-    """Convert CurrentWeather to response model"""
+def current_weather_to_response(weather: CurrentWeather, units: str) -> CurrentWeatherResponse:
+    """Convert CurrentWeather (from weather_client) to API response model.
+
+    The upstream `CurrentWeather` model exposes latitude/longitude directly (not via a
+    nested coordinates object). This function normalizes that into the expected
+    response structure while guarding against unexpected None values.
+    """
+    coordinates: Dict[str, float] = {
+        "latitude": float(weather.latitude),
+        "longitude": float(weather.longitude),
+    }
+
     return CurrentWeatherResponse(
         location_name=weather.location_name,
         country=weather.country,
-        coordinates={
-            "latitude": weather.coordinates.latitude,
-            "longitude": weather.coordinates.longitude,
-        },
+        coordinates=coordinates,
         temperature=weather.temperature,
         feels_like=weather.feels_like,
         humidity=weather.humidity,
-        pressure=weather.pressure,
-        visibility=weather.visibility,
+        pressure=float(weather.pressure),
+        visibility=float(weather.visibility) if weather.visibility is not None else None,
         uv_index=weather.uv_index,
         wind_speed=weather.wind_speed,
         wind_direction=weather.wind_direction,
@@ -273,6 +279,24 @@ def current_weather_to_response(
         timestamp=weather.timestamp,
         units=units,
     )
+
+
+# Internal helper mapping functions (kept local to avoid new dependencies)
+def _transport_risk_to_numeric(risk: Optional[str]) -> float:
+    """Map textual transportation risk to numeric value for summary calculations.
+
+    Accepts 'low', 'medium', 'high' (case-insensitive). Defaults to 0.0 for unknown/None.
+    """
+    if not risk:
+        return 0.0
+    risk_lower = risk.lower()
+    if risk_lower == "low":
+        return 0.2
+    if risk_lower == "medium":
+        return 0.5
+    if risk_lower == "high":
+        return 0.8
+    return 0.0
 
 
 # API Endpoints
@@ -415,21 +439,25 @@ async def get_weather_forecast(
             # Convert forecasts to response format
             forecast_data = []
             for forecast in forecasts:
+                # WeatherForecast exposes 'timestamp' and 'probability_of_precipitation'
+                precipitation_probability = getattr(
+                    forecast, "probability_of_precipitation", 0.0
+                )
                 forecast_dict = {
-                    "date": forecast.date.isoformat(),
+                    "timestamp": forecast.timestamp.isoformat(),
                     "temperature": {
                         "min": forecast.temperature_min,
                         "max": forecast.temperature_max,
-                        "avg": (forecast.temperature_min + forecast.temperature_max)
-                        / 2,
+                        "avg": (forecast.temperature_min + forecast.temperature_max) / 2,
                     },
                     "humidity": forecast.humidity,
                     "pressure": forecast.pressure,
                     "wind_speed": forecast.wind_speed,
                     "wind_direction": forecast.wind_direction,
                     "precipitation": {
-                        "probability": forecast.precipitation_probability,
-                        "amount": forecast.precipitation_amount,
+                        "probability": precipitation_probability,
+                        # amount not directly available in free tier model
+                        "amount": None,
                     },
                     "conditions": [
                         {
@@ -439,12 +467,11 @@ async def get_weather_forecast(
                         }
                         for condition in forecast.conditions
                     ],
-                    "uv_index": forecast.uv_index,
                 }
 
-                # Add hourly data if requested
-                if include_hourly and hasattr(forecast, "hourly_data"):
-                    forecast_dict["hourly"] = forecast.hourly_data
+                # Include stub hourly array when requested to preserve response shape
+                if include_hourly:
+                    forecast_dict["hourly"] = []  # No hourly granularity from this endpoint
 
                 forecast_data.append(forecast_dict)
 
@@ -541,27 +568,32 @@ async def get_weather_insights(
             insights_data = {
                 "crop_stress_index": insights.crop_stress_index,
                 "drought_indicator": insights.drought_indicator,
-                "flood_risk": insights.flood_risk,
+                # Fields not provided by WeatherInsights model are omitted or set None
                 "frost_risk": insights.frost_risk,
-                "heatwave_indicator": insights.heatwave_indicator,
                 "transportation_disruption_risk": insights.transportation_disruption_risk,
-                "energy_demand_impact": insights.energy_demand_impact,
             }
 
             # Risk factors
             risk_factors = {
-                "agricultural_risk": insights.crop_stress_index,
-                "weather_volatility": 0.5,  # Calculate based on forecast variance
-                "transportation_risk": insights.transportation_disruption_risk,
-                "energy_impact": abs(insights.energy_demand_impact),
+                "agricultural_risk": insights.crop_stress_index or 0.0,
+                "weather_volatility": 0.5,  # Placeholder (variance calc TBD)
+                "transportation_risk": _transport_risk_to_numeric(
+                    insights.transportation_disruption_risk
+                ),
+                "energy_impact": 0.0,  # Not derivable from current model
             }
 
             # Commodity impacts
-            commodity_impacts = insights.commodity_price_impact or {}
+            commodity_impacts_raw = insights.commodity_price_impact or {}
+            # Convert to expected nested mapping: symbol -> { impact: str }
+            commodity_impacts: Dict[str, Dict[str, Any]] = {
+                symbol: {"impact": impact}
+                for symbol, impact in commodity_impacts_raw.items()
+            }
 
             # Generate recommendations
             recommendations = []
-            if insights.crop_stress_index > 0.7:
+            if (insights.crop_stress_index or 0.0) > 0.7:
                 recommendations.append(
                     "High crop stress detected - monitor agricultural commodity prices"
                 )
@@ -569,17 +601,11 @@ async def get_weather_insights(
                 recommendations.append(
                     "Drought conditions may impact water-intensive crops"
                 )
-            if insights.transportation_disruption_risk > 0.5:
+            if _transport_risk_to_numeric(insights.transportation_disruption_risk) > 0.5:
                 recommendations.append(
                     "Weather may disrupt transportation - consider logistics impacts"
                 )
-            if abs(insights.energy_demand_impact) > 0.3:
-                impact_type = (
-                    "increase" if insights.energy_demand_impact > 0 else "decrease"
-                )
-                recommendations.append(
-                    f"Weather conditions may {impact_type} energy demand"
-                )
+            # energy_demand_impact field removed (not in model) – skipping associated recommendation
 
             # Calculate confidence score
             confidence_score = 0.8  # Simplified calculation
@@ -679,25 +705,36 @@ async def get_weather_alerts(
             severity_counts = {"minor": 0, "moderate": 0, "severe": 0, "extreme": 0}
 
             for alert in alerts:
+                # weather_client.WeatherAlert exposes: sender_name, event, start, end, description, tags
+                # Map to unified structure; severity classification heuristic based on keywords
+                event_name = alert.event
+                severity = "moderate"
+                lowered = event_name.lower()
+                if any(k in lowered for k in ["tornado", "hurricane"]):
+                    severity = "extreme"
+                elif any(k in lowered for k in ["thunderstorm", "flood", "heat"]):
+                    severity = "severe"
+                elif any(k in lowered for k in ["snow", "cold", "wind"]):
+                    severity = "moderate"
+                else:
+                    severity = "minor"
+
                 alert_dict = {
-                    "id": alert.id,
-                    "title": alert.title,
+                    "id": hash((alert.sender_name, alert.event, alert.start, alert.end)),
+                    "title": event_name,
                     "description": alert.description,
-                    "severity": alert.severity,
-                    "urgency": alert.urgency,
-                    "certainty": alert.certainty,
-                    "areas": alert.areas,
-                    "start_time": (
-                        alert.start_time.isoformat() if alert.start_time else None
-                    ),
-                    "end_time": alert.end_time.isoformat() if alert.end_time else None,
-                    "event_type": alert.event_type,
-                    "trading_relevance": getattr(alert, "trading_relevance", 0.5),
+                    "severity": severity,
+                    "urgency": None,
+                    "certainty": None,
+                    "areas": alert.tags,
+                    "start_time": alert.start.isoformat() if alert.start else None,
+                    "end_time": alert.end.isoformat() if alert.end else None,
+                    "event_type": event_name,
+                    "trading_relevance": 0.5,
                 }
 
-                # Count severity levels
-                if alert.severity in severity_counts:
-                    severity_counts[alert.severity] += 1
+                if severity in severity_counts:
+                    severity_counts[severity] += 1
 
                 alert_data.append(alert_dict)
 
@@ -773,34 +810,28 @@ async def monitor_multiple_locations(
             successful_requests = 0
             failed_requests = 0
 
+            requested_types = request.data_types or []
             for location_req in request.locations:
                 location_key = f"{location_req.city}, {location_req.country}"
-
                 try:
                     location_query = LocationQuery(
                         city_name=location_req.city,
                         country_code=location_req.country,
                         state_code=location_req.state,
                     )
+                    location_info: Dict[str, Any] = {"location": location_key}
 
-                    location_info = {"location": location_key}
-
-                    # Get requested data types
-                    if "current" in request.data_types:
-                        current = await weather_client.get_current_weather(
-                            location_query
-                        )
+                    if "current" in requested_types:
+                        current = await weather_client.get_current_weather(location_query)
                         location_info["current"] = current_weather_to_response(
                             current, units.value
                         ).dict()
 
-                    if "forecast" in request.data_types:
-                        forecasts = await weather_client.get_forecast(
-                            location_query, days=3
-                        )
+                    if "forecast" in requested_types:
+                        forecasts = await weather_client.get_forecast(location_query, days=3)
                         location_info["forecast"] = [
                             {
-                                "date": f.date.isoformat(),
+                                "timestamp": f.timestamp.isoformat(),
                                 "temp_min": f.temperature_min,
                                 "temp_max": f.temperature_max,
                                 "conditions": [
@@ -811,7 +842,7 @@ async def monitor_multiple_locations(
                             for f in forecasts
                         ]
 
-                    if "insights" in request.data_types and request.include_insights:
+                    if "insights" in requested_types and request.include_insights:
                         insights = await weather_client.get_trading_insights(
                             location_query, include_forecast=False
                         )
@@ -823,8 +854,7 @@ async def monitor_multiple_locations(
 
                     location_data[location_key] = location_info
                     successful_requests += 1
-
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 broad to keep endpoint robust
                     logger.warning(
                         "Failed to get weather for location",
                         location=location_key,
@@ -851,15 +881,19 @@ async def monitor_multiple_locations(
             # Calculate summary statistics
             temperatures = []
             for loc_data in location_data.values():
-                if "current" in loc_data and "temperature" in loc_data["current"]:
-                    temperatures.append(loc_data["current"]["temperature"])
+                current_block = loc_data.get("current")
+                if isinstance(current_block, dict) and "temperature" in current_block:
+                    temperatures.append(current_block["temperature"])
 
                 if "insights" in loc_data:
                     insights = loc_data["insights"]
-                    if (
-                        insights.get("crop_stress_index", 0) > 0.7
-                        or insights.get("transportation_risk", 0) > 0.5
-                    ):
+                    crop_stress = float(insights.get("crop_stress_index", 0) or 0)
+                    transport_risk_num = _transport_risk_to_numeric(
+                        insights.get("transportation_risk")
+                        if isinstance(insights.get("transportation_risk"), str)
+                        else None
+                    )
+                    if crop_stress > 0.7 or transport_risk_num > 0.5:
                         summary["high_risk_locations"] += 1
 
             if temperatures:
@@ -1007,9 +1041,12 @@ async def get_commodity_weather_impact(
                             "location": region,
                             "crop_stress": insights.crop_stress_index,
                             "drought_risk": insights.drought_indicator,
-                            "flood_risk": insights.flood_risk,
+                            # flood_risk not present in model; use derived placeholder
+                            "flood_risk": False,
                             "temperature_stress": (
-                                1.0 if insights.crop_stress_index > 0.7 else 0.0
+                                1.0
+                                if (insights.crop_stress_index or 0.0) > 0.7
+                                else 0.0
                             ),
                         }
 
@@ -1017,7 +1054,7 @@ async def get_commodity_weather_impact(
                         regional_summary[region] = region_impact
 
                         # Generate alerts for high risk
-                        if insights.crop_stress_index > 0.8:
+                        if (insights.crop_stress_index or 0.0) > 0.8:
                             alerts.append(
                                 {
                                     "type": "HIGH_CROP_STRESS",
@@ -1050,10 +1087,10 @@ async def get_commodity_weather_impact(
                 # Calculate commodity-level impacts
                 if region_impacts:
                     avg_crop_stress = sum(
-                        r["crop_stress"] for r in region_impacts
+                        (r["crop_stress"] or 0.0) for r in region_impacts
                     ) / len(region_impacts)
                     drought_regions = sum(
-                        1 for r in region_impacts if r["drought_risk"]
+                        1 for r in region_impacts if r["drought_risk"] is True
                     )
 
                     commodity_info["weather_impact"] = {
@@ -1061,7 +1098,9 @@ async def get_commodity_weather_impact(
                         "drought_affected_regions": drought_regions,
                         "total_regions": len(region_impacts),
                         "high_risk_regions": sum(
-                            1 for r in region_impacts if r["crop_stress"] > 0.7
+                            1
+                            for r in region_impacts
+                            if (r["crop_stress"] or 0.0) > 0.7
                         ),
                     }
 
@@ -1076,9 +1115,9 @@ async def get_commodity_weather_impact(
                     }
 
                     # Update overall impact
-                    overall_impact["price_impact"] += commodity_info["risk_assessment"][
-                        "price_volatility_risk"
-                    ]
+                    overall_impact["price_impact"] += float(
+                        commodity_info["risk_assessment"]["price_volatility_risk"]
+                    )
                     overall_impact["production_risk"] += commodity_info[
                         "risk_assessment"
                     ]["production_risk"]

@@ -6,7 +6,6 @@ This is a basic validation script to ensure the client can be imported and initi
 
 import asyncio
 import sys
-import os
 
 # Import after path setup to avoid import errors
 from src.api.dhan_client import DhanClient, DhanConfig

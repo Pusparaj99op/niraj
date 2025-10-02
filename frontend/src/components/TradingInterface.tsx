@@ -504,7 +504,8 @@ const TradingInterface: React.FC = () => {
         const audio = new Audio();
         audio.volume = 0.3;
         // Use Web Audio API for a simple beep
-        const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        const context = new (AudioContextClass || AudioContext)();
         const oscillator = context.createOscillator();
         const gainNode = context.createGain();
 
@@ -660,7 +661,11 @@ const TradingInterface: React.FC = () => {
         case 'enter':
           if (event.ctrlKey) {
             event.preventDefault();
-            handleOrderSubmit(event as any);
+            // Call handleOrderSubmit without an event (modify the function to handle this)
+            const form = document.querySelector('form') as HTMLFormElement;
+            if (form) {
+              form.requestSubmit();
+            }
           }
           break;
         case 'delete':

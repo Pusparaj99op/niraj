@@ -66,7 +66,7 @@ class RagProcessorError(Exception):
     """Base exception for RAG processor errors"""
 
     def __init__(
-        self, message: str, error_code: str = None, context: Dict[str, Any] = None
+        self, message: str, error_code: Optional[str] = None, context: Optional[Dict[str, Any]] = None
     ):
         self.message = message
         self.error_code = error_code
@@ -203,7 +203,7 @@ class VectorDatabase:
     def __init__(self, db_path: str):
         """Initialize vector database"""
         self.db_path = db_path
-        self.connection = None
+        self.connection: Optional[sqlite3.Connection] = None
         self._init_database()
 
     def _init_database(self):
@@ -276,6 +276,8 @@ class VectorDatabase:
 
     def store_item(self, item: KnowledgeItem, embedding: List[float]) -> bool:
         """Store knowledge item with its embedding"""
+        if not self.connection:
+            raise VectorDatabaseError("Database connection is not available.")
         try:
             # Store knowledge item
             self.connection.execute(
@@ -331,9 +333,11 @@ class VectorDatabase:
         self,
         query_embedding: List[float],
         top_k: int = 10,
-        filters: Dict[str, Any] = None,
-    ) -> List[Tuple[str, float]]:
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> List[Tuple[KnowledgeItem, float]]:
         """Perform similarity search"""
+        if not self.connection:
+            raise VectorDatabaseError("Database connection is not available.")
         try:
             # Build base query
             query = """
@@ -372,7 +376,7 @@ class VectorDatabase:
                 query += " WHERE " + " AND ".join(conditions)
 
             # Execute query
-            cursor = self.connection.execute(query, params)
+            cursor = self.connection.execute(query, tuple(params))
             rows = cursor.fetchall()
 
             # Calculate similarities
@@ -432,14 +436,19 @@ class VectorDatabase:
 
     def get_item_count(self) -> int:
         """Get total number of items in database"""
+        if not self.connection:
+            return 0
         try:
             cursor = self.connection.execute("SELECT COUNT(*) FROM knowledge_items")
-            return cursor.fetchone()[0]
+            count = cursor.fetchone()
+            return count[0] if count else 0
         except Exception:
             return 0
 
     def delete_item(self, item_id: str) -> bool:
         """Delete knowledge item and its embedding"""
+        if not self.connection:
+            return False
         try:
             self.connection.execute(
                 "DELETE FROM knowledge_items WHERE id = ?", (item_id,)
@@ -476,8 +485,8 @@ class RAGProcessor:
         self.cache_ttl = get_config("ai.rag.cache_ttl", 3600)  # 1 hour
 
         # Initialize components
-        self.vector_db = None
-        self.embedding_model = None
+        self.vector_db: Optional[VectorDatabase] = None
+        self.embedding_model: Optional[Any] = None
         self.executor = ThreadPoolExecutor(max_workers=4)
 
         # Performance tracking
@@ -565,6 +574,8 @@ class RAGProcessor:
         """
         if not self.vector_db or not self.embedding_model:
             await self.initialize()
+            if not self.vector_db or not self.embedding_model:
+                raise IngestionError("RAG Processor is not initialized.")
 
         start_time = time.time()
         successful_count = 0
@@ -603,7 +614,7 @@ class RAGProcessor:
                 "failed": failed_count,
                 "processing_time_ms": processing_time,
                 "errors": errors,
-                "database_size": self.vector_db.get_item_count(),
+                "database_size": self.vector_db.get_item_count() if self.vector_db else 0,
             }
 
             logger.info(
@@ -619,6 +630,8 @@ class RAGProcessor:
 
     async def _process_batch(self, batch: List[KnowledgeItem]):
         """Process a batch of knowledge items"""
+        if not self.embedding_model or not self.vector_db:
+            raise IngestionError("RAG processor components are not initialized.")
         try:
             # Generate embeddings for the batch
             texts = [self._prepare_text_for_embedding(item) for item in batch]
@@ -744,6 +757,8 @@ class RAGProcessor:
         """
         if not self.vector_db or not self.embedding_model:
             await self.initialize()
+            if not self.vector_db or not self.embedding_model:
+                raise RetrievalError("RAG Processor is not initialized.")
 
         start_time = time.time()
         self.total_retrievals += 1
@@ -784,7 +799,7 @@ class RAGProcessor:
 
             # Sort and limit results
             filtered_results.sort(key=lambda x: x[1], reverse=True)
-            final_results = [
+            final_items = [
                 item for item, score in filtered_results[: query.max_results]
             ]
 
@@ -795,7 +810,7 @@ class RAGProcessor:
             self._update_retrieval_metrics(processing_time)
 
             result = RetrievalResult(
-                items=final_results,
+                items=final_items,
                 query=query,
                 total_found=len(search_results),
                 retrieval_time_ms=processing_time,
@@ -817,7 +832,7 @@ class RAGProcessor:
 
             logger.info(
                 "Knowledge retrieval completed",
-                results_count=len(final_results),
+                results_count=len(final_items),
                 processing_time_ms=processing_time,
                 avg_relevance=result.metadata["avg_relevance_score"],
             )
@@ -1034,6 +1049,8 @@ class RAGProcessor:
             max_content_per_item = (
                 self.max_context_length // len(items) if items else 1000
             )
+            if not max_content_per_item:
+                max_content_per_item = 1000
 
             for item in items:
                 # Limit content length to prevent token overflow
@@ -1272,8 +1289,8 @@ async def ingest_market_knowledge(items: List[KnowledgeItem]) -> Dict[str, Any]:
 
 async def retrieve_market_knowledge(
     query: str,
-    knowledge_types: List[KnowledgeType] = None,
-    symbols: List[str] = None,
+    knowledge_types: Optional[List[KnowledgeType]] = None,
+    symbols: Optional[List[str]] = None,
     max_results: int = 5,
 ) -> RetrievalResult:
     """Retrieve market knowledge"""

@@ -479,7 +479,6 @@ class TestWebSocketAuthContract:
 
                 assert response1["type"] == "auth_response"
                 assert response1["data"]["status"] == "authenticated"
-                first_session_id = response1["data"]["session_id"]
 
                 # Second auth attempt with same token
                 response2 = await self.send_auth_message(

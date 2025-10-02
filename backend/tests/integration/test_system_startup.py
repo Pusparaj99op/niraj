@@ -19,21 +19,15 @@ import pytest
 import asyncio
 import time
 import psutil
-import threading
+
 from datetime import datetime
-from decimal import Decimal
-from typing import Dict, Any, List
+from typing import Dict, Any
 from unittest.mock import Mock, AsyncMock
 from enum import Enum
 import json
-import uuid
-import os
-import sys
 
 # Mock imports for integration testing
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
-import redis
 
 
 class ServiceStatus(Enum):
@@ -884,7 +878,7 @@ class TestSystemStartup:
 
             assert market_data_service.restart_count > 0
             assert market_data_service.status == ServiceStatus.HEALTHY
-            print(f"   ✅ Automatic service restart performed")
+            print("   ✅ Automatic service restart performed")
 
             # Step 6: Test health threshold alerts
             health_thresholds = {
@@ -1210,13 +1204,10 @@ class TestSystemStartup:
         try:
             # Step 1: Measure startup performance
             startup_start = time.time()
-            memory_before = psutil.virtual_memory().used
 
             await system_manager.start_system()
 
             startup_duration = time.time() - startup_start
-            memory_after = psutil.virtual_memory().used
-            memory_used = (memory_after - memory_before) // (1024 * 1024)  # MB
 
             # Step 2: Validate startup time benchmark
             assert (
@@ -1290,7 +1281,7 @@ class TestSystemStartup:
             }
 
             print("✅ System startup performance benchmarks passed")
-            print(f"   Performance Report: {json.dumps(performance_report, indent=2)}")
+            print("   Performance Report: {}".format(json.dumps(performance_report, indent=2)))
 
         except Exception as e:
             pytest.fail(f"Performance benchmark test failed: {str(e)}")
@@ -1299,6 +1290,7 @@ class TestSystemStartup:
 
 
 # Additional utility functions for testing
+
 def create_system_test_scenario(scenario_name: str) -> Dict[str, Any]:
     """Create predefined system test scenarios"""
 

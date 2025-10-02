@@ -5,6 +5,8 @@ import {
 } from '../services/api';
 import type {
   PortfolioResponse,
+  PortfolioPosition,
+  PortfolioSummary,
   TradesResponse,
   AIPredictionsResponse,
   Strategy,
@@ -46,7 +48,7 @@ export const usePortfolio = () => {
 
   // Set up WebSocket listeners for real-time updates
   useEffect(() => {
-    const handlePortfolioUpdate = (data: any) => {
+    const handlePortfolioUpdate = (data: Partial<PortfolioPosition>) => {
       queryClient.setQueryData(QUERY_KEYS.portfolio, (oldData: PortfolioResponse | undefined) => {
         if (!oldData) return oldData;
 
@@ -62,7 +64,7 @@ export const usePortfolio = () => {
       });
     };
 
-    const handlePortfolioSummaryUpdate = (data: any) => {
+    const handlePortfolioSummaryUpdate = (data: Partial<PortfolioSummary>) => {
       queryClient.setQueryData(QUERY_KEYS.portfolio, (oldData: PortfolioResponse | undefined) => {
         if (!oldData) return oldData;
 
@@ -110,20 +112,20 @@ export const useActiveStrategies = () => {
 
   // Set up WebSocket listeners for strategy updates
   useEffect(() => {
-    const handleStrategySignal = (_data: any) => {
+    const handleStrategySignal = () => {
       // Invalidate strategies query to refetch
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.strategies });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.activeStrategies });
     };
 
-    const handleStrategyPerformanceUpdate = (data: any) => {
+    const handleStrategyPerformanceUpdate = (data: { strategy_id: string; performance: Record<string, unknown> }) => {
       // Update strategy performance in cache
       queryClient.setQueryData(QUERY_KEYS.activeStrategies, (oldData: Strategy[] | undefined) => {
         if (!oldData) return oldData;
 
         return oldData.map(strategy =>
           strategy.strategy_id === data.strategy_id
-            ? { ...strategy, performance_metrics: data.performance }
+            ? { ...strategy, performance_metrics: data.performance as Strategy['performance_metrics'] }
             : strategy
         );
       });
@@ -158,14 +160,14 @@ export const useRecentTrades = (limit = 20, offset = 0) => {
 
   // Set up WebSocket listeners for trade updates
   useEffect(() => {
-    const handleTradeExecuted = (data: Trade) => {
+    const handleTradeExecuted = (data: Record<string, unknown>) => {
       // Add new trade to the beginning of the list
       queryClient.setQueryData(
         [...QUERY_KEYS.recentTrades, limit, offset],
         (oldData: TradesResponse | undefined) => {
           if (!oldData) return oldData;
 
-          const newTrades = [data, ...oldData.trades.slice(0, limit - 1)];
+          const newTrades = [data as unknown as Trade, ...oldData.trades.slice(0, limit - 1)];
           return {
             ...oldData,
             trades: newTrades,
@@ -175,7 +177,7 @@ export const useRecentTrades = (limit = 20, offset = 0) => {
       );
     };
 
-    const handleTradeUpdate = (data: Trade) => {
+    const handleTradeUpdate = (data: Record<string, unknown>) => {
       // Update existing trade
       queryClient.setQueryData(
         [...QUERY_KEYS.recentTrades, limit, offset],
@@ -183,7 +185,7 @@ export const useRecentTrades = (limit = 20, offset = 0) => {
           if (!oldData) return oldData;
 
           const updatedTrades = oldData.trades.map(trade =>
-            trade.trade_id === data.trade_id ? { ...trade, ...data } : trade
+            trade.trade_id === (data as unknown as Trade).trade_id ? { ...trade, ...data } : trade
           );
 
           return {
@@ -225,7 +227,7 @@ export const useAIPredictions = (
 
   // Set up WebSocket listeners for AI updates
   useEffect(() => {
-    const handleAIPrediction = (data: AIPrediction) => {
+    const handleAIPrediction = (data: Record<string, unknown>) => {
       // Add new prediction to the beginning of the list
       queryClient.setQueryData(
         [...QUERY_KEYS.aiPredictions, symbol, strategy_id, min_confidence, limit, offset],
@@ -233,12 +235,13 @@ export const useAIPredictions = (
           if (!oldData) return oldData;
 
           // Check if prediction matches filters
-          const matchesSymbol = !symbol || data.symbol === symbol;
-          const matchesStrategy = !strategy_id || data.strategy_id === strategy_id;
-          const matchesConfidence = data.confidence_score >= min_confidence;
+          const prediction = data as unknown as AIPrediction;
+          const matchesSymbol = !symbol || prediction.symbol === symbol;
+          const matchesStrategy = !strategy_id || prediction.strategy_id === strategy_id;
+          const matchesConfidence = prediction.confidence_score >= min_confidence;
 
           if (matchesSymbol && matchesStrategy && matchesConfidence) {
-            const newPredictions = [data, ...oldData.predictions.slice(0, limit - 1)];
+            const newPredictions = [prediction, ...oldData.predictions.slice(0, limit - 1)];
             return {
               ...oldData,
               predictions: newPredictions,
@@ -280,7 +283,7 @@ export const useStrategyBacktest = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ strategyId, params }: { strategyId: string; params?: any }) =>
+    mutationFn: ({ strategyId, params }: { strategyId: string; params?: Record<string, unknown> }) =>
       apiService.getStrategyBacktest(strategyId, params),
     onSuccess: (data, variables) => {
       // Update strategy performance cache

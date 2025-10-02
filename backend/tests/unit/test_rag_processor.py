@@ -9,10 +9,8 @@ import pytest
 import asyncio
 import tempfile
 import os
-import json
-from datetime import datetime, timedelta
+
 from unittest.mock import Mock, patch, AsyncMock
-from typing import List, Dict, Any
 
 from src.ai.rag_processor import (
     RAGProcessor,
@@ -22,10 +20,6 @@ from src.ai.rag_processor import (
     RetrievalQuery,
     RetrievalMode,
     RagProcessorError,
-    VectorDatabaseError,
-    EmbeddingError,
-    RetrievalError,
-    IngestionError,
 )
 from src.ai.gemma3_integration import AnalysisRequest, AnalysisType
 
@@ -413,8 +407,6 @@ class TestRAGProcessor:
             [[0.5, 0.5, 0.0]],  # For ingestion
             [[0.6, 0.4, 0.0]],  # For query
         ]
-
-        mock_gemma3_client = Mock()
 
         with patch.object(
             self.rag_processor, "_load_embedding_model", return_value=mock_model

@@ -209,11 +209,20 @@ export const formatMarketHours = (isOpen: boolean): { text: string; color: strin
 };
 
 // Error message formatting
-export const formatErrorMessage = (error: any): string => {
+export const formatErrorMessage = (error: unknown): string => {
   if (typeof error === 'string') return error;
-  if (error?.message) return error.message;
-  if (error?.response?.data?.message) return error.response.data.message;
-  if (error?.response?.data?.error) return error.response.data.error;
+  if (error && typeof error === 'object') {
+    const errorObj = error as Record<string, unknown>;
+    if (errorObj.message && typeof errorObj.message === 'string') return errorObj.message;
+
+    // Handle Axios-style errors
+    const response = errorObj.response as Record<string, unknown> | undefined;
+    if (response?.data && typeof response.data === 'object') {
+      const data = response.data as Record<string, unknown>;
+      if (data.message && typeof data.message === 'string') return data.message;
+      if (data.error && typeof data.error === 'string') return data.error;
+    }
+  }
   return 'An unexpected error occurred';
 };
 

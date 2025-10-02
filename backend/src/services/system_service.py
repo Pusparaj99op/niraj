@@ -5,7 +5,6 @@ Provides comprehensive system monitoring, status reporting, and AI prediction ma
 for the NIRAJ trading system. Includes health checks, metrics collection, and system state management.
 """
 
-import asyncio
 import json
 import time
 from datetime import datetime, timezone
@@ -540,8 +539,7 @@ class SystemService:
 
             # Simple health check query
             async with self.db_manager.get_connection() as session:
-                result = await session.execute(text("SELECT 1 as health_check"))
-                row = result.fetchone()
+                await session.execute(text("SELECT 1 as health_check"))
 
             response_time = (time.time() - start_time) * 1000
 
@@ -608,7 +606,8 @@ class SystemService:
         """Check execution engine health"""
         try:
             # Check if execution engine can be imported and basic components are available
-            from ..core.execution_engine import ExecutionEngine
+            # Just try to import to check if it's available
+            __import__('src.core.execution_engine')
 
             # Check if broker clients are available
             has_brokers = (

@@ -53,9 +53,9 @@ export interface SystemStatus {
   trading_mode: 'paper' | 'live';
   market_hours: boolean;
   timestamp: string;
-  services: Record<string, any>;
-  api_connections: Record<string, any>;
-  system_metrics: Record<string, any>;
+  services: Record<string, unknown>;
+  api_connections: Record<string, unknown>;
+  system_metrics: Record<string, unknown>;
 }
 
 // Portfolio Types
@@ -142,7 +142,7 @@ export interface AIPrediction {
   predicted_magnitude: number;
   prediction_horizon: number;
   reasoning: string;
-  market_features: Record<string, any>;
+  market_features: Record<string, unknown>;
   was_correct?: boolean;
   trade_executed?: boolean;
 }
@@ -177,8 +177,8 @@ export interface AIModel {
   status: 'created' | 'training' | 'trained' | 'validating' | 'validated' | 'deployed' | 'deprecated' | 'error' | 'archived';
   is_active: boolean;
   is_production_ready: boolean;
-  performance_metrics: Record<string, any>;
-  validation_metrics: Record<string, any>;
+  performance_metrics: Record<string, unknown>;
+  validation_metrics: Record<string, unknown>;
   win_rate: number;
   sharpe_ratio?: number;
   max_drawdown?: number;
@@ -250,13 +250,13 @@ class ApiService {
     return response.strategies.filter(strategy => strategy.status === 'active');
   }
 
-  async getStrategyPerformance(strategyId: string): Promise<any> {
-    const response: AxiosResponse<any> = await apiClient.get(`/api/v1/strategies/${strategyId}/performance`);
+  async getStrategyPerformance(strategyId: string): Promise<Record<string, unknown>> {
+    const response: AxiosResponse<Record<string, unknown>> = await apiClient.get(`/api/v1/strategies/${strategyId}/performance`);
     return response.data;
   }
 
-  async getStrategyBacktest(strategyId: string, params?: any): Promise<any> {
-    const response: AxiosResponse<any> = await apiClient.post(`/api/v1/strategies/${strategyId}/backtest`, params);
+  async getStrategyBacktest(strategyId: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const response: AxiosResponse<Record<string, unknown>> = await apiClient.post(`/api/v1/strategies/${strategyId}/backtest`, params);
     return response.data;
   }
 
@@ -311,8 +311,8 @@ class ApiService {
   }
 
   // Authentication endpoints
-  async login(credentials: { username: string; password: string }): Promise<{ token: string; user: any }> {
-    const response: AxiosResponse<{ token: string; user: any }> = await apiClient.post('/api/v1/auth/login', credentials);
+  async login(credentials: { username: string; password: string }): Promise<{ token: string; user: Record<string, unknown> }> {
+    const response: AxiosResponse<{ token: string; user: Record<string, unknown> }> = await apiClient.post('/api/v1/auth/login', credentials);
     return response.data;
   }
 

@@ -16,7 +16,8 @@ Endpoints:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from decimal import Decimal
+from typing import Dict, Any, List, Optional, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,9 +25,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import structlog
 
-from ...core.database import DatabaseManager
-from ...core.cache import CacheManager
-from ...models.trade import (
+from backend.src.core.database import DatabaseManager
+from backend.src.core.cache import CacheManager
+from backend.src.models.trade import (
     Trade,
     TradeCreateRequest,
     TradeResponse,
@@ -226,14 +227,14 @@ def handle_trade_error(e: Exception, request_path: str) -> JSONResponse:
 async def list_trades(
     symbol: Optional[str] = Query(None, description="Filter by trading symbol"),
     strategy_id: Optional[str] = Query(None, description="Filter by strategy ID"),
-    status: Optional[str] = Query(None, description="Filter by trade status"),
+    trade_status: Optional[str] = Query(None, description="Filter by trade status"),
     start_date: Optional[str] = Query(
         None, description="Start date filter (YYYY-MM-DD)"
     ),
     end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     db_manager: DatabaseManager = Depends(get_db_manager),
-) -> TradeListResponse:
+) -> Union[TradeListResponse, JSONResponse]:
     """
     List trades with filtering and pagination
 
@@ -246,7 +247,7 @@ async def list_trades(
         with structlog.contextvars.bound_contextvars(
             symbol=symbol,
             strategy_id=strategy_id,
-            status=status,
+            status=trade_status,
             start_date=start_date,
             end_date=end_date,
             limit=limit,
@@ -254,7 +255,7 @@ async def list_trades(
             logger.info("Listing trades with filters")
 
             # Validate filters
-            if status and status not in ["OPEN", "CLOSED", "CANCELLED"]:
+            if trade_status and trade_status not in ["OPEN", "CLOSED", "CANCELLED"]:
                 return create_error_response(
                     error="ValidationError",
                     error_code="INVALID_STATUS",
@@ -317,8 +318,8 @@ async def list_trades(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         path="/api/v1/trades",
                     )
-            if status:
-                filters["status"] = status
+            if trade_status:
+                filters["status"] = trade_status
 
             # Date range filtering
             date_filters = {}
@@ -331,7 +332,7 @@ async def list_trades(
             async with db_manager.get_async_session() as session:
                 # Build query
                 from sqlalchemy import select, and_, func
-                from ...models.trade import TradeORM
+                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM)
 
@@ -385,7 +386,7 @@ async def list_trades(
                 if conditions:
                     count_query = count_query.where(and_(*conditions))
                 count_result = await session.execute(count_query)
-                total = count_result.scalar()
+                total = count_result.scalar() or 0
 
                 response = TradeListResponse(
                     trades=trades, total=total, has_more=has_more
@@ -444,7 +445,7 @@ async def list_trades(
 async def create_trade(
     trade_data: TradeCreateRequestModel,
     db_manager: DatabaseManager = Depends(get_db_manager),
-) -> TradeResponse:
+) -> Union[TradeResponse, JSONResponse]:
     """
     Create a new trade with comprehensive validation
 
@@ -518,11 +519,15 @@ async def create_trade(
                 symbol=trade_data.symbol,
                 trade_type=TradeType(trade_data.trade_type),
                 quantity=trade_data.quantity,
-                entry_price=entry_price,
-                initial_stop_loss=stop_loss,
-                take_profit_target=take_profit,
+                entry_price=Decimal(str(entry_price)),
+                initial_stop_loss=Decimal(str(stop_loss)),
+                take_profit_target=Decimal(str(take_profit)),
                 is_paper_trade=True,  # Default to paper trading
                 broker=BrokerType.PAPER,
+                signal_id=None,
+                transaction_cost=Decimal("0.0"),
+                broker_order_id=None,
+                notes=None,
             )
 
             # Create trade object
@@ -533,11 +538,14 @@ async def create_trade(
                 trade_type=trade_request.trade_type,
                 quantity=trade_request.quantity,
                 entry_price=trade_request.entry_price,
-                initial_stop_loss=trade_request.initial_stop_loss,
-                take_profit_target=trade_request.take_profit_target,
+                initial_stop_loss=trade_request.initial_stop_loss or Decimal("0"),
+                take_profit_target=trade_request.take_profit_target or Decimal("0"),
                 is_paper_trade=trade_request.is_paper_trade,
                 broker=trade_request.broker,
                 transaction_cost=trade_request.transaction_cost,
+                signal_id=trade_request.signal_id,
+                broker_order_id=trade_request.broker_order_id,
+                notes=trade_request.notes,
             )
 
             # Validate trade
@@ -545,7 +553,7 @@ async def create_trade(
 
             # Save to database
             async with db_manager.get_async_session() as session:
-                from ...models.trade import TradeORM
+                from backend.src.models.trade import TradeORM
 
                 # Convert to ORM object
                 trade_orm = TradeORM(
@@ -624,7 +632,7 @@ async def create_trade(
 )
 async def get_trade(
     trade_id: str, db_manager: DatabaseManager = Depends(get_db_manager)
-) -> TradeResponse:
+) -> Union[TradeResponse, JSONResponse]:
     """
     Get detailed information about a specific trade
 
@@ -652,7 +660,7 @@ async def get_trade(
             # Query trade from database
             async with db_manager.get_async_session() as session:
                 from sqlalchemy import select
-                from ...models.trade import TradeORM
+                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM).where(TradeORM.trade_id == trade_id)
                 result = await session.execute(query)
@@ -723,7 +731,7 @@ async def update_trade(
     trade_id: str,
     update_data: TradeUpdateRequestModel,
     db_manager: DatabaseManager = Depends(get_db_manager),
-) -> TradeResponse:
+) -> Union[TradeResponse, JSONResponse]:
     """
     Update trade parameters (stop loss and take profit)
 
@@ -765,7 +773,7 @@ async def update_trade(
             # Query and update trade
             async with db_manager.get_async_session() as session:
                 from sqlalchemy import select
-                from ...models.trade import TradeORM
+                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM).where(TradeORM.trade_id == trade_id)
                 result = await session.execute(query)
@@ -775,18 +783,19 @@ async def update_trade(
                     raise TradeNotFoundError(trade_id)
 
                 # Check if trade can be updated
-                if trade_orm.status != "OPEN":
+                current_status = str(trade_orm.status)
+                if current_status != "OPEN":
                     return create_error_response(
                         error="ValidationError",
                         error_code="TRADE_NOT_UPDATEABLE",
-                        message=f"Cannot update trade with status {trade_orm.status}",
+                        message=f"Cannot update trade with status {current_status}",
                         status_code=status.HTTP_409_CONFLICT,
                         path=f"/api/v1/trades/{trade_id}",
                     )
 
                 # Validate price relationships
-                entry_price = float(trade_orm.entry_price)
-                trade_type = trade_orm.trade_type
+                entry_price = float(str(trade_orm.entry_price))
+                trade_type = str(trade_orm.trade_type)
 
                 if update_data.stop_loss is not None:
                     if trade_type == "BUY" and update_data.stop_loss >= entry_price:

@@ -22,6 +22,7 @@ import asyncio
 import json
 import uuid
 import time
+import random
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
@@ -29,7 +30,8 @@ from enum import Enum
 
 import websockets
 from websockets.exceptions import ConnectionClosedError
-from jose import jwt
+from jose import jwt, JWTError
+from sqlalchemy import text
 
 from ..core.config import config
 from ..core.database import DatabaseManager
@@ -155,7 +157,7 @@ class WebSocketConnection:
     """WebSocket connection state"""
 
     connection_id: str
-    websocket: websockets.WebSocketServerProtocol
+    websocket: Any  # websockets.WebSocketServerProtocol
     user_id: Optional[str] = None
     trading_mode: Optional[TradingMode] = None
     session_id: Optional[str] = None
@@ -358,7 +360,7 @@ class CircuitBreaker:
     async def call(self, func, *args, **kwargs):
         """Execute function with circuit breaker protection"""
         if self.state == "open":
-            if time.time() - self.last_failure_time > self.recovery_timeout:
+            if self.last_failure_time is not None and time.time() - self.last_failure_time > self.recovery_timeout:
                 self.state = "half-open"
             else:
                 raise Exception("Circuit breaker is open")
@@ -406,7 +408,10 @@ class RetryPolicy:
                     delay = self.backoff_factor**attempt
                     await asyncio.sleep(delay)
 
-        raise last_exception
+        if last_exception:
+            raise last_exception
+        else:
+            raise Exception("Retry policy failed with no exceptions")
 
 
 class WebSocketServer:
@@ -424,8 +429,10 @@ class WebSocketServer:
     ):
         self.db_manager = db_manager
         self.cache_manager = cache_manager
-        self.auth_service = auth_service or AuthenticationService(
-            db_manager, cache_manager
+        self.auth_service = auth_service or (
+            AuthenticationService(db_manager, cache_manager)
+            if cache_manager
+            else None
         )
         self.data_manager = data_manager
         self.info_processor = info_processor
@@ -533,7 +540,7 @@ class WebSocketServer:
         logger.info("WebSocket server stopped")
 
     async def handle_connection(
-        self, websocket: websockets.WebSocketServerProtocol, path: str
+        self, websocket: Any, path: str  # websocket: WebSocketServerProtocol
     ):
         """Handle incoming WebSocket connection"""
         connection_id = str(uuid.uuid4())
@@ -646,7 +653,7 @@ class WebSocketServer:
                 raise TokenError("Invalid token: missing user ID")
 
             # Get user from database
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 user = await session.get(UserORM, user_id)
                 if not user:
                     raise AuthenticationError("User not found")
@@ -662,7 +669,7 @@ class WebSocketServer:
 
                 # Update connection state
                 connection.user_id = str(user.id)
-                connection.trading_mode = user.trading_mode
+                connection.trading_mode = TradingMode(user.trading_mode)
                 connection.session_id = str(uuid.uuid4())
                 connection.authenticated = True
                 connection.authenticated_at = time.time()
@@ -678,9 +685,7 @@ class WebSocketServer:
                     trading_mode=user.trading_mode.value,
                 )
 
-        except jwt.ExpiredSignatureError:
-            raise TokenError("Token has expired")
-        except jwt.InvalidTokenError:
+        except JWTError:
             raise TokenError("Invalid token")
         except Exception as e:
             logger.error("Authentication error", error=str(e))
@@ -827,6 +832,15 @@ class WebSocketServer:
                         continue
 
                     # Create subscription
+                    if not connection.user_id:
+                        failed_subscriptions.append(
+                            {
+                                "stream_type": stream_type,
+                                "error": "User not authenticated",
+                            }
+                        )
+                        continue
+
                     subscription = Subscription.create(
                         stream_type=StreamType(stream_type),
                         user_id=connection.user_id,
@@ -960,7 +974,7 @@ class WebSocketServer:
         return False
 
     async def _send_auth_response(
-        self, connection: WebSocketConnection, success: bool, error: str = None
+        self, connection: WebSocketConnection, success: bool, error: Optional[str] = None
     ):
         """Send authentication response"""
         response = {
@@ -1301,7 +1315,7 @@ class WebSocketServer:
             if self.info_processor:
                 try:
                     # Get real-time market data
-                    market_data = await self.info_processor.get_market_data(
+                    market_data = await self.info_processor.get_market_data(  # type: ignore
                         symbol, timeframe
                     )
                     if market_data:
@@ -1316,7 +1330,7 @@ class WebSocketServer:
             # Fallback to historical data manager
             if self.data_manager:
                 try:
-                    historical_data = await self.data_manager.get_latest_data(
+                    historical_data = await self.data_manager.get_latest_data(  # type: ignore
                         symbol, timeframe
                     )
                     if historical_data:
@@ -1335,7 +1349,7 @@ class WebSocketServer:
             logger.error("Failed to fetch market data", symbol=symbol, error=str(e))
             return None
 
-    def _format_market_data(self, raw_data: Any) -> Dict[str, Any]:
+    def _format_market_data(self, raw_data: Any) -> Optional[Dict[str, Any]]:
         """Format market data for WebSocket transmission"""
         try:
             # Handle different data formats from various sources
@@ -1372,7 +1386,6 @@ class WebSocketServer:
 
     def _generate_mock_market_data(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """Generate mock market data for development/testing"""
-        import random
 
         base_price = 1000 + random.uniform(-50, 50)
 
@@ -1409,7 +1422,7 @@ class WebSocketServer:
             # Try to get real trade signals from information processor
             if self.info_processor:
                 try:
-                    real_signals = await self.info_processor.get_trade_signals()
+                    real_signals = await self.info_processor.get_trade_signals()  # type: ignore
                     if real_signals:
                         signals.extend(real_signals)
                 except Exception as e:
@@ -1418,10 +1431,10 @@ class WebSocketServer:
             # Get signals from database if we don't have enough
             if len(signals) < 3:
                 try:
-                    async with self.db_manager.get_session() as session:
+                    async with self.db_manager.get_async_session() as session:
                         # Get recent signals from database
                         recent_signals = await session.execute(
-                            "SELECT * FROM strategy_signals WHERE created_at >= datetime('now', '-1 hour') ORDER BY created_at DESC LIMIT 10"
+                            text("SELECT * FROM strategy_signals WHERE created_at >= datetime('now', '-1 hour') ORDER BY created_at DESC LIMIT 10")
                         )
                         db_signals = recent_signals.fetchall()
 
@@ -1454,7 +1467,6 @@ class WebSocketServer:
 
     def _generate_mock_trade_signals(self) -> List[Dict[str, Any]]:
         """Generate mock trade signals for development/testing"""
-        import random
 
         signals = []
         strategies = ["predator_strategy", "vulture_approach", "time_arbitrage"]
@@ -1492,7 +1504,7 @@ class WebSocketServer:
             # Try to get real portfolio data from portfolio service
             if self.portfolio_service:
                 try:
-                    real_portfolio = await self.portfolio_service.get_portfolio(user_id)
+                    real_portfolio = await self.portfolio_service.get_portfolio(user_id)  # type: ignore
                     if real_portfolio:
                         portfolio_data.update(real_portfolio)
                         return portfolio_data
@@ -1505,11 +1517,11 @@ class WebSocketServer:
 
             # Get portfolio data from database if service unavailable
             try:
-                async with self.db_manager.get_session() as session:
+                async with self.db_manager.get_async_session() as session:
                     # Get user portfolio summary
                     portfolio_query = await session.execute(
-                        "SELECT * FROM portfolios WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-                        (user_id,),
+                        text("SELECT * FROM portfolios WHERE user_id = :user_id ORDER BY updated_at DESC LIMIT 1"),
+                        {"user_id": user_id}
                     )
                     portfolio_row = portfolio_query.fetchone()
 
@@ -1525,8 +1537,8 @@ class WebSocketServer:
 
                     # Get positions
                     positions_query = await session.execute(
-                        "SELECT * FROM positions WHERE user_id = ? AND quantity > 0",
-                        (user_id,),
+                        text("SELECT * FROM positions WHERE user_id = :user_id AND quantity > 0"),
+                        {"user_id": user_id}
                     )
                     positions = positions_query.fetchall()
 
@@ -1563,7 +1575,6 @@ class WebSocketServer:
 
     def _generate_mock_portfolio(self, user_id: str) -> Dict[str, Any]:
         """Generate mock portfolio data for development/testing"""
-        import random
 
         positions = []
         total_value = 0.0
@@ -1611,7 +1622,7 @@ class WebSocketServer:
             # Try to get real AI insights from confidence tracker
             if self.confidence_tracker:
                 try:
-                    real_insights = await self.confidence_tracker.get_recent_insights()
+                    real_insights = await self.confidence_tracker.get_recent_insights()  # type: ignore
                     if real_insights:
                         insights.extend(real_insights)
                 except Exception as e:
@@ -1620,10 +1631,10 @@ class WebSocketServer:
             # Get insights from database if we don't have enough
             if len(insights) < 3:
                 try:
-                    async with self.db_manager.get_session() as session:
+                    async with self.db_manager.get_async_session() as session:
                         # Get recent AI predictions from database
                         recent_insights = await session.execute(
-                            "SELECT * FROM ai_predictions WHERE created_at >= datetime('now', '-1 hour') ORDER BY created_at DESC LIMIT 10"
+                            text("SELECT * FROM ai_predictions WHERE created_at >= datetime('now', '-1 hour') ORDER BY created_at DESC LIMIT 10")
                         )
                         db_insights = recent_insights.fetchall()
 
@@ -1656,7 +1667,6 @@ class WebSocketServer:
 
     def _generate_mock_ai_insights(self) -> List[Dict[str, Any]]:
         """Generate mock AI insights for development/testing"""
-        import random
 
         insights = []
         symbols = [f"INSIGHT{random.randint(1, 50):03d}" for _ in range(5)]
@@ -1773,13 +1783,13 @@ async def shutdown_websocket_server():
 
 
 # WebSocket endpoint handler for FastAPI integration
-async def websocket_endpoint(websocket: websockets.WebSocketServerProtocol, path: str):
+async def websocket_endpoint(websocket: Any):
     """WebSocket endpoint handler for FastAPI"""
     if _websocket_server is None:
         await websocket.close(1011, "WebSocket server not available")
         return
 
-    await _websocket_server.handle_connection(websocket, path)
+    await _websocket_server.handle_connection(websocket, "")
 
 
 # Standalone server startup
@@ -1794,27 +1804,31 @@ async def run_websocket_server():
     config.load_config()
 
     # Initialize services
-    db_manager = DatabaseManager(
-        database_url=config.get("database_url", "sqlite:///niraj.db")
-    )
-    await db_manager.initialize()
+    db_manager = DatabaseManager()
 
     cache_manager = None
     try:
         cache_manager = CacheManager(
-            redis_url=config.get("redis_url", "redis://localhost:6379")
+            redis_url=config.settings.redis_url
         )
     except Exception:
         pass
 
-    auth_service = AuthenticationService(db_manager, cache_manager)
+    auth_service = (
+        AuthenticationService(db_manager, cache_manager)
+        if cache_manager
+        else None
+    )
 
     # Initialize WebSocket server
     server = await init_websocket_server(db_manager, cache_manager, auth_service)
 
     # Start WebSocket server
+    async def handler(websocket):
+        await server.handle_connection(websocket, "")
+
     ws_server = await websockets.serve(
-        server.handle_connection,
+        handler,
         WS_CONFIG["host"],
         WS_CONFIG["port"],
         max_size=WS_CONFIG["max_message_size"],
@@ -1832,4 +1846,3 @@ async def run_websocket_server():
         await shutdown_websocket_server()
         if cache_manager:
             await cache_manager.close()
-        await db_manager.close()

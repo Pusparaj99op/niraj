@@ -19,10 +19,10 @@ import pytest
 import asyncio
 import json
 import websockets
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-from typing import Dict, Any, List, Optional, Union
-from unittest.mock import Mock, AsyncMock, MagicMock
+from typing import Dict, Any, List
+from unittest.mock import Mock, AsyncMock
 from enum import Enum
 import uuid
 import time
@@ -419,14 +419,6 @@ class MockWebSocketClient:
             raise AuthenticationError("Must be connected before authentication")
 
         try:
-            auth_message = {
-                "type": WebSocketMessageType.AUTH_REQUEST.value,
-                "token": token,
-                "user_id": user_id,
-                "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat(),
-            }
-
             # In real implementation, would send via websocket
             # For testing, simulate authentication response
             if token == "valid_test_token":
@@ -449,14 +441,6 @@ class MockWebSocketClient:
             raise SubscriptionError("Must be authenticated before subscribing")
 
         try:
-            subscribe_message = {
-                "type": WebSocketMessageType.SUBSCRIBE.value,
-                "subscription_type": subscription_type.value,
-                "symbols": symbols or [],
-                "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat(),
-            }
-
             # In real implementation, would send via websocket
             # For testing, simulate subscription
             self.subscriptions.add(subscription_type)
@@ -469,13 +453,6 @@ class MockWebSocketClient:
     async def unsubscribe(self, subscription_type: SubscriptionType):
         """Unsubscribe from data streams"""
         try:
-            unsubscribe_message = {
-                "type": WebSocketMessageType.UNSUBSCRIBE.value,
-                "subscription_type": subscription_type.value,
-                "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat(),
-            }
-
             # In real implementation, would send via websocket
             # For testing, simulate unsubscription
             self.subscriptions.discard(subscription_type)
@@ -489,13 +466,6 @@ class MockWebSocketClient:
     async def send_heartbeat(self):
         """Send heartbeat message"""
         try:
-            heartbeat_message = {
-                "type": WebSocketMessageType.HEARTBEAT.value,
-                "message": "ping",
-                "client_id": self.client_id,
-                "timestamp": datetime.now().isoformat(),
-            }
-
             # In real implementation, would send via websocket
             self.last_heartbeat = datetime.now()
             print(f"💓 Client {self.client_id} sent heartbeat")
@@ -526,11 +496,11 @@ class MockWebSocketClient:
 
     async def _handle_portfolio_update(self, message: Dict):
         """Handle portfolio update messages"""
-        print(f"💼 Portfolio update received")
+        print("💼 Portfolio update received")
 
     async def _handle_trade_signal(self, message: Dict):
         """Handle trade signal messages"""
-        print(f"📊 Trade signal received")
+        print("📊 Trade signal received")
 
     async def _handle_error_message(self, message: Dict):
         """Handle error messages"""
@@ -698,8 +668,8 @@ class TestFrontendIntegration:
             try:
                 await websocket_client.disconnect()
                 await websocket_server.stop()
-            except:
-                pass
+            except Exception as cleanup_error:
+                print(f"Cleanup error: {cleanup_error}")
             pytest.fail(f"WebSocket communication workflow failed: {str(e)}")
 
     @pytest.mark.asyncio
@@ -769,7 +739,6 @@ class TestFrontendIntegration:
 
             assert websocket_client.is_connected is True
             assert websocket_client.is_authenticated is True
-            initial_connection_state = websocket_client.connection_state
 
             # Step 2: Simulate connection loss
             websocket_client.is_connected = False
@@ -954,11 +923,6 @@ class TestFrontendIntegration:
             # Step 6: Test subscription limits and validation
             # Test invalid subscription type
             try:
-                invalid_subscription = {
-                    "type": WebSocketMessageType.SUBSCRIBE.value,
-                    "subscription_type": "invalid_type",
-                    "client_id": websocket_client.client_id,
-                }
                 # This would raise an error in real implementation
                 print("Invalid subscription type handled correctly")
             except Exception:
@@ -1205,8 +1169,8 @@ class TestFrontendIntegration:
                 for client in overload_clients:
                     try:
                         await client.disconnect()
-                    except:
-                        pass
+                    except Exception as cleanup_error:
+                        print(f"Client cleanup error: {cleanup_error}")
 
             except Exception as e:
                 print(f"   Server overload test completed: {str(e)}")
@@ -1413,11 +1377,6 @@ class TestFrontendIntegration:
 
             # Step 6: Test data encryption validation (if applicable)
             # In production, WebSocket messages should be encrypted
-            sensitive_data = {
-                "portfolio_value": "500000.00",
-                "positions": [{"symbol": "RELIANCE", "quantity": 100}],
-                "api_key": "secret_api_key_12345",
-            }
 
             # Simulate data encryption
             encrypted_data = {

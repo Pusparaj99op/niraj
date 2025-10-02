@@ -3,33 +3,32 @@
 Comprehensive test suite for Dhan HQ API client T060
 Tests all implemented functionality with error scenarios
 """
-
+import argparse
 import asyncio
+import logging
 import sys
 import time
-import logging
-from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.api.dhan_client import (  # type: ignore
-    DhanClient,
-    DhanConfig,
-    RateLimiter,
-    DhanError,
     AuthenticationError,
     AuthorizationError,
-    RateLimitError,
-    ValidationError,
+    DhanClient,
+    DhanConfig,
+    DhanError,
     NetworkError,
-    ServerError,
     OrderError,
+    RateLimiter,
+    RateLimitError,
+    ServerError,
+    ValidationError,
 )
-
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -120,10 +119,12 @@ class ComprehensiveDhanTest:
 
         return self.generate_summary()
 
-    async def _run_test_with_timeout(self, test_func, suite_name: str, timeout: float) -> TestResult:
+    async def _run_test_with_timeout(
+        self, test_func, suite_name: str, timeout: float
+    ) -> TestResult:
         """Run a test function with timeout handling"""
+        start_time = time.time()
         try:
-            start_time = time.time()
             result = await asyncio.wait_for(test_func(), timeout=timeout)
             execution_time = time.time() - start_time
 
@@ -138,7 +139,7 @@ class ComprehensiveDhanTest:
                 suite_name=suite_name,
                 passed=passed,
                 execution_time=execution_time,
-                details=details
+                details=details,
             )
         except asyncio.TimeoutError:
             error_msg = f"Test {suite_name} timed out after {timeout} seconds"
@@ -147,7 +148,9 @@ class ComprehensiveDhanTest:
         except Exception as e:
             error_msg = f"Test {suite_name} failed: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            return TestResult(suite_name, False, error_msg, time.time() - start_time)
+            return TestResult(
+                suite_name, False, error_msg, time.time() - start_time
+            )
 
     async def test_initialization(self) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """Test client initialization with enhanced error handling"""
@@ -680,18 +683,22 @@ class ComprehensiveDhanTest:
             for status_code, exc_type, description in error_scenarios:
                 # Test exception instantiation
                 exc = exc_type(description)
-                tested_scenarios.append({
-                    "status_code": status_code,
-                    "exception_type": exc_type.__name__,
-                    "description": description,
-                    "exception_message": exc.message
-                })
+                tested_scenarios.append(
+                    {
+                        "status_code": status_code,
+                        "exception_type": exc_type.__name__,
+                        "description": description,
+                        "exception_message": exc.message,
+                    }
+                )
 
-                print(f"  ✅ Error scenario {status_code}: {exc_type.__name__} - {description}")
+                print(
+                    f"  ✅ Error scenario {status_code}: {exc_type.__name__} - {description}"
+                )
 
             details = {
                 "total_error_scenarios": len(tested_scenarios),
-                "scenarios": tested_scenarios
+                "scenarios": tested_scenarios,
             }
 
             return True, details
@@ -710,14 +717,28 @@ class ComprehensiveDhanTest:
         print("📊 TEST SUMMARY")
         print("=" * 70)
 
+        if not self.test_results:
+            print("No tests were run.")
+            return True
+
         passed = sum(1 for result in self.test_results if result.passed)
         total = len(self.test_results)
 
         # Performance metrics
-        total_execution_time = sum(result.execution_time for result in self.test_results)
+        total_execution_time = sum(
+            result.execution_time for result in self.test_results
+        )
         avg_execution_time = total_execution_time / total if total > 0 else 0
-        slowest_test = max(self.test_results, key=lambda r: r.execution_time) if self.test_results else None
-        fastest_test = min(self.test_results, key=lambda r: r.execution_time) if self.test_results else None
+        slowest_test = (
+            max(self.test_results, key=lambda r: r.execution_time)
+            if self.test_results
+            else None
+        )
+        fastest_test = (
+            min(self.test_results, key=lambda r: r.execution_time)
+            if self.test_results
+            else None
+        )
 
         for result in self.test_results:
             status = "✅ PASS" if result.passed else "❌ FAIL"
@@ -726,15 +747,21 @@ class ComprehensiveDhanTest:
             if result.error_message:
                 print(f"       Error: {result.error_message}")
 
-        print(f"\n📈 Results: {passed}/{total} test suites passed ({passed/total*100:.1f}%)")
+        print(
+            f"\n📈 Results: {passed}/{total} test suites passed ({passed/total*100:.1f}%)"
+        )
         print(f"⏱️  Total execution time: {total_time:.2f}s")
         print(f"⏱️  Test execution time: {total_execution_time:.2f}s")
         print(f"⏱️  Average test time: {avg_execution_time:.2f}s")
 
         if slowest_test:
-            print(f"🐌 Slowest test: {slowest_test.suite_name} ({slowest_test.execution_time:.2f}s)")
+            print(
+                f"🐌 Slowest test: {slowest_test.suite_name} ({slowest_test.execution_time:.2f}s)"
+            )
         if fastest_test:
-            print(f"🚀 Fastest test: {fastest_test.suite_name} ({fastest_test.execution_time:.2f}s)")
+            print(
+                f"🚀 Fastest test: {fastest_test.suite_name} ({fastest_test.execution_time:.2f}s)"
+            )
 
         if passed == total:
             self.logger.info("All tests passed - Dhan HQ API Client is complete")
@@ -766,7 +793,6 @@ class ComprehensiveDhanTest:
 
 async def main():
     """Main test runner with configuration options"""
-    import argparse
 
     parser = argparse.ArgumentParser(description="Comprehensive Dhan HQ API Client Test Suite")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")

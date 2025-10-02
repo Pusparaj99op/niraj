@@ -45,6 +45,7 @@ export function useWebSocket(config?: {
   });
 
   // Event handler refs to prevent unnecessary re-renders
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   const eventHandlersRef = useRef(new Map<string, Function[]>());
   const serviceRef = useRef<AdvancedWebSocketService>(websocketService);
 
@@ -335,7 +336,7 @@ export function useMarketData(symbols: string[], timeframe = '15min', options?: 
         unsubscribe(subscriptionId).catch(console.error);
       }
     };
-  }, [isAuthenticated, symbols.join(','), timeframe, subscribeToMarketData, unsubscribe, options?.autoSubscribe, subscriptionId]);
+  }, [isAuthenticated, symbols, timeframe, subscribeToMarketData, unsubscribe, options?.autoSubscribe, options?.subscriptionOptions, subscriptionId]);
 
   // Handle market data updates
   useEffect(() => {
@@ -397,7 +398,7 @@ export function usePortfolioUpdates(options?: {
         unsubscribe(subscriptionId).catch(console.error);
       }
     };
-  }, [isAuthenticated, subscribeToPortfolio, unsubscribe, options?.autoSubscribe, subscriptionId]);
+  }, [isAuthenticated, subscribeToPortfolio, unsubscribe, options?.autoSubscribe, options?.subscriptionOptions, subscriptionId]);
 
   // Handle portfolio updates
   useEffect(() => {
@@ -467,7 +468,7 @@ export function useTradeSignals(options?: {
         unsubscribe(subscriptionId).catch(console.error);
       }
     };
-  }, [isAuthenticated, options?.strategyIds?.join(','), options?.minConfidence, subscribeToTradeSignals, unsubscribe, options?.autoSubscribe, subscriptionId]);
+  }, [isAuthenticated, options?.strategyIds, options?.minConfidence, subscribeToTradeSignals, unsubscribe, options?.autoSubscribe, options?.subscriptionOptions, subscriptionId]);
 
   // Handle trade signal updates
   useEffect(() => {
