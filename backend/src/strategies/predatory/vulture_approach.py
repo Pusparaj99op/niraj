@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Vulture Approach Strategy Implementation for NIRAJ Trading System
 
@@ -12,17 +14,19 @@ Real-time capitulation monitoring and signal generation
 
 import time
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, cast
 from dataclasses import dataclass, field
 from enum import Enum
 import structlog
-import uuid
+# uuid import removed (unused)
 import statistics
+
+# Module logger
+logger = structlog.get_logger(__name__)
 
 try:
     from ...core.config import get_config
-    from ...models.strategy import StrategyConfig, StrategyType
     from ...models.strategy_signal import SignalType
     from ...models.market_data import MarketData
     from ...models.technical_indicator import IndicatorType
@@ -36,215 +40,15 @@ try:
         StrategyPhase,
         SignalGenerationError,
         RiskManagementError,
+        StrategyConfig,  # Use canonical dataclass config expected by BaseStrategy
+        StrategyType,
     )
-except ImportError as e:
-    # Handle imports for isolated testing - define minimal interfaces
-    print(f"Some imports failed, using minimal interfaces: {str(e)}")
-
-    # Mock get_config function
-    def get_config(key: str, default=None):
-        """Mock configuration getter for testing"""
-        config_defaults = {
-            "strategy.vulture.min_oversold_rsi": 25,
-            "strategy.vulture.max_overbought_rsi": 75,
-            "strategy.vulture.capitulation_volume_multiplier": 2.5,
-            "strategy.vulture.sentiment_fear_threshold": -0.7,
-            "strategy.vulture.mean_reversion_lookback": 20,
-            "strategy.vulture.min_confidence": 0.75,
-            "strategy.vulture.max_history_size": 200,
-            "strategy.vulture.pattern_recognition_window": 50,
-            "strategy.vulture.max_active_opportunities": 3,
-            "strategy.vulture.max_concurrent_positions": 2,
-            "strategy.vulture.emergency_stop_multiplier": 1.5,
-            "strategy.vulture.conservative_profit_targets": [1.5, 3.0, 5.0, 8.0, 12.0],
-            "strategy.vulture.max_consecutive_failures": 3,
-        }
-        return config_defaults.get(key, default)
-
-    # Define minimal required classes
-    class StrategyType(str, Enum):
-        PREDATORY = "predatory"
-        PSYCHOLOGICAL = "psychological"
-        QUANTITATIVE = "quantitative"
-
-    @dataclass
-    class StrategyConfig:
-        name: str = ""
-        description: str = ""
-        strategy_type: StrategyType = StrategyType.PSYCHOLOGICAL
-        max_position_size: float = 0.05  # More conservative
-        max_drawdown_limit: float = 0.08  # Tighter drawdown limit
-        stop_loss_percentage: float = 0.03  # Tighter stops
-        take_profit_percentage: float = 0.08  # Higher targets for mean reversion
-        min_signal_strength: float = 0.75  # Higher conviction required
-        max_trades_per_day: int = 5  # Lower frequency
-        supported_symbols: List[str] = None
-
-        def __post_init__(self):
-            if self.supported_symbols is None:
-                self.supported_symbols = []
-
-    @dataclass
-    class MarketData:
-        symbol: str
-        timestamp: datetime
-        open: float = 0.0
-        high: float = 0.0
-        low: float = 0.0
-        close: float = 0.0
-        volume: int = 0
-
-    # Mock classes for dependencies
-    class TechnicalIndicatorsCalculator:
-        def calculate_indicator(self, indicator_type, data_points, **kwargs):
-            class MockResult:
-                value = 0.5
-                values = [0.5]
-
-            return MockResult()
-
-    class Gemma3Client:
-        def __init__(self):
-            pass
-
-        async def connect(self):
-            pass
-
-        async def analyze(self, request):
-            class MockResponse:
-                result = {
-                    "confidence": 0.5,
-                    "key_points": [],
-                    "risk_level": "medium",
-                    "rationale": "Mock response",
-                }
-                confidence_score = 0.5
-                processing_time_ms = 100
-
-            return MockResponse()
-
-        @property
-        def is_connected(self):
-            return True
-
-    class AdvancedConfidenceTracker:
-        pass
-
-    # Mock enums
-    class IndicatorType(str, Enum):
-        PREDATOR_SIGNAL = "predator_signal"
-        VOLUME_WEIGHTED_AVERAGE_PRICE = "vwap"
-        BOLLINGER_BANDS = "bollinger_bands"
-        RSI = "rsi"
-        MACD = "macd"
-        ATR = "atr"
-        CHAIKIN_MF = "chaikin_mf"
-
-    class AnalysisType(str, Enum):
-        PATTERN_RECOGNITION = "pattern_recognition"
-
-    @dataclass
-    class AnalysisRequest:
-        analysis_type: AnalysisType
-        input_data: Dict[str, Any]
-        confidence_threshold: float = 0.5
-
-    # Define minimal BaseStrategy interface for testing
-    class BaseStrategy:
-        def __init__(self, config, learning_engine=None):
-            self.config = config
-            self.learning_engine = learning_engine
-            self.strategy_id = str(uuid.uuid4())
-            self.status = type("Status", (), {"ACTIVE": "active", "PAUSED": "paused"})()
-            self.current_phase = StrategyPhase.INITIALIZING
-            self.active_positions = {}
-            self.performance = type(
-                "Performance",
-                (),
-                {"total_return": 0.0, "total_trades": 0, "win_rate": 0.0},
-            )()
-            self.last_analysis = {}
-
-        async def initialize(self):
-            return True
-
-        async def manage_risk(self, portfolio):
-            return []
-
-        async def update_performance(self, trade_result):
-            pass
-
-        async def health_check(self):
-            return {"status": "unknown"}
-
-        async def cleanup(self):
-            pass
-
-        def log_strategy_event(self, event_type, data):
-            pass
-
-    # Define other minimal classes
-    @dataclass
-    class MarketAnalysis:
-        symbol: str
-        analysis_type: str = ""
-        indicators: Dict[str, Any] = None
-        ai_insights: Dict[str, Any] = None
-        sentiment_score: float = 0.0
-        volatility: float = 0.0
-        liquidity_score: float = 1.0
-        confidence_score: float = 0.5
-        processing_time_ms: float = 0.0
-
-        def __post_init__(self):
-            if self.indicators is None:
-                self.indicators = {}
-            if self.ai_insights is None:
-                self.ai_insights = {}
-
-    @dataclass
-    class TradingSignal:
-        strategy_id: str
-        symbol: str
-        signal_type: Any
-        strength: float
-        entry_price: float
-        stop_loss_price: float
-        take_profit_price: float
-        position_size_percentage: float
-        quantity: int
-        reasoning: str
-        supporting_data: Dict[str, Any] = None
-        expiry_minutes: int = 60
-        signal_id: str = ""
-
-        def __post_init__(self):
-            if self.supporting_data is None:
-                self.supporting_data = {}
-            if not self.signal_id:
-                self.signal_id = str(uuid.uuid4())
-
-    # Define minimal enums and exceptions
-    class StrategyPhase(str, Enum):
-        INITIALIZING = "initializing"
-        ANALYZING = "analyzing"
-        SIGNAL_GENERATION = "signal_generation"
-
-    class SignalGenerationError(Exception):
-        pass
-
-    class RiskManagementError(Exception):
-        pass
+except Exception as import_error:  # pragma: no cover
+    raise RuntimeError(f"Required strategy dependencies missing: {import_error}")
 
 
-# Configure structured logging
-logger = structlog.get_logger(__name__)
-
-
-# Custom Exception Types for Vulture Strategy
 class VultureStrategyError(Exception):
-    """Base exception for Vulture strategy errors"""
-
+    """Base exception for Vulture strategy errors."""
     pass
 
 
@@ -478,9 +282,36 @@ class VultureOpportunity:
     expiry_seconds: int
     reasoning: str
     market_conditions: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.utcnow)
 
 
 class VultureStrategy(BaseStrategy):
+    # Explicit attribute type declarations for static analysis
+    min_oversold_rsi: float
+    max_overbought_rsi: float
+    capitulation_volume_multiplier: float
+    sentiment_fear_threshold: float
+    mean_reversion_lookback: int
+    min_confidence_threshold: float
+    sentiment_history: List[SentimentSnapshot]
+    max_history_size: int
+    capitulation_history: List[CapitulationSignal]
+    pattern_recognition_window: int
+    active_opportunities: Dict[str, VultureOpportunity]
+    mean_reversion_signals: List[Dict[str, Any]]
+    max_active_opportunities: int
+    indicators_calculator: Any
+    ai_client: Any
+    confidence_tracker: Any
+    vulture_stats: Dict[str, Any]
+    max_concurrent_positions: int
+    emergency_stop_loss_multiplier: float
+    conservative_profit_targets: List[float]
+    circuit_breaker_active: bool
+    circuit_breaker_reason: str
+    circuit_breaker_timestamp: Optional[datetime]
+    consecutive_failures: int
+    max_consecutive_failures: int
     """
     Vulture Strategy: Contrarian Exploitation of Market Fear
 
@@ -500,8 +331,13 @@ class VultureStrategy(BaseStrategy):
             VultureValidator.validate_config(config)
 
             # Initialize parent class
+            # Cast config to expected base type for type checker (runtime type already correct)
+            # Pass through config directly; now using BaseStrategy's StrategyConfig dataclass
             super().__init__(config, learning_engine)
 
+            # Predeclare frequently attached attributes for type checkers
+            self.required_indicators: List[IndicatorType] = []
+            self.circuit_breaker_timestamp: Optional[datetime] = None
             # Strategy-specific configuration with validation
             self.min_oversold_rsi = get_config("strategy.vulture.min_oversold_rsi", 25)
             if not isinstance(self.min_oversold_rsi, (int, float)) or not (
@@ -649,7 +485,7 @@ class VultureStrategy(BaseStrategy):
             # Circuit breaker state
             self.circuit_breaker_active = False
             self.circuit_breaker_reason = ""
-            self.circuit_breaker_timestamp = None
+            self.circuit_breaker_timestamp = None  # already annotated
             self.consecutive_failures = 0
             self.max_consecutive_failures = get_config(
                 "strategy.vulture.max_consecutive_failures", 3
@@ -708,7 +544,7 @@ class VultureStrategy(BaseStrategy):
             logger.error("Vulture strategy initialization failed", error=str(e))
             return False
 
-    async def _initialize_technical_indicators(self):
+    async def _initialize_technical_indicators(self) -> None:
         """Initialize technical indicators required for vulture analysis"""
         # Vulture strategy uses specific indicators for contrarian analysis
         self.required_indicators = [
@@ -717,7 +553,8 @@ class VultureStrategy(BaseStrategy):
             IndicatorType.MACD,
             IndicatorType.ATR,
             IndicatorType.CHAIKIN_MF,
-            IndicatorType.VOLUME_WEIGHTED_AVERAGE_PRICE,
+            # Adjust to existing indicator naming (vwap) if enum member differs
+            getattr(IndicatorType, 'VOLUME_WEIGHTED_AVERAGE_PRICE', IndicatorType.CHAIKIN_MF),
         ]
 
     async def analyze_market(self, market_data: MarketData) -> MarketAnalysis:
@@ -812,7 +649,7 @@ class VultureStrategy(BaseStrategy):
             )
 
             # Activate circuit breaker if too many consecutive failures
-            if self.consecutive_failures >= self.max_consecutive_failures:
+            if isinstance(self.max_consecutive_failures, int) and self.consecutive_failures >= self.max_consecutive_failures:
                 await self._activate_circuit_breaker(
                     f"Too many consecutive analysis failures: {self.consecutive_failures}"
                 )
@@ -846,7 +683,7 @@ class VultureStrategy(BaseStrategy):
             logger.error("Failed to create degraded analysis", error=str(e))
             raise ResourceError("Cannot create even degraded analysis")
 
-    async def _activate_circuit_breaker(self, reason: str):
+    async def _activate_circuit_breaker(self, reason: str) -> None:
         """Activate circuit breaker to prevent further trading"""
         try:
             self.circuit_breaker_active = True
@@ -866,7 +703,7 @@ class VultureStrategy(BaseStrategy):
             logger.error("Failed to activate circuit breaker", error=str(e))
             raise VultureStrategyError(f"Circuit breaker activation failed: {str(e)}")
 
-    async def _deactivate_circuit_breaker(self):
+    async def _deactivate_circuit_breaker(self) -> None:
         """Deactivate circuit breaker after manual intervention"""
         try:
             self.circuit_breaker_active = False
@@ -909,7 +746,7 @@ class VultureStrategy(BaseStrategy):
             logger.error("Failed to check circuit breaker status", error=str(e))
             return {"active": True, "error": str(e)}
 
-    async def _update_sentiment_data(self, market_data: MarketData):
+    async def _update_sentiment_data(self, market_data: MarketData) -> None:
         """Update sentiment data from market data and external sources"""
         try:
             # In a real implementation, this would fetch from sentiment APIs
@@ -917,8 +754,8 @@ class VultureStrategy(BaseStrategy):
 
             # Calculate basic sentiment indicators from price action
             price_change_pct = (
-                ((market_data.close - market_data.open) / market_data.open) * 100
-                if market_data.open != 0
+                ((market_data.close_price - market_data.open_price) / market_data.open_price) * 100
+                if market_data.open_price != 0
                 else 0
             )
 
@@ -956,14 +793,14 @@ class VultureStrategy(BaseStrategy):
                     else 0.8 if sentiment_score > 0.5 else 1.0
                 ),
                 vix_level=25 + (abs(sentiment_score) * 15),  # VIX rises with fear
-                volatility_index=abs(price_change_pct) * 2,
+                volatility_index=float(abs(price_change_pct) * 2),
             )
 
             # Update sentiment history
             self.sentiment_history.append(snapshot)
 
             # Maintain history size
-            if len(self.sentiment_history) > self.max_history_size:
+            if isinstance(self.max_history_size, int) and len(self.sentiment_history) > self.max_history_size:
                 self.sentiment_history.pop(0)
 
         except Exception as e:
@@ -1014,17 +851,17 @@ class VultureStrategy(BaseStrategy):
 
             # Check Bollinger Band position
             if bb_values and isinstance(bb_values, dict):
-                lower_bb = bb_values.get("lower", market_data.close * 0.95)  # Fallback
-                upper_bb = bb_values.get("upper", market_data.close * 1.05)  # Fallback
-                middle_bb = bb_values.get("middle", market_data.close)  # Fallback
+                lower_bb = bb_values.get("lower", float(market_data.close_price) * 0.95)  # Fallback
+                upper_bb = bb_values.get("upper", float(market_data.close_price) * 1.05)  # Fallback
+                middle_bb = bb_values.get("middle", float(market_data.close_price))  # Fallback
 
                 bb_range = upper_bb - lower_bb
                 price_position = (
-                    (market_data.close - lower_bb) / bb_range if bb_range > 0 else 0.5
+                    (float(market_data.close_price) - lower_bb) / bb_range if bb_range > 0 else 0.5
                 )
 
                 oversold_conditions["price_below_lower_bb"] = (
-                    market_data.close < lower_bb
+                    float(market_data.close_price) < lower_bb
                 )
                 oversold_conditions["price_near_lower_bb"] = (
                     price_position < 0.1
@@ -1090,15 +927,15 @@ class VultureStrategy(BaseStrategy):
             # Check for panic selling (high volume + extreme fear)
             current_sentiment = recent_sentiment[-1]
             if (
-                current_sentiment.sentiment_score < self.sentiment_fear_threshold
+                self.sentiment_fear_threshold is not None and current_sentiment.sentiment_score < float(self.sentiment_fear_threshold)
                 and current_sentiment.volatility_index
-                > avg_volume * self.capitulation_volume_multiplier
+                and self.capitulation_volume_multiplier is not None and current_sentiment.volatility_index > avg_volume * float(self.capitulation_volume_multiplier)
             ):
                 signal = CapitulationSignal(
                     event_type=CapitulationEvent.PANIC_SELLING,
                     confidence_score=min(0.9, abs(current_sentiment.sentiment_score)),
                     signal_type="buy",  # Capitulation = buying opportunity
-                    price_target=market_data.close * 1.05,  # Expect 5% bounce
+                    price_target=float(market_data.close_price) * 1.05,  # Expect 5% bounce
                     volume_multiplier=current_sentiment.volatility_index / avg_volume,
                     sentiment_trigger=current_sentiment.sentiment_score,
                     detection_timestamp=market_data.timestamp,
@@ -1112,8 +949,8 @@ class VultureStrategy(BaseStrategy):
 
             # Check for institutional capitulation (large volume at lows)
             price_change_pct = (
-                ((market_data.close - market_data.open) / market_data.open) * 100
-                if market_data.open != 0
+                ((market_data.close_price - market_data.open_price) / market_data.open_price) * 100
+                if market_data.open_price != 0
                 else 0
             )
             if (
@@ -1125,7 +962,7 @@ class VultureStrategy(BaseStrategy):
                     event_type=CapitulationEvent.INSTITUTIONAL_CAPITULATION,
                     confidence_score=0.8,
                     signal_type="buy",
-                    price_target=market_data.close * 1.08,  # Expect larger bounce
+                    price_target=float(market_data.close_price) * 1.08,  # Expect larger bounce
                     volume_multiplier=market_data.volume / avg_volume,
                     sentiment_trigger=current_sentiment.sentiment_score,
                     detection_timestamp=market_data.timestamp,
@@ -1156,10 +993,10 @@ class VultureStrategy(BaseStrategy):
             # Prepare market context for AI analysis
             market_context = {
                 "symbol": market_data.symbol,
-                "current_price": float(market_data.close),
+                "current_price": float(market_data.close_price),
                 "price_change_pct": (
-                    ((market_data.close - market_data.open) / market_data.open) * 100
-                    if market_data.open != 0
+                    ((market_data.close_price - market_data.open_price) / market_data.open_price) * 100
+                    if market_data.open_price != 0
                     else 0
                 ),
                 "volume": market_data.volume,
@@ -1313,18 +1150,23 @@ class VultureStrategy(BaseStrategy):
 
             # Detect capitulation events with error recovery
             try:
+                from decimal import Decimal
+                md_fields = getattr(MarketData, "__dataclass_fields__", {})  # type: ignore[attr-defined]
+                timeframe_default = md_fields.get("timeframe").default if md_fields and md_fields.get("timeframe") else None  # type: ignore[index]
+                data_source_default = md_fields.get("data_source").default if md_fields and md_fields.get("data_source") else None  # type: ignore[index]
+                placeholder_market = MarketData(
+                    symbol=analysis.symbol,
+                    timestamp=datetime.utcnow(),
+                    timeframe=timeframe_default or getattr(MarketData, 'timeframe', None),  # type: ignore[arg-type]
+                    open_price=Decimal("100.0"),
+                    high_price=Decimal("100.0"),
+                    low_price=Decimal("100.0"),
+                    close_price=Decimal("100.0"),
+                    volume=1000,
+                    data_source=data_source_default or getattr(MarketData, 'data_source', None),  # type: ignore[arg-type]
+                )
                 capitulation_signals = await self._detect_capitulation_events(
-                    type(
-                        "MarketData",
-                        (),
-                        {
-                            "symbol": analysis.symbol,
-                            "timestamp": datetime.utcnow(),
-                            "close": 100.0,  # Placeholder
-                            "open": 100.0,
-                            "volume": 1000,
-                        },
-                    )(),
+                    placeholder_market,
                     analysis.indicators,
                 )
             except Exception as e:
@@ -1336,15 +1178,15 @@ class VultureStrategy(BaseStrategy):
             # Generate vulture opportunities from capitulation signals
             for cap_signal in capitulation_signals:
                 try:
-                    if cap_signal.confidence_score >= self.min_confidence_threshold:
+                    if isinstance(self.min_confidence_threshold, (int, float)) and cap_signal.confidence_score >= float(self.min_confidence_threshold):
                         opportunity = await self._create_vulture_opportunity(
                             cap_signal, analysis
                         )
 
                         if (
                             opportunity
-                            and opportunity.confidence_score
-                            >= self.min_confidence_threshold
+                            and isinstance(self.min_confidence_threshold, (int, float))
+                            and opportunity.confidence_score >= float(self.min_confidence_threshold)
                         ):
                             # Convert opportunity to trading signal
                             signal = await self._convert_opportunity_to_signal(
@@ -1376,9 +1218,10 @@ class VultureStrategy(BaseStrategy):
                 logger.warning("Mean reversion signal generation failed", error=str(e))
 
             # Filter signals by confidence and limit active opportunities
-            signals = [
-                s for s in signals if s.strength >= self.min_confidence_threshold
-            ]
+            if isinstance(self.min_confidence_threshold, (int, float)):
+                signals = [
+                    s for s in signals if s.strength >= float(self.min_confidence_threshold)
+                ]
 
             # Limit to high-confidence signals only
             signals = sorted(signals, key=lambda s: s.strength, reverse=True)[
@@ -1426,9 +1269,8 @@ class VultureStrategy(BaseStrategy):
 
             # Calculate position sizing based on fear level and confidence
             base_position_size = 0.03  # Conservative sizing
-            fear_multiplier = min(
-                2.0, (abs(capitulation_signal.sentiment_trigger) - 0.5) * 4
-            )  # More fear = larger position
+            raw_fear_mult = (abs(capitulation_signal.sentiment_trigger) - 0.5) * 4
+            fear_multiplier = min(2.0, max(0.0, raw_fear_mult))  # Clamp to >= 0
             confidence_multiplier = capitulation_signal.confidence_score
             position_size_percentage = (
                 base_position_size * fear_multiplier * confidence_multiplier
@@ -1441,7 +1283,7 @@ class VultureStrategy(BaseStrategy):
             # Profit targets - multiple levels for mean reversion
             profit_targets = [
                 current_price * (1 + target / 100)
-                for target in self.conservative_profit_targets
+                for target in (self.conservative_profit_targets or [5.0])
             ]
             take_profit_price = profit_targets[0]  # First profit target
 
@@ -1538,19 +1380,19 @@ class VultureStrategy(BaseStrategy):
         try:
             # Calculate quantity (placeholder - would be calculated based on position size)
             quantity = int(
-                (opportunity.position_size_percentage * 100000)
-                / opportunity.entry_price
-            )  # Assume ₹1L portfolio
+                (opportunity.position_size_percentage * 100000.0)
+                / float(opportunity.entry_price)
+            )  # Assume base capital
 
             signal = TradingSignal(
                 strategy_id=self.strategy_id,
                 symbol=analysis.symbol,
-                signal_type=SignalType.BUY,  # Vulture always buys
-                strength=opportunity.confidence_score,
-                entry_price=opportunity.entry_price,
-                stop_loss_price=opportunity.stop_loss_price,
-                take_profit_price=opportunity.take_profit_price,
-                position_size_percentage=opportunity.position_size_percentage,
+                signal_type=SignalType.BUY,
+                strength=float(opportunity.confidence_score),
+                entry_price=float(opportunity.entry_price),
+                stop_loss_price=float(opportunity.stop_loss_price),
+                take_profit_price=float(opportunity.take_profit_price),
+                position_size_percentage=float(opportunity.position_size_percentage),
                 quantity=quantity,
                 reasoning=opportunity.reasoning,
                 supporting_data={
@@ -1559,9 +1401,7 @@ class VultureStrategy(BaseStrategy):
                     "estimated_profit_pct": opportunity.estimated_profit_potential,
                     "holding_period_days": opportunity.holding_period_days,
                     "market_conditions": opportunity.market_conditions,
-                    "ai_confidence": analysis.ai_insights.get(
-                        "overall_confidence", 0.5
-                    ),
+                    "ai_confidence": analysis.ai_insights.get("overall_confidence", 0.5),
                 },
                 expiry_minutes=opportunity.expiry_seconds // 60,
             )
@@ -1579,18 +1419,21 @@ class VultureStrategy(BaseStrategy):
         try:
             # Extract holding period from signal data
             holding_period_days = signal.supporting_data.get("holding_period_days", 5)
+            # Defensive casts (TradingSignal model guarantees but keep static checker happy)
+            entry_price = float(cast(float, signal.entry_price))
+            stop_loss_price = float(cast(float, signal.stop_loss_price))
+            take_profit_price = float(cast(float, signal.take_profit_price))
+            position_size_pct = float(cast(float, signal.position_size_percentage))
 
             opportunity = VultureOpportunity(
                 signal_type=MeanReversionSignal.BOUNCE_FROM_LOW,
-                entry_price=signal.entry_price,
-                stop_loss_price=signal.stop_loss_price,
-                take_profit_price=signal.take_profit_price,
-                position_size_percentage=signal.position_size_percentage,
-                confidence_score=signal.strength,
-                risk_reward_ratio=signal.supporting_data.get("risk_reward_ratio", 2.0),
-                estimated_profit_potential=signal.supporting_data.get(
-                    "estimated_profit_pct", 5.0
-                ),
+                entry_price=entry_price,
+                stop_loss_price=stop_loss_price,
+                take_profit_price=take_profit_price,
+                position_size_percentage=position_size_pct,
+                confidence_score=float(signal.strength),
+                risk_reward_ratio=float(signal.supporting_data.get("risk_reward_ratio", 2.0)),
+                estimated_profit_potential=float(signal.supporting_data.get("estimated_profit_pct", 5.0)),
                 holding_period_days=holding_period_days,
                 expiry_seconds=holding_period_days * 24 * 60 * 60,
                 reasoning=signal.reasoning,
@@ -1616,7 +1459,7 @@ class VultureStrategy(BaseStrategy):
         """
         try:
             # Base position size from signal
-            base_size = signal.position_size_percentage
+            base_size = float(signal.position_size_percentage)
 
             # Vulture strategy adjustments - more conservative
             fear_multiplier = 0.7  # Reduce size in fearful markets
@@ -1632,11 +1475,12 @@ class VultureStrategy(BaseStrategy):
 
             # Adjust based on portfolio risk
             portfolio_risk_multiplier = 1.0
-            if (
-                hasattr(portfolio, "current_drawdown")
-                and portfolio.current_drawdown > 0.05
-            ):
-                portfolio_risk_multiplier = 0.8  # Slightly reduce in portfolio drawdown
+            if hasattr(portfolio, "current_drawdown"):
+                try:
+                    if float(getattr(portfolio, "current_drawdown")) > 0.05:
+                        portfolio_risk_multiplier = 0.8
+                except Exception:
+                    pass
 
             # Calculate final position size
             position_size = (
@@ -1687,7 +1531,7 @@ class VultureStrategy(BaseStrategy):
             current_positions = len(self.active_positions)
 
             # Emergency stop if too many concurrent positions
-            if current_positions > self.max_concurrent_positions:
+            if isinstance(self.max_concurrent_positions, int) and current_positions > self.max_concurrent_positions:
                 actions_taken.append("vulture_concurrent_position_limit")
                 await self._emergency_stop("Too many concurrent vulture positions")
 
@@ -1699,7 +1543,7 @@ class VultureStrategy(BaseStrategy):
                     actions_taken.append("sentiment_improvement")
                     # Reduce position sizes for remaining opportunities
                     for opp in self.active_opportunities.values():
-                        opp.position_size_percentage *= 0.9
+                        opp.position_size_percentage = max(0.0, opp.position_size_percentage * 0.9)
 
             # Check signal quality degradation
             if len(self.active_opportunities) > 5:
@@ -1710,7 +1554,7 @@ class VultureStrategy(BaseStrategy):
                     actions_taken.append("vulture_low_signal_quality")
                     # Reduce position sizes for remaining opportunities
                     for opp in self.active_opportunities.values():
-                        opp.position_size_percentage *= 0.8
+                        opp.position_size_percentage = max(0.0, opp.position_size_percentage * 0.8)
 
             return actions_taken
 
@@ -1718,14 +1562,18 @@ class VultureStrategy(BaseStrategy):
             logger.error("Vulture risk management failed", error=str(e))
             raise RiskManagementError(f"Vulture risk management failed: {str(e)}")
 
-    async def _emergency_stop(self, reason: str):
+    async def _emergency_stop(self, reason: str) -> None:
         """Emergency stop for vulture strategy"""
         try:
             logger.warning("Vulture emergency stop triggered", reason=reason)
 
             # Close all active positions immediately
             for position_id in list(self.active_positions.keys()):
-                await self._close_position(position_id, f"emergency_stop: {reason}")
+                if hasattr(self, "_close_position"):
+                    try:
+                        await getattr(self, "_close_position")(position_id, f"emergency_stop: {reason}")  # type: ignore[arg-type]
+                    except Exception:
+                        continue
 
             # Clear all active opportunities
             self.active_opportunities.clear()
@@ -1742,7 +1590,7 @@ class VultureStrategy(BaseStrategy):
         except Exception as e:
             logger.error("Emergency stop failed", error=str(e))
 
-    async def update_performance(self, trade_result: Dict[str, Any]):
+    async def update_performance(self, trade_result: Dict[str, Any]) -> None:
         """Update vulture-specific performance metrics"""
         try:
             await super().update_performance(trade_result)
@@ -1769,9 +1617,8 @@ class VultureStrategy(BaseStrategy):
             # Update average profit
             if total_trades > 0:
                 # This is a simplified calculation - in reality would track all P&L
-                self.vulture_stats["average_profit_per_trade"] = (
-                    self.performance.total_return / total_trades
-                )
+                if hasattr(self.performance, "total_return"):
+                    self.vulture_stats["average_profit_per_trade"] = cast(float, getattr(self.performance, "total_return")) / total_trades
 
             # Update max drawdown (simplified)
             if pnl < 0:
@@ -1877,7 +1724,7 @@ class VultureStrategy(BaseStrategy):
                 health_score += 20
 
             # Active opportunities within limits (10 points)
-            if len(self.active_opportunities) <= self.max_active_opportunities:
+            if isinstance(self.max_active_opportunities, int) and len(self.active_opportunities) <= self.max_active_opportunities:
                 health_score += 10
 
             # Performance metrics (15 points)
@@ -1902,6 +1749,9 @@ class VultureStrategy(BaseStrategy):
             else:
                 vulture_health_status = "critical"
 
+            if not isinstance(base_health, dict):
+                base_health = {"status": base_health}
+            base_health = cast(Dict[str, Any], base_health)
             base_health.update(
                 {
                     "vulture_health": vulture_health,
@@ -1978,7 +1828,7 @@ class VultureStrategy(BaseStrategy):
                     [
                         s
                         for s in self.sentiment_history
-                        if s.sentiment_score < self.sentiment_fear_threshold
+                        if self.sentiment_fear_threshold is not None and s.sentiment_score < float(self.sentiment_fear_threshold)
                     ]
                 ),
             }
@@ -2059,7 +1909,7 @@ class VultureStrategy(BaseStrategy):
 
     # Resource Management and Cleanup Methods
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """
         Comprehensive cleanup of resources
 
@@ -2165,13 +2015,13 @@ class VultureStrategy(BaseStrategy):
         except Exception:
             return 0
 
-    async def optimize_resources(self):
+    async def optimize_resources(self) -> None:
         """Optimize resource usage by cleaning up old data"""
         try:
             current_time = datetime.utcnow()
 
             # Clean up old sentiment history (keep last 24 hours)
-            cutoff_time = current_time.replace(hour=current_time.hour - 24)
+            cutoff_time = current_time - timedelta(hours=24)
             self.sentiment_history = [
                 s for s in self.sentiment_history if s.timestamp > cutoff_time
             ]
@@ -2181,11 +2031,14 @@ class VultureStrategy(BaseStrategy):
                 self.capitulation_history = self.capitulation_history[-100:]
 
             # Clean up expired opportunities
-            expired_opportunities = []
-            for opp_id, opportunity in self.active_opportunities.items():
-                if (
-                    current_time - opportunity.expiry_seconds
-                ).seconds > opportunity.expiry_seconds:
+            expired_opportunities: List[str] = []
+            for opp_id, opportunity in list(self.active_opportunities.items()):
+                # Ensure opportunity has creation time; if missing treat as fresh
+                created_at = getattr(opportunity, "created_at", None)
+                if created_at and (
+                    (current_time - created_at).total_seconds()
+                    > opportunity.expiry_seconds
+                ):
                     expired_opportunities.append(opp_id)
 
             for opp_id in expired_opportunities:
@@ -2218,80 +2071,4 @@ def create_vulture_strategy(
 
 
 # Example usage and testing functions
-async def example_vulture_usage():
-    """Example usage of the Vulture strategy"""
-
-    # Create strategy configuration
-    config = StrategyConfig(
-        name="NIRAJ Vulture Strategy",
-        description="Contrarian fear exploitation strategy",
-        strategy_type=StrategyType.PSYCHOLOGICAL,
-        max_position_size=0.05,  # Conservative sizing
-        max_drawdown_limit=0.08,  # Tighter drawdown limit
-        stop_loss_percentage=0.03,  # Tighter stops
-        take_profit_percentage=0.08,  # Higher targets for mean reversion
-        min_signal_strength=0.75,  # High conviction required
-        max_trades_per_day=5,  # Low frequency
-        supported_symbols=["NIFTY", "BANKNIFTY"],
-        custom_params={
-            "min_oversold_rsi": 25,
-            "sentiment_fear_threshold": -0.7,
-            "capitulation_volume_multiplier": 2.5,
-            "min_confidence": 0.75,
-        },
-    )
-
-    # Create strategy instance
-    vulture = create_vulture_strategy(config)
-
-    try:
-        # Initialize strategy
-        initialized = await vulture.initialize()
-        if not initialized:
-            print("Failed to initialize vulture strategy")
-            return
-
-        print("Vulture strategy initialized successfully")
-
-        # Example market data
-        class MockMarketData:
-            def __init__(self):
-                self.symbol = "NIFTY"
-                self.timestamp = datetime.utcnow()
-                self.open = 18000.0
-                self.high = 18100.0
-                self.low = 17900.0
-                self.close = 17950.0  # Down day
-                self.volume = 250000
-
-        market_data = MockMarketData()
-
-        # Analyze market
-        analysis = await vulture.analyze_market(market_data)
-        print(
-            f"Market analysis completed with fear score: {analysis.sentiment_score:.3f}"
-        )
-
-        # Generate signals
-        signals = await vulture.generate_signals(analysis)
-        print(f"Generated {len(signals)} contrarian signals")
-
-        for signal in signals:
-            print(
-                f"Signal: {signal.signal_type.value} {signal.symbol} at {signal.entry_price} (strength: {signal.strength:.3f})"
-            )
-
-        # Health check
-        health = await vulture.health_check()
-        print(f"Strategy health: {health['status']}")
-
-        # Cleanup
-        await vulture.cleanup()
-
-    except Exception as e:
-        print(f"Error in vulture strategy example: {str(e)}")
-
-
-if __name__ == "__main__":
-    # Run example usage
-    asyncio.run(example_vulture_usage())
+# Example usage removed for production strategy module cleanliness.

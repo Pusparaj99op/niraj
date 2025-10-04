@@ -41,7 +41,7 @@ logger = structlog.get_logger(__name__)
 class StrategyServiceError(Exception):
     """Base exception for strategy service errors"""
 
-    def __init__(self, message: str, strategy_id: str = None, error_code: str = None):
+    def __init__(self, message: str, strategy_id: Optional[str] = None, error_code: Optional[str] = None):
         self.message = message
         self.strategy_id = strategy_id
         self.error_code = error_code
@@ -90,7 +90,7 @@ class StrategyService:
             StrategyServiceError: If creation fails
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 # Check name availability
                 existing_names = await self._get_existing_strategy_names(session)
                 if not validate_strategy_name_availability(
@@ -179,7 +179,7 @@ class StrategyService:
             if cached:
                 return StrategyResponse(**cached)
 
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 stmt = select(StrategyORM).where(StrategyORM.strategy_id == strategy_id)
                 result = await session.execute(stmt)
                 orm_strategy = result.scalar_one_or_none()
@@ -234,7 +234,7 @@ class StrategyService:
                     strategies = [StrategyResponse(**s) for s in cached["strategies"]]
                     return strategies, cached["total"]
 
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 # Build query
                 query = select(StrategyORM)
                 count_query = select(func.count(StrategyORM.strategy_id))
@@ -253,6 +253,10 @@ class StrategyService:
                 # Get total count
                 count_result = await session.execute(count_query)
                 total = count_result.scalar()
+
+                # Ensure total is not None
+                if total is None:
+                    total = 0
 
                 # Apply pagination and ordering
                 query = (
@@ -301,7 +305,7 @@ class StrategyService:
             StrategyNotFoundError: If strategy doesn't exist
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 # Get existing strategy
                 stmt = select(StrategyORM).where(StrategyORM.strategy_id == strategy_id)
                 result = await session.execute(stmt)
@@ -330,8 +334,8 @@ class StrategyService:
                     if hasattr(orm_strategy, field):
                         setattr(orm_strategy, field, value)
 
-                # Update timestamp
-                orm_strategy.updated_at = datetime.utcnow()
+                # Update timestamp - use setattr to avoid type checker issues with Column types
+                setattr(orm_strategy, 'updated_at', datetime.utcnow())
 
                 # Validate the updated strategy
                 strategy = await self._orm_to_strategy(orm_strategy)
@@ -370,7 +374,7 @@ class StrategyService:
             StrategyServiceError: If deletion fails
         """
         try:
-            async with self.db_manager.get_session() as session:
+            async with self.db_manager.get_async_session() as session:
                 stmt = delete(StrategyORM).where(StrategyORM.strategy_id == strategy_id)
                 result = await session.execute(stmt)
                 await session.commit()
@@ -480,52 +484,56 @@ class StrategyService:
 
     async def _orm_to_response(self, orm_strategy: StrategyORM) -> StrategyResponse:
         """Convert ORM model to response model"""
+        # Note: At runtime, ORM attributes contain actual values, not Column objects
+        # Type checker sees Column[T] but runtime has T values after query execution
         return StrategyResponse(
-            strategy_id=orm_strategy.strategy_id,
-            name=orm_strategy.name,
-            category=StrategyCategory(orm_strategy.category),
-            description=orm_strategy.description,
-            parameters=orm_strategy.parameters,
-            target_symbols=orm_strategy.target_symbols,
-            min_confidence=orm_strategy.min_confidence,
+            strategy_id=orm_strategy.strategy_id,  # type: ignore[arg-type]
+            name=orm_strategy.name,  # type: ignore[arg-type]
+            category=StrategyCategory(orm_strategy.category),  # type: ignore[arg-type]
+            description=orm_strategy.description,  # type: ignore[arg-type]
+            parameters=orm_strategy.parameters,  # type: ignore[arg-type]
+            target_symbols=orm_strategy.target_symbols,  # type: ignore[arg-type]
+            min_confidence=orm_strategy.min_confidence,  # type: ignore[arg-type]
             max_position_size=Decimal(str(orm_strategy.max_position_size)),
             stop_loss_pct=Decimal(str(orm_strategy.stop_loss_pct)),
             take_profit_pct=Decimal(str(orm_strategy.take_profit_pct)),
-            max_daily_trades=orm_strategy.max_daily_trades,
-            is_active=orm_strategy.is_active,
-            is_paper_only=orm_strategy.is_paper_only,
-            total_trades=orm_strategy.total_trades,
-            win_rate=orm_strategy.win_rate,
+            max_daily_trades=orm_strategy.max_daily_trades,  # type: ignore[arg-type]
+            is_active=orm_strategy.is_active,  # type: ignore[arg-type]
+            is_paper_only=orm_strategy.is_paper_only,  # type: ignore[arg-type]
+            total_trades=orm_strategy.total_trades,  # type: ignore[arg-type]
+            win_rate=orm_strategy.win_rate,  # type: ignore[arg-type]
             total_pnl=Decimal(str(orm_strategy.total_pnl)),
-            sharpe_ratio=orm_strategy.sharpe_ratio,
+            sharpe_ratio=orm_strategy.sharpe_ratio,  # type: ignore[arg-type]
             max_drawdown=Decimal(str(orm_strategy.max_drawdown)),
-            created_at=orm_strategy.created_at,
-            updated_at=orm_strategy.updated_at,
+            created_at=orm_strategy.created_at,  # type: ignore[arg-type]
+            updated_at=orm_strategy.updated_at,  # type: ignore[arg-type]
         )
 
     async def _orm_to_strategy(self, orm_strategy: StrategyORM) -> Strategy:
         """Convert ORM model to business logic model"""
+        # Note: At runtime, ORM attributes contain actual values, not Column objects
+        # Type checker sees Column[T] but runtime has T values after query execution
         return Strategy(
-            strategy_id=orm_strategy.strategy_id,
-            name=orm_strategy.name,
-            category=StrategyCategory(orm_strategy.category),
-            description=orm_strategy.description,
-            parameters=orm_strategy.parameters,
-            target_symbols=orm_strategy.target_symbols,
-            min_confidence=orm_strategy.min_confidence,
+            strategy_id=orm_strategy.strategy_id,  # type: ignore[arg-type]
+            name=orm_strategy.name,  # type: ignore[arg-type]
+            category=StrategyCategory(orm_strategy.category),  # type: ignore[arg-type]
+            description=orm_strategy.description,  # type: ignore[arg-type]
+            parameters=orm_strategy.parameters,  # type: ignore[arg-type]
+            target_symbols=orm_strategy.target_symbols,  # type: ignore[arg-type]
+            min_confidence=orm_strategy.min_confidence,  # type: ignore[arg-type]
             max_position_size=Decimal(str(orm_strategy.max_position_size)),
             stop_loss_pct=Decimal(str(orm_strategy.stop_loss_pct)),
             take_profit_pct=Decimal(str(orm_strategy.take_profit_pct)),
-            max_daily_trades=orm_strategy.max_daily_trades,
-            is_active=orm_strategy.is_active,
-            is_paper_only=orm_strategy.is_paper_only,
-            total_trades=orm_strategy.total_trades,
-            win_rate=orm_strategy.win_rate,
+            max_daily_trades=orm_strategy.max_daily_trades,  # type: ignore[arg-type]
+            is_active=orm_strategy.is_active,  # type: ignore[arg-type]
+            is_paper_only=orm_strategy.is_paper_only,  # type: ignore[arg-type]
+            total_trades=orm_strategy.total_trades,  # type: ignore[arg-type]
+            win_rate=orm_strategy.win_rate,  # type: ignore[arg-type]
             total_pnl=Decimal(str(orm_strategy.total_pnl)),
-            sharpe_ratio=orm_strategy.sharpe_ratio,
+            sharpe_ratio=orm_strategy.sharpe_ratio,  # type: ignore[arg-type]
             max_drawdown=Decimal(str(orm_strategy.max_drawdown)),
-            created_at=orm_strategy.created_at,
-            updated_at=orm_strategy.updated_at,
+            created_at=orm_strategy.created_at,  # type: ignore[arg-type]
+            updated_at=orm_strategy.updated_at,  # type: ignore[arg-type]
         )
 
     async def _invalidate_strategy_cache(

@@ -7,31 +7,28 @@ Advanced error handling with security-focused responses
 """
 
 import os
+import secrets
+import time
 from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError
 import uuid
-import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any, Set
+from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
 import json
-import time
 from functools import wraps
+import logging
 
 import bcrypt
 from sqlalchemy.exc import SQLAlchemyError
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 from ..models.user import User, UserORM, TradingMode, UserValidationError
-from ..models.audit_log import (
-    AuditLog,
-    AuditEventType as AuditAction,
-    AuditSeverity as AuditLevel,
-)
+from ..models.audit_log import AuditLogORM, AuditEventType, AuditSeverity
 from ..core.database import DatabaseManager
 from ..core.cache import CacheManager
-from ..utils.logger import get_logger, get_structured_logger, log_error, LogContext
+from ..utils.logger import get_structured_logger, log_error, LogContext
 
 
 class TokenType(str, Enum):
@@ -74,7 +71,7 @@ class AuthenticationError(Exception):
     """Base authentication error"""
 
     def __init__(
-        self, message: str, error_code: str = None, details: Dict[str, Any] = None
+        self, message: str, error_code: Optional[str] = None, details: Optional[Dict[str, Any]] = None
     ):
         self.message = message
         self.error_code = error_code or "AUTH_ERROR"
@@ -85,7 +82,7 @@ class AuthenticationError(Exception):
 class AuthorizationError(AuthenticationError):
     """Authorization/permission error"""
 
-    def __init__(self, message: str, required_role: str = None, user_role: str = None):
+    def __init__(self, message: str, required_role: Optional[str] = None, user_role: Optional[str] = None):
         super().__init__(
             message,
             "AUTHORIZATION_ERROR",
@@ -96,14 +93,14 @@ class AuthorizationError(AuthenticationError):
 class TokenError(AuthenticationError):
     """Token-related error"""
 
-    def __init__(self, message: str, token_type: str = None):
+    def __init__(self, message: str, token_type: Optional[str] = None):
         super().__init__(message, "TOKEN_ERROR", {"token_type": token_type})
 
 
 class RateLimitError(AuthenticationError):
     """Rate limiting error"""
 
-    def __init__(self, message: str, retry_after: int = None):
+    def __init__(self, message: str, retry_after: Optional[int] = None):
         super().__init__(message, "RATE_LIMIT_ERROR", {"retry_after": retry_after})
 
 
@@ -129,9 +126,19 @@ class LoginRequest(BaseModel):
 
     @field_validator("pin")
     @classmethod
-    def validate_pin_format(cls, v):
-        if not v.isdigit():
-            raise ValueError("PIN must contain only digits")
+    def validate_pin_format(cls, v: str) -> str:
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("PIN must be a 4-digit number")
+        return v
+
+    @field_validator("pin", "mobile_number", mode="before")
+    def validate_numeric_fields(cls, v: Any) -> Any:
+        """Validate that PIN and mobile number contain only digits."""
+        if v is not None:
+            if not isinstance(v, str):
+                raise ValueError("Must be a string")
+            if not v.isdigit():
+                raise ValueError("Must contain only digits")
         return v
 
 
@@ -162,9 +169,14 @@ class SwitchModeRequest(BaseModel):
     mode: TradingMode
     pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern=r"^\d{4}$")
 
-    @field_validator("pin")
+    @field_validator("pin", mode="before")
     @classmethod
-    def validate_pin_for_live_mode(cls, v):
+    def validate_pin_for_live_mode(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        if info.data.get("mode") == TradingMode.LIVE and v is None:
+            raise ValueError("PIN is required for live trading mode")
+        if v is not None:
+            if not v.isdigit() or len(v) != 4:
+                raise ValueError("PIN must be a 4-digit number")
         # Note: Inter-field validation moved to model_validator
         return v
 
@@ -175,24 +187,14 @@ class ChangePasswordRequest(BaseModel):
     current_pin: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
     new_pin: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
 
-    @field_validator("new_pin")
+    @field_validator("new_pin", mode="before")
     @classmethod
-    def validate_new_pin(cls, v):
-        # Basic validation - PIN comparison moved to model_validator
-        if v in [
-            "0000",
-            "1234",
-            "1111",
-            "2222",
-            "3333",
-            "4444",
-            "5555",
-            "6666",
-            "7777",
-            "8888",
-            "9999",
-        ]:
-            raise ValueError("PIN too weak, avoid common patterns")
+    def validate_new_pin(cls, v: str, info: ValidationInfo) -> str:
+        if "current_pin" in info.data and v == info.data["current_pin"]:
+            raise ValueError("New PIN must be different from the current PIN")
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("PIN must be a 4-digit number")
+        # Add more strength checks if needed
         return v
 
 
@@ -246,8 +248,13 @@ class AuthenticationService:
         self.cache = cache_manager
         self.config = config or self._get_default_config()
 
+        # Type declarations for security components
+        self._rate_limiters: Dict[str, "RateLimiter"]
+        self._session_manager: "SessionManager"
+        self._security_monitor: "SecurityMonitor"
+
         # Initialize loggers
-        self.logger = get_logger("niraj.auth")
+        self.logger = get_structured_logger("niraj.auth")
         self.security_logger = get_structured_logger("niraj.security")
         self.audit_logger = get_structured_logger("niraj.audit")
 
@@ -308,11 +315,7 @@ class AuthenticationService:
     def _init_security_components(self):
         """Initialize security components"""
         try:
-            # Validate JWT secret
-            if len(self.config["jwt_secret_key"]) < 32:
-                raise SecurityError("JWT secret key must be at least 32 characters")
-
-            # Initialize rate limiters
+            # Initialize Rate Limiters
             self._rate_limiters = {
                 "login": RateLimiter(
                     self.cache,
@@ -334,27 +337,30 @@ class AuthenticationService:
                 ),
             }
 
-            # Initialize session manager
+            # Initialize Session Manager
             self._session_manager = SessionManager(
                 self.cache,
                 self.config["session_timeout_minutes"],
                 self.config["max_concurrent_sessions"],
             )
 
-            # Initialize security monitor
+            # Initialize Security Monitor
             self._security_monitor = SecurityMonitor(self.cache, self.security_logger)
 
-            self.logger.info("Security components initialized successfully")
+            self.logger.info("Security components initialized successfully.")
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize security components: {str(e)}")
-            raise SecurityError(f"Security initialization failed: {str(e)}")
+            self.logger.critical(f"Failed to initialize security components: {e}")
+            log_error(e, context={"context": "security_initialization"})
+            # Depending on the desired behavior, you might want to re-raise
+            # the exception to prevent the service from starting in a bad state.
+            raise RuntimeError("Could not initialize security components") from e
 
     async def authenticate_user(
         self,
         login_request: LoginRequest,
-        ip_address: str = None,
-        user_agent: str = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> TokenResponse:
         """
         Authenticate user with comprehensive security checks
@@ -391,10 +397,8 @@ class AuthenticationService:
 
                 # Check for suspicious activity
                 await self._security_monitor.check_suspicious_activity(
-                    login_request.username, ip_address, user_agent
-                )
-
-                # Retrieve user from database
+                    login_request.username, ip_address or "", user_agent or ""
+                )                # Retrieve user from database
                 user = await self._get_user_by_username(login_request.username)
                 if not user:
                     # Log failed attempt (but don't reveal if user exists)
@@ -473,8 +477,8 @@ class AuthenticationService:
     async def refresh_token(
         self,
         refresh_request: RefreshTokenRequest,
-        ip_address: str = None,
-        user_agent: str = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> TokenResponse:
         """
         Refresh access token using refresh token
@@ -542,7 +546,7 @@ class AuthenticationService:
             raise TokenError("Token refresh failed")
 
     async def switch_trading_mode(
-        self, user_id: str, switch_request: SwitchModeRequest, ip_address: str = None
+        self, user_id: str, switch_request: SwitchModeRequest, ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Switch user's trading mode with security validation
@@ -591,8 +595,8 @@ class AuthenticationService:
                 # Log mode switch
                 await self._log_audit_event(
                     user_id,
-                    AuditAction.MODE_SWITCH,
-                    AuditLevel.INFO,
+                    AuditEventType.MODE_SWITCH,
+                    AuditSeverity.INFO,
                     {
                         "old_mode": user.trading_mode.value,
                         "new_mode": switch_request.mode.value,
@@ -621,7 +625,7 @@ class AuthenticationService:
             raise AuthenticationError("Mode switch failed due to system error")
 
     async def validate_token(
-        self, token: str, required_permissions: List[str] = None
+        self, token: str, required_permissions: Optional[List[str]] = None
     ) -> SecurityContext:
         """
         Validate token and return security context
@@ -686,7 +690,7 @@ class AuthenticationService:
             raise TokenError("Token validation failed")
 
     async def logout(
-        self, user_id: str, session_id: str, ip_address: str = None
+        self, user_id: str, session_id: str, ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Logout user and revoke session
@@ -707,8 +711,8 @@ class AuthenticationService:
                 # Log logout
                 await self._log_audit_event(
                     user_id,
-                    AuditAction.LOGOUT,
-                    AuditLevel.INFO,
+                    AuditEventType.LOGOUT,
+                    AuditSeverity.INFO,
                     {"session_id": session_id, "ip_address": ip_address},
                 )
 
@@ -731,7 +735,7 @@ class AuthenticationService:
         self,
         user_id: str,
         change_request: ChangePasswordRequest,
-        ip_address: str = None,
+        ip_address: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Change user password with security validation
@@ -778,8 +782,8 @@ class AuthenticationService:
                 # Log password change
                 await self._log_audit_event(
                     user_id,
-                    AuditAction.PIN_CHANGE,
-                    AuditLevel.SECURITY,
+                    AuditEventType.PIN_CHANGE,
+                    AuditSeverity.CRITICAL,
                     {"ip_address": ip_address},
                 )
 
@@ -830,7 +834,7 @@ class AuthenticationService:
             raise AuthenticationError("Failed to retrieve user sessions")
 
     async def revoke_session(
-        self, user_id: str, session_id: str, ip_address: str = None
+        self, user_id: str, session_id: str, ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Revoke a specific session
@@ -852,8 +856,8 @@ class AuthenticationService:
             # Log session revocation
             await self._log_audit_event(
                 user_id,
-                AuditAction.LOGOUT,  # Using LOGOUT for session revocation
-                AuditLevel.SECURITY,
+                AuditEventType.LOGOUT,  # Using LOGOUT for session revocation
+                AuditSeverity.WARNING,
                 {"session_id": session_id, "ip_address": ip_address},
             )
 
@@ -897,7 +901,7 @@ class AuthenticationService:
         if not request.pin.isdigit() or len(request.pin) != 4:
             raise AuthenticationError("Invalid PIN format")
 
-    async def _check_rate_limits(self, operation: str, identifier: str):
+    async def _check_rate_limits(self, operation: str, identifier: Optional[str]):
         """Check rate limits for operations"""
         try:
             if identifier:
@@ -932,28 +936,16 @@ class AuthenticationService:
     async def _get_user_by_username(self, username: str) -> Optional[User]:
         """Get user by username from database"""
         try:
-            with self.db_manager.get_session() as session:
-                user_orm = (
-                    session.query(UserORM).filter(UserORM.username == username).first()
-                )
+            async with self.db_manager.get_async_session() as session:
+                from sqlalchemy import select
+                stmt = select(UserORM).where(UserORM.username == username)
+                result = await session.execute(stmt)
+                user_orm = result.scalar_one_or_none()
 
                 if user_orm:
-                    return User.from_dict(
-                        {
-                            "user_id": user_orm.user_id,
-                            "username": user_orm.username,
-                            "created_at": user_orm.created_at,
-                            "updated_at": user_orm.updated_at,
-                            "preferences": user_orm.preferences,
-                            "pin_hash": user_orm.pin_hash,
-                            "last_login": user_orm.last_login,
-                            "login_attempts": user_orm.login_attempts,
-                            "default_capital": user_orm.default_capital,
-                            "risk_tolerance": user_orm.risk_tolerance,
-                            "max_daily_loss": user_orm.max_daily_loss,
-                            "trading_mode": user_orm.trading_mode,
-                        }
-                    )
+                    # Convert ORM object to a dictionary to initialize the dataclass
+                    user_data = {c.name: getattr(user_orm, c.name) for c in user_orm.__table__.columns}
+                    return User(**user_data)
                 return None
 
         except SQLAlchemyError as e:
@@ -966,28 +958,15 @@ class AuthenticationService:
     async def _get_user_by_id(self, user_id: str) -> Optional[User]:
         """Get user by ID from database"""
         try:
-            with self.db_manager.get_session() as session:
-                user_orm = (
-                    session.query(UserORM).filter(UserORM.user_id == user_id).first()
-                )
+            async with self.db_manager.get_async_session() as session:
+                from sqlalchemy import select
+                stmt = select(UserORM).where(UserORM.user_id == user_id)
+                result = await session.execute(stmt)
+                user_orm = result.scalar_one_or_none()
 
                 if user_orm:
-                    return User.from_dict(
-                        {
-                            "user_id": user_orm.user_id,
-                            "username": user_orm.username,
-                            "created_at": user_orm.created_at,
-                            "updated_at": user_orm.updated_at,
-                            "preferences": user_orm.preferences,
-                            "pin_hash": user_orm.pin_hash,
-                            "last_login": user_orm.last_login,
-                            "login_attempts": user_orm.login_attempts,
-                            "default_capital": user_orm.default_capital,
-                            "risk_tolerance": user_orm.risk_tolerance,
-                            "max_daily_loss": user_orm.max_daily_loss,
-                            "trading_mode": user_orm.trading_mode,
-                        }
-                    )
+                    user_data = {c.name: getattr(user_orm, c.name) for c in user_orm.__table__.columns}
+                    return User(**user_data)
                 return None
 
         except Exception as e:
@@ -1029,7 +1008,7 @@ class AuthenticationService:
             self.logger.error(f"Lockout check error: {str(e)}")
 
     async def _handle_failed_authentication(
-        self, user: User, username: str, ip_address: str, user_agent: str
+        self, user: User, username: str, ip_address: Optional[str], user_agent: Optional[str]
     ):
         """Handle failed authentication attempt"""
         try:
@@ -1237,15 +1216,16 @@ class AuthenticationService:
     async def _update_last_login(self, user_id: str):
         """Update user's last login timestamp"""
         try:
-            with self.db_manager.get_session() as session:
-                user_orm = (
-                    session.query(UserORM).filter(UserORM.user_id == user_id).first()
-                )
+            from sqlalchemy import update
 
-                if user_orm:
-                    user_orm.last_login = datetime.now(timezone.utc)
-                    user_orm.login_attempts = 0  # Reset failed attempts
-                    session.commit()
+            stmt = (
+                update(UserORM)
+                .where(UserORM.user_id == user_id)
+                .values(last_login=datetime.now(timezone.utc), login_attempts=0)
+            )
+            async with self.db_manager.get_async_session() as session:
+                await session.execute(stmt)
+                await session.commit()
 
         except Exception as e:
             self.logger.error(f"Update last login error: {str(e)}")
@@ -1253,15 +1233,16 @@ class AuthenticationService:
     async def _update_trading_mode(self, user_id: str, new_mode: TradingMode):
         """Update user's trading mode"""
         try:
-            with self.db_manager.get_session() as session:
-                user_orm = (
-                    session.query(UserORM).filter(UserORM.user_id == user_id).first()
-                )
+            from sqlalchemy import update
 
-                if user_orm:
-                    user_orm.trading_mode = new_mode.value
-                    user_orm.updated_at = datetime.now(timezone.utc)
-                    session.commit()
+            stmt = (
+                update(UserORM)
+                .where(UserORM.user_id == user_id)
+                .values(trading_mode=new_mode.value, updated_at=datetime.now(timezone.utc))
+            )
+            async with self.db_manager.get_async_session() as session:
+                await session.execute(stmt)
+                await session.commit()
 
         except Exception as e:
             self.logger.error(f"Update trading mode error: {str(e)}")
@@ -1274,16 +1255,16 @@ class AuthenticationService:
             pin_hash = bcrypt.hashpw(new_pin.encode("utf-8"), bcrypt.gensalt()).decode(
                 "utf-8"
             )
+            from sqlalchemy import update
 
-            with self.db_manager.get_session() as session:
-                user_orm = (
-                    session.query(UserORM).filter(UserORM.user_id == user_id).first()
-                )
-
-                if user_orm:
-                    user_orm.pin_hash = pin_hash
-                    user_orm.updated_at = datetime.now(timezone.utc)
-                    session.commit()
+            stmt = (
+                update(UserORM)
+                .where(UserORM.user_id == user_id)
+                .values(pin_hash=pin_hash, updated_at=datetime.now(timezone.utc))
+            )
+            async with self.db_manager.get_async_session() as session:
+                await session.execute(stmt)
+                await session.commit()
 
         except Exception as e:
             self.logger.error(f"Update PIN error: {str(e)}")
@@ -1350,14 +1331,14 @@ class AuthenticationService:
         user_id: str,
         username: str,
         session_id: str,
-        ip_address: str,
-        user_agent: str,
+        ip_address: Optional[str],
+        user_agent: Optional[str],
     ):
         """Log successful login event"""
         await self._log_audit_event(
             user_id,
-            AuditAction.LOGIN_SUCCESS,
-            AuditLevel.INFO,
+            AuditEventType.LOGIN_SUCCESS,
+            AuditSeverity.INFO,
             {
                 "username": username,
                 "session_id": session_id,
@@ -1367,13 +1348,13 @@ class AuthenticationService:
         )
 
     async def _log_failed_login(
-        self, username: str, reason: str, ip_address: str, user_agent: str
+        self, username: str, reason: str, ip_address: Optional[str], user_agent: Optional[str]
     ):
         """Log failed login attempt"""
         await self._log_audit_event(
             None,  # No user_id for failed attempts
-            AuditAction.LOGIN_FAILURE,
-            AuditLevel.WARNING,
+            AuditEventType.LOGIN_FAILURE,
+            AuditSeverity.WARNING,
             {
                 "username": username,
                 "reason": reason,
@@ -1392,8 +1373,8 @@ class AuthenticationService:
         """Log security event"""
         await self._log_audit_event(
             user_id,
-            AuditAction.SECURITY_ALERT,  # Using SECURITY_ALERT for security events
-            AuditLevel.ERROR,  # Map to ERROR level as closest match
+            AuditEventType.SECURITY_ALERT,  # Using SECURITY_ALERT for security events
+            AuditSeverity.ERROR,  # Map to ERROR level as closest match
             {"message": message, "security_level": security_level.value, **details},
         )
 
@@ -1403,38 +1384,43 @@ class AuthenticationService:
     async def _log_audit_event(
         self,
         user_id: Optional[str],
-        action: AuditAction,
-        level: AuditLevel,
+        action: AuditEventType,
+        level: AuditSeverity,
         details: Dict[str, Any],
     ):
         """Log audit event to database and logs"""
         try:
             # Log to structured logger
+            log_details = {
+                "user_id": user_id,
+                "action": action.value,
+                "details": details,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
             self.audit_logger.log(
-                level.name,
+                logging.getLevelName(level.name),
                 f"Audit event: {action.value}",
-                user_id=user_id,
-                action=action.value,
-                details=details,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                **log_details,
             )
 
             # Store in database if audit logging is enabled
             if self.config.get("enable_audit_logging", True):
-                audit_log = AuditLog(
+                audit_log_orm = AuditLogORM(
                     user_id=user_id,
-                    action=action,
-                    level=level,
-                    details=details,
+                    event_type=action.value,
+                    event_description=f"Audit event: {action.value}",
+                    severity=level.value,
+                    source="user",  # Assuming user-initiated for now
+                    audit_metadata=details,
                     ip_address=details.get("ip_address"),
                     user_agent=details.get("user_agent"),
                 )
-
-                # Save to database (assuming we have an audit service)
-                # This would typically be handled by an audit service
-                self.logger.debug(
-                    f"Audit log created: {audit_log.action} for user {audit_log.user_id}"
-                )
+                async with self.db_manager.get_async_session() as session:
+                    session.add(audit_log_orm)
+                    await session.commit()
+                    self.logger.debug(
+                        f"Audit log saved: {audit_log_orm.event_type} for user {audit_log_orm.user_id}"
+                    )
 
         except Exception as e:
             self.logger.error(f"Audit logging error: {str(e)}")
@@ -1693,12 +1679,14 @@ class SecurityMonitor:
                 if attempts and int(attempts) > 20:  # 20 attempts per hour
                     raise SecurityError("Suspicious activity detected from IP address")
 
-                await self.cache.increment(ip_key, ttl=3600)
+                await self.cache.increment(ip_key)
+                await self.cache.expire(ip_key, 3600)
 
             # Check for login attempts with multiple usernames from same IP
             if ip_address and username:
                 ip_users_key = f"security:ip_users:{ip_address}"
-                await self.cache.sadd(ip_users_key, username, ttl=3600)
+                await self.cache.sadd(ip_users_key, username)
+                await self.cache.expire(ip_users_key, 3600)
                 unique_users = await self.cache.scard(ip_users_key)
 
                 if unique_users > 10:  # More than 10 different usernames from same IP
@@ -1719,7 +1707,7 @@ class SecurityMonitor:
 
 
 # Security decorators
-def require_auth(required_permissions: List[str] = None):
+def require_auth(required_permissions: Optional[List[str]] = None):
     """Decorator to require authentication"""
 
     def decorator(func):

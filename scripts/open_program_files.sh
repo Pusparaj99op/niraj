@@ -164,7 +164,7 @@ main() {
                 print_file_info $((i + 1)) $total_files "$file"
 
                 # Very short delay to see the file name (much faster than before)
-                sleep 0.05
+                sleep 0.1
             done
 
             echo ""
@@ -199,6 +199,7 @@ main() {
                 if (( (i + 1) % 3 == 0 )); then
                     echo ""
                 fi
+                sleep 0.07
             done
             echo ""
             echo ""

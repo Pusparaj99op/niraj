@@ -174,7 +174,16 @@ class RedisCache:
                 if deserialize == "json":
                     return json.loads(value)
                 elif deserialize == "pickle":
-                    return pickle.loads(value)
+                    # For pickle, we need the raw bytes. We must re-fetch without decoding.
+                    async with self.get_connection() as redis_client:
+                        # Temporarily get a client that doesn't decode responses
+                        raw_client = redis.Redis(connection_pool=self.redis_pool, decode_responses=False)
+                        value_bytes: Optional[bytes] = await raw_client.get(full_key)
+                        await raw_client.close()
+
+                    if value_bytes is None:
+                        return default
+                    return pickle.loads(value_bytes)
                 else:
                     return value
             except Exception as e:
@@ -214,6 +223,17 @@ class RedisCache:
             logger.error("Cache exists check failed", key=key, error=str(e))
             return False
 
+    async def expire(self, key: str, ttl: int, prefix: str = "temp_data") -> bool:
+        """Set a TTL on a key."""
+        try:
+            full_key = self._make_key(prefix, key)
+            async with self.get_connection() as redis_client:
+                result: bool = await redis_client.expire(full_key, ttl)
+            return result
+        except Exception as e:
+            logger.error("Cache expire failed", key=key, error=str(e))
+            return False
+
     async def increment(
         self, key: str, prefix: str = "temp_data", amount: int = 1
     ) -> int:
@@ -249,7 +269,7 @@ class RedisCache:
                 return False
 
             async with self.get_connection() as redis_client:
-                result: int = await redis_client.hset(full_key, mapping=string_mapping)
+                await redis_client.hset(full_key, mapping=string_mapping)
 
                 if ttl is None:
                     ttl = DEFAULT_TTL.get(prefix, DEFAULT_TTL["temp_data"])
@@ -377,6 +397,62 @@ class RedisCache:
             logger.error("Cache TTL get failed", key=key, error=str(e))
             return -1
 
+    async def sadd(self, key: str, *values: Any, prefix: str = "temp_data") -> int:
+        """Add members to a set."""
+        try:
+            full_key = self._make_key(prefix, key)
+            # Redis `sadd` expects string values, so we serialize them.
+            str_values = [json.dumps(v, default=str) for v in values]
+            async with self.get_connection() as redis_client:
+                return redis_client.sadd(full_key, *str_values)
+        except Exception as e:
+            logger.error("Cache sadd failed", key=key, error=str(e))
+            return 0
+
+    async def srem(self, key: str, *values: Any, prefix: str = "temp_data") -> int:
+        """Remove members from a set."""
+        try:
+            full_key = self._make_key(prefix, key)
+            str_values = [json.dumps(v, default=str) for v in values]
+            async with self.get_connection() as redis_client:
+                return redis_client.srem(full_key, *str_values)
+        except Exception as e:
+            logger.error("Cache srem failed", key=key, error=str(e))
+            return 0
+
+    async def sismember(self, key: str, value: Any, prefix: str = "temp_data") -> bool:
+        """Check if a member exists in a set."""
+        try:
+            full_key = self._make_key(prefix, key)
+            str_value = json.dumps(value, default=str)
+            async with self.get_connection() as redis_client:
+                result: int = await redis_client.sismember(full_key, str_value)
+                return bool(result)
+        except Exception as e:
+            logger.error("Cache sismember failed", key=key, error=str(e))
+            return False
+
+    async def scard(self, key: str, prefix: str = "temp_data") -> int:
+        """Get the number of members in a set."""
+        try:
+            full_key = self._make_key(prefix, key)
+            async with self.get_connection() as redis_client:
+                return await redis_client.scard(full_key)
+        except Exception as e:
+            logger.error("Cache scard failed", key=key, error=str(e))
+            return 0
+
+    async def smembers(self, key: str, prefix: str = "temp_data") -> set:
+        """Get all members of a set."""
+        try:
+            full_key = self._make_key(prefix, key)
+            async with self.get_connection() as redis_client:
+                members: set[str] = await redis_client.smembers(full_key)
+                return {json.loads(m) for m in members}
+        except Exception as e:
+            logger.error("Cache smembers failed", key=key, error=str(e))
+            return set()
+
 
 # Market data specific cache functions
 class MarketDataCache:
@@ -456,6 +532,38 @@ class CacheManager:
     async def close(self):
         """Close cache connections"""
         await self.redis_cache.disconnect()
+
+    async def expire(self, key: str, ttl: int, prefix: str = "temp_data") -> bool:
+        """Set a TTL on a key."""
+        return await self.redis_cache.expire(key, ttl, prefix=prefix)
+
+    async def increment(self, key: str, prefix: str = "temp_data", amount: int = 1) -> int:
+        """Increment a value in the cache."""
+        return await self.redis_cache.increment(key, prefix=prefix, amount=amount)
+
+    async def sadd(self, key: str, *values: Any, prefix: str = "temp_data") -> int:
+        """Add members to a set in the cache."""
+        return await self.redis_cache.sadd(key, *values, prefix=prefix)
+
+    async def srem(self, key: str, *values: Any, prefix: str = "temp_data") -> int:
+        """Remove members from a set in the cache."""
+        return await self.redis_cache.srem(key, *values, prefix=prefix)
+
+    async def sismember(self, key: str, value: Any, prefix: str = "temp_data") -> bool:
+        """Check if a member exists in a set in the cache."""
+        return await self.redis_cache.sismember(key, value, prefix=prefix)
+
+    async def scard(self, key: str, prefix: str = "temp_data") -> int:
+        """Get the number of members in a set in the cache."""
+        return await self.redis_cache.scard(key, prefix=prefix)
+
+    async def smembers(self, key: str, prefix: str = "temp_data") -> set:
+        """Get all members of a set from the cache."""
+        return await self.redis_cache.smembers(key, prefix=prefix)
+
+    async def get_ttl(self, key: str, prefix: str = "temp_data") -> int:
+        """Get the TTL of a key in the cache."""
+        return await self.redis_cache.get_ttl(key, prefix=prefix)
 
 
 # FastAPI dependency
