@@ -25,9 +25,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import structlog
 
-from backend.src.core.database import DatabaseManager
-from backend.src.core.cache import CacheManager
-from backend.src.models.trade import (
+from ...core.database import DatabaseManager
+from ...core.cache import CacheManager
+from ...models.trade import (
     Trade,
     TradeCreateRequest,
     TradeResponse,

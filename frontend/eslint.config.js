@@ -19,5 +19,9 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Allow inline styles for CSS custom properties (modern React pattern for dynamic values)
+      'no-inline-styles': 'off',
+    },
   },
 ])

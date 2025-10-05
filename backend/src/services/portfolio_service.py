@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
+
+try:
+    from typing_extensions import TypedDict
+except ImportError:
+    from typing import TypedDict  # type: ignore
 
 from sqlalchemy import select, and_, desc
 import structlog  # type: ignore[import-untyped]

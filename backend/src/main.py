@@ -327,6 +327,44 @@ def create_application() -> FastAPI:
             },
         )
 
+    # Root endpoint
+    @app.get(
+        "/",
+        summary="API Root",
+        description="Welcome endpoint with API information and quick links",
+        tags=["Root"],
+    )
+    async def root():
+        """Root endpoint with API information"""
+        return {
+            "message": "Welcome to NIRAJ Advanced Trading System API",
+            "version": "1.0.0",
+            "status": "operational",
+            "documentation": {
+                "swagger_ui": "/docs",
+                "redoc": "/redoc",
+                "openapi_schema": "/openapi.json",
+            },
+            "endpoints": {
+                "health": "/health",
+                "system_info": "/info",
+                "websocket": "ws://localhost:8000/ws",
+            },
+            "api_base": "/api/v1",
+            "features": [
+                "Advanced Authentication",
+                "Strategy Management",
+                "AI Integration",
+                "Real-time Market Data",
+                "Risk Management",
+                "Portfolio Analytics",
+            ],
+            "support": {
+                "documentation": "See /docs for interactive API documentation",
+                "issues": "Report issues on GitHub",
+            },
+        }
+
     # Health check endpoint
     @app.get(
         "/health",

@@ -1,10 +1,10 @@
 {
   "services": {
     "redis": {
-      "command": ["redis-server", "--daemonize", "yes"],
+      "command": ["redis-server", "--port", "6379"],
       "cwd": ".",
       "env": {},
-      "startup_time": 2,
+      "startup_time": 3,
       "color": "red"
     },
     "ollama": {

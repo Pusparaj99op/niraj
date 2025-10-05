@@ -125,21 +125,14 @@ class LoginRequest(BaseModel):
     remember_me: bool = Field(default=False)
     device_info: Optional[Dict[str, Any]] = Field(default=None)
 
-    @field_validator("pin")
+    @field_validator("pin", mode="before")
     @classmethod
     def validate_pin_format(cls, v: str) -> str:
-        if not v.isdigit() or len(v) != 4:
-            raise ValueError("PIN must be a 4-digit number")
-        return v
-
-    @field_validator("pin", "mobile_number", mode="before")
-    def validate_numeric_fields(cls, v: Any) -> Any:
-        """Validate that PIN and mobile number contain only digits."""
         if v is not None:
             if not isinstance(v, str):
-                raise ValueError("Must be a string")
-            if not v.isdigit():
-                raise ValueError("Must contain only digits")
+                raise ValueError("PIN must be a string")
+            if not v.isdigit() or len(v) != 4:
+                raise ValueError("PIN must be a 4-digit number")
         return v
 
 

@@ -689,6 +689,7 @@ async def switch_trading_mode(
 
 @router.post(
     "/logout",
+    response_model=None,
     summary="User Logout",
     description="""
     Securely logout user and revoke session.
@@ -709,7 +710,7 @@ async def logout(
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
     auth_service: AuthenticationService = Depends(get_auth_service),
-) -> Union[Dict[str, Any], JSONResponse]:
+):
     """Logout user and revoke session"""
     client_ip = get_client_ip(request)
 
@@ -815,7 +816,8 @@ async def refresh_token(
 
 
 @router.post(
-    "/change-password",
+    "/password",
+    response_model=None,
     summary="Change Password/PIN",
     description="""
     Change user PIN with security validation.
@@ -841,7 +843,7 @@ async def change_password(
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
     auth_service: AuthenticationService = Depends(get_auth_service),
-) -> Union[Dict[str, Any], JSONResponse]:
+):
     """Change user password with security validation"""
     client_ip = get_client_ip(request)
 
@@ -943,6 +945,7 @@ async def get_user_sessions(
 
 @router.delete(
     "/sessions/{session_id}",
+    response_model=None,
     summary="Revoke Session",
     description="""
     Revoke a specific user session.
@@ -965,7 +968,7 @@ async def revoke_session(
     request: Request,
     security_context: SecurityContext = Depends(get_security_context),
     auth_service: AuthenticationService = Depends(get_auth_service),
-) -> Union[Dict[str, Any], JSONResponse]:
+):
     """Revoke a specific session"""
     client_ip = get_client_ip(request)
 
@@ -1090,6 +1093,7 @@ async def setup_mfa(
 
 @router.post(
     "/mfa/verify",
+    response_model=None,
     summary="Verify MFA Code",
     description="""
     Verify MFA code to complete setup or for authentication.
@@ -1110,7 +1114,7 @@ async def setup_mfa(
 async def verify_mfa(
     verify_data: MFAVerifyRequestModel,
     security_context: SecurityContext = Depends(get_security_context),
-) -> Union[Dict[str, Any], JSONResponse]:
+):
     """Verify MFA code"""
     try:
         with structlog.contextvars.bound_contextvars(

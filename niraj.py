@@ -6,12 +6,61 @@ Single Runner Script
 This script provides a unified interface to run the NIRAJ trading system
 with different configurations and modes.
 
+Features:
+  • Real-time trading dashboard with 1-second updates
+  • Paper trading (₹10,000 virtual) and real trading modes
+  • Live market data, PNL tracking, news, AI status
+  • System monitoring: CPU, RAM, Disk, GPU, Temperatures
+  • GPU fan speed control (NVIDIA with nvidia-settings)
+  • Terminal mode for reduced resource usage
+  • Service orchestration (Backend, Frontend, Redis, Ollama)
+
 Usage:
-    python niraj.py --mode development --enable-api --enable-frontend
-    python niraj.py --mode production --enable-api
+    # Interactive menu
+    python niraj.py
+
+    # Paper trading dashboard with system monitoring
+    python niraj.py --terminal-mode --paper-trading
+
+    # Real trading with fan control
+    python niraj.py --terminal-mode --real-trading --fan-speed 70
+
+    # Start specific services
+    python niraj.py --enable-api --enable-frontend
+
+    # Production mode
+    python niraj.py --mode production --enable-api --enable-redis
+
+    # Service management
     python niraj.py status
     python niraj.py stop
-    python niraj.py --help
+    python niraj.py install
+
+    # Dashboard only (requires backend running)
+    python niraj.py --dashboard-only --paper-trading
+
+    # Set GPU fan speed (10, 30, 50, 70, 100, max)
+    python niraj.py --terminal-mode --fan-speed max
+
+System Requirements:
+  • Python 3.8+
+  • psutil (for system monitoring)
+  • nvidia-smi (optional, for GPU monitoring)
+  • nvidia-settings (optional, for fan control)
+  • colorama (for colored output)
+
+Trading Dashboard Features:
+  • Updates every 1 second
+  • Account balances (Dhan + Angel One)
+  • Live PNL with win/loss tracking
+  • Market data (Bank Nifty trends)
+  • Latest news headlines
+  • AI engine status
+  • Chart pattern indicators
+  • System health metrics
+  • GPU monitoring and control
+
+See SYSTEM_MONITORING_FEATURES.md for detailed documentation.
 """
 
 import argparse
@@ -22,9 +71,55 @@ import subprocess
 import sys
 import time
 import threading
+import datetime
+import webbrowser
+import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Protocol, runtime_checkable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from decimal import Decimal
+from enum import Enum
+
+try:
+    import psutil  # type: ignore
+    PSUTIL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    PSUTIL_AVAILABLE = False
+    # Lightweight fallback so attribute access doesn't crash linters/runtime
+
+    class _DummyVM:
+        used = 0
+        total = 1
+        percent = 0.0
+
+    class _DummySW:
+        used = 0
+        total = 1
+
+    class _DummyNet:
+        bytes_sent = 0
+        bytes_recv = 0
+
+    class _PsutilFallback:
+        def cpu_percent(self, interval=None):
+            return 0.0
+
+        def cpu_count(self, logical=True):  # noqa: D401
+            return 0
+
+        def virtual_memory(self):
+            return _DummyVM()
+
+        def swap_memory(self):
+            return _DummySW()
+
+        def net_io_counters(self):
+            return _DummyNet()
+
+        def sensors_temperatures(self):  # type: ignore
+            return {}
+
+    psutil = _PsutilFallback()  # type: ignore
 
 try:
     from colorama import Fore, Style, init  # type: ignore
@@ -67,6 +162,8 @@ class ServiceConfig:
     health_check_timeout: int = 30
     startup_time: int = 5
     color: str = getattr(Fore, "BLUE", "")
+    start_time: Optional[float] = field(default=None, init=False)
+    restart_count: int = field(default=0, init=False)
 
 
 @runtime_checkable
@@ -96,9 +193,80 @@ class NirajRunner:
         self.services: Dict[str, ServiceConfig] = {}
         self.monitoring_active = False
         self.monitor_thread: Optional[threading.Thread] = None
+        self.system_start_time: Optional[float] = None
 
         # Load configuration
         self.load_config()
+
+    def print_box(self, text: str, width: int = 70, style: str = "single") -> None:
+        """Print text in a styled box"""
+        borders = {
+            "single": ("┌", "─", "┐", "│", "└", "┘"),
+            "double": ("╔", "═", "╗", "║", "╚", "╝"),
+            "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
+            "bold": ("┏", "━", "┓", "┃", "┗", "┛"),
+        }
+
+        tl, h, tr, v, bl, br = borders.get(style, borders["single"])
+
+        lines = text.split('\n')
+        print(f"{tl}{h * (width - 2)}{tr}")
+        for line in lines:
+            padding = width - len(line) - 4
+            print(f"{v} {line}{' ' * padding} {v}")
+        print(f"{bl}{h * (width - 2)}{br}")
+
+    def print_progress_bar(self, current: int, total: int, width: int = 40, label: str = "") -> None:
+        """Print an animated progress bar"""
+        percent = current / total
+        filled = int(width * percent)
+        bar = "█" * filled + "░" * (width - filled)
+
+        if COLORAMA_AVAILABLE:
+            color = Fore.GREEN if percent == 1.0 else Fore.CYAN
+            print(f"\r{color}{label} [{bar}] {int(percent * 100)}%{Style.RESET_ALL}", end='', flush=True)
+        else:
+            print(f"\r{label} [{bar}] {int(percent * 100)}%", end='', flush=True)
+
+        if percent >= 1.0:
+            print()  # New line when complete
+
+    def print_spinner(self, message: str, duration: float = 2.0) -> None:
+        """Print an animated spinner"""
+        spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        start_time = time.time()
+        idx = 0
+
+        while time.time() - start_time < duration:
+            if COLORAMA_AVAILABLE:
+                print(f"\r{Fore.CYAN}{spinners[idx % len(spinners)]} {message}{Style.RESET_ALL}", end='', flush=True)
+            else:
+                print(f"\r{spinners[idx % len(spinners)]} {message}", end='', flush=True)
+            idx += 1
+            time.sleep(0.1)
+
+        print(f"\r{' ' * (len(message) + 10)}\r", end='', flush=True)
+
+    def get_uptime(self, service_name: str) -> str:
+        """Get service uptime"""
+        if service_name not in self.services:
+            return "N/A"
+
+        service = self.services[service_name]
+        if service.start_time is None:
+            return "Not running"
+
+        uptime_seconds = time.time() - service.start_time
+        hours = int(uptime_seconds // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        seconds = int(uptime_seconds % 60)
+
+        if hours > 0:
+            return f"{hours}h {minutes}m {seconds}s"
+        elif minutes > 0:
+            return f"{minutes}m {seconds}s"
+        else:
+            return f"{seconds}s"
 
     def log(self, message: str, level: str = "info", service: str = "") -> None:
         """Log message with color coding"""
@@ -162,7 +330,7 @@ class NirajRunner:
                         "8000",
                     ],
                     "cwd": "backend",
-                    "env": {"PYTHONPATH": "src"},
+                    "env": {"PYTHONPATH": "."},
                     "health_check_url": "http://localhost:8000/health",
                     "startup_time": 10,
                     "color": "blue",
@@ -372,6 +540,20 @@ class NirajRunner:
         except Exception:
             return False
 
+    def _is_redis_running(self) -> bool:
+        """Check if redis is already running"""
+        try:
+            # Try to ping redis
+            result = subprocess.run(
+                ["redis-cli", "ping"],
+                capture_output=True,
+                timeout=5,
+            )
+            # Redis responds with "PONG" when running
+            return result.returncode == 0 and b"PONG" in result.stdout
+        except Exception:
+            return False
+
     def set_environment(self) -> None:
         """Set environment variables based on mode"""
         os.environ["ENVIRONMENT"] = self.mode
@@ -419,6 +601,31 @@ class NirajRunner:
 
         service = self.services[service_name]
 
+        # Special handling for redis - check if already running as system service
+        if service_name == "redis":
+            if self._is_redis_running():
+                self.log("✅ Redis already running as system service", "success")
+
+                # Create a dummy process entry to track it
+                class DummyProcessOllama:
+                    """Lightweight stand‑in for an already‑running system service."""
+
+                    def poll(self) -> Optional[int]:
+                        return None
+
+                    def terminate(self) -> None:  # no-op
+                        return None
+
+                    def kill(self) -> None:  # no-op
+                        return None
+
+                    def wait(self, timeout: Optional[float] = None) -> Optional[int]:
+                        return None
+
+                self.processes[service_name] = DummyProcessOllama()
+                self.services[service_name].start_time = time.time()
+                return True
+
         # Special handling for ollama - check if already running as system service
         if service_name == "ollama":
             if self._is_ollama_running():
@@ -458,18 +665,22 @@ class NirajRunner:
             env = os.environ.copy()
             env.update(service.env)
 
-            # Start process
-            popen_obj = subprocess.Popen(
-                service.command,
-                cwd=service.cwd,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-            self.processes[service_name] = popen_obj
+            # For long-running services, don't capture output to avoid blocking
+            # Instead, let them output to the terminal or redirect to log files
+            log_file = PROJECT_ROOT / "logs" / f"{service_name}.log"
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(log_file, "a") as log_out:
+                # Start process
+                popen_obj = subprocess.Popen(
+                    service.command,
+                    cwd=service.cwd,
+                    env=env,
+                    stdout=log_out,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                self.processes[service_name] = popen_obj
 
             # Wait for startup
             self.log(
@@ -484,17 +695,17 @@ class NirajRunner:
                 # Perform health check if configured
                 if self._check_service_health(service):
                     self.log(f"✅ {service_name} started successfully", "success")
+                    self.log(f"   📄 Logs: {log_file}", "info")
+                    service.start_time = time.time()  # Track start time
                     return True
                 else:
                     self.log(f"❌ {service_name} health check failed", "error")
                     self.stop_service(service_name)
                     return False
             else:
-                if isinstance(process_ref, subprocess.Popen):
-                    stdout, _ = process_ref.communicate()
-                    self.log(f"❌ {service_name} failed to start: {stdout}", "error")
-                else:
-                    self.log(f"❌ {service_name} failed to start (unknown process type)", "error")
+                # Process exited, check log file for errors
+                self.log(f"❌ {service_name} failed to start", "error")
+                self.log(f"   📄 Check logs at: {log_file}", "info")
                 return False
 
         except Exception as e:
@@ -545,9 +756,14 @@ class NirajRunner:
             process.terminate()
             process.wait(timeout=10)
             self.log(f"✅ {service_name} stopped", "success")
+            # Reset start time
+            if service_name in self.services:
+                self.services[service_name].start_time = None
         except subprocess.TimeoutExpired:
             process.kill()
             self.log(f"⚠️  {service_name} force killed", "warning")
+            if service_name in self.services:
+                self.services[service_name].start_time = None
         except Exception as e:
             self.log(f"❌ Error stopping {service_name}: {e}", "error")
         finally:
@@ -563,33 +779,89 @@ class NirajRunner:
         self.log("✅ All services stopped", "success")
 
     def show_status(self) -> None:
-        """Show status of all services"""
-        self.log("📊 Service Status", "header")
+        """Show status of all services with enhanced dashboard display"""
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}{Style.BRIGHT}╔{'═' * 78}╗")
+            print(f"║{'NIRAJ SYSTEM STATUS DASHBOARD'.center(78)}║")
+            print(f"╠{'═' * 78}╣")
+            print(f"║ Mode: {Fore.YELLOW}{self.mode.upper()}{Fore.CYAN}{' ' * (71 - len(self.mode))}║")
+
+            # System uptime
+            if self.system_start_time:
+                uptime_sec = time.time() - self.system_start_time
+                uptime_str = f"{int(uptime_sec // 3600)}h {int((uptime_sec % 3600) // 60)}m {int(uptime_sec % 60)}s"
+                print(f"║ System Uptime: {Fore.GREEN}{uptime_str}{Fore.CYAN}{' ' * (60 - len(uptime_str))}║")
+
+            running_count = sum(1 for name in self.processes if self.processes[name].poll() is None)
+            total_count = len(self.services)
+            print(f"║ Services Running: {Fore.GREEN}{running_count}{Fore.CYAN}/{Fore.YELLOW}{total_count}{Fore.CYAN}{' ' * (57)}║")
+            print(f"╠{'═' * 78}╣")
+            print(f"║ {'Service'.ljust(15)} │ {'Status'.ljust(12)} │ {'Uptime'.ljust(15)} │ {'Restarts'.ljust(8)} │ {'Port'.ljust(18)} ║")
+            print(f"╠{'═' * 78}╣{Style.RESET_ALL}")
+        else:
+            print("\n" + "=" * 80)
+            print("NIRAJ SYSTEM STATUS DASHBOARD".center(80))
+            print("=" * 80)
 
         for service_name, service in self.services.items():
             if service_name in self.processes:
                 process = self.processes[service_name]
                 if process.poll() is None:
-                    status = "✅ Running"
-                else:
-                    status = "❌ Stopped"
-            else:
-                status = "⭕ Not Started"
+                    status = "✅ Running" if COLORAMA_AVAILABLE else "Running"
+                    uptime = self.get_uptime(service_name)
+                    restarts = str(service.restart_count)
 
-            print(f"  {service_name}: {status}")
-            if (
-                service_name in self.processes
-                and self.processes[service_name].poll() is None
-            ):
-                if service_name == "backend":
-                    print("    API: http://localhost:8000")
-                    print("    Docs: http://localhost:8000/docs")
-                elif service_name == "frontend":
-                    print("    URL: http://localhost:5173")
-                elif service_name == "redis":
-                    print("    URL: localhost:6379")
-                elif service_name == "ollama":
-                    print("    URL: http://localhost:11434")
+                    # Service URLs/Ports
+                    port_info = ""
+                    if service_name == "backend":
+                        port_info = ":8000"
+                    elif service_name == "frontend":
+                        port_info = ":5173"
+                    elif service_name == "redis":
+                        port_info = ":6379"
+                    elif service_name == "ollama":
+                        port_info = ":11434"
+
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}║{Style.RESET_ALL} {Fore.WHITE}{service_name.ljust(15)}{Style.RESET_ALL} │ "
+                              f"{Fore.GREEN}{status.ljust(12)}{Style.RESET_ALL} │ "
+                              f"{Fore.YELLOW}{uptime.ljust(15)}{Style.RESET_ALL} │ "
+                              f"{Fore.MAGENTA}{restarts.ljust(8)}{Style.RESET_ALL} │ "
+                              f"{Fore.BLUE}{port_info.ljust(18)}{Style.RESET_ALL} {Fore.CYAN}║{Style.RESET_ALL}")
+                    else:
+                        print(f"{service_name.ljust(15)} | {status.ljust(12)} | {uptime.ljust(15)} | {restarts.ljust(8)} | {port_info.ljust(18)}")
+                else:
+                    status = "❌ Stopped" if COLORAMA_AVAILABLE else "Stopped"
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}║{Style.RESET_ALL} {service_name.ljust(15)} │ "
+                              f"{Fore.RED}{status.ljust(12)}{Style.RESET_ALL} │ "
+                              f"{'---'.ljust(15)} │ {'---'.ljust(8)} │ {'---'.ljust(18)} {Fore.CYAN}║{Style.RESET_ALL}")
+                    else:
+                        print(f"{service_name.ljust(15)} | {status.ljust(12)} | {'---'.ljust(15)} | {'---'.ljust(8)} | {'---'.ljust(18)}")
+            else:
+                status = "⭕ Not Started" if COLORAMA_AVAILABLE else "Not Started"
+                if COLORAMA_AVAILABLE:
+                    print(f"{Fore.CYAN}║{Style.RESET_ALL} {service_name.ljust(15)} │ "
+                          f"{Fore.YELLOW}{status.ljust(12)}{Style.RESET_ALL} │ "
+                          f"{'---'.ljust(15)} │ {'---'.ljust(8)} │ {'---'.ljust(18)} {Fore.CYAN}║{Style.RESET_ALL}")
+                else:
+                    print(f"{service_name.ljust(15)} | {status.ljust(12)} | {'---'.ljust(15)} | {'---'.ljust(8)} | {'---'.ljust(18)}")
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}╚{'═' * 78}╝{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}{Style.BRIGHT}💡 Quick Access URLs:{Style.RESET_ALL}")
+            print(f"  {Fore.BLUE}• Backend API:{Style.RESET_ALL}      http://localhost:8000")
+            print(f"  {Fore.BLUE}• API Docs:{Style.RESET_ALL}         http://localhost:8000/docs")
+            print(f"  {Fore.BLUE}• Frontend:{Style.RESET_ALL}         http://localhost:5173")
+            print(f"  {Fore.BLUE}• Ollama API:{Style.RESET_ALL}       http://localhost:11434")
+        else:
+            print("=" * 80)
+            print("\nQuick Access URLs:")
+            print("  • Backend API:      http://localhost:8000")
+            print("  • API Docs:         http://localhost:8000/docs")
+            print("  • Frontend:         http://localhost:5173")
+            print("  • Ollama API:       http://localhost:11434")
+
         print()
         print()
 
@@ -628,11 +900,16 @@ class NirajRunner:
 
         self.set_environment()
 
+        # Track system start time
+        self.system_start_time = time.time()
+
         # Start services
         started_services = []
-        for service_name in services_to_start:
+        for i, service_name in enumerate(services_to_start, 1):
+            self.print_progress_bar(i - 1, len(services_to_start), label="Starting services")
             if self.start_service(service_name):
                 started_services.append(service_name)
+            self.print_progress_bar(i, len(services_to_start), label="Starting services")
 
         if not started_services:
             self.log("❌ No services were started successfully", "error")
@@ -747,6 +1024,267 @@ class NirajRunner:
                  "success" if passed == total else "warning")
 
         return results
+
+    def test_broker_apis(self) -> Dict[str, Dict[str, bool]]:
+        """Test broker API endpoints (Angel One and Dhan)"""
+        self.log("📡 Testing Broker APIs...", "header")
+
+        results = {
+            "angel_one": {},
+            "dhan": {}
+        }
+
+        # Check if backend is running
+        if "backend" not in self.processes or self.processes["backend"].poll() is not None:
+            self.log("❌ Backend is not running. Please start the backend first.", "error")
+            return results
+
+        try:
+            import requests
+        except ImportError:
+            self.log("⚠️  requests library not available, using curl", "warning")
+            requests = None
+
+        # Angel One API Tests
+        self.log("\n🔵 Testing Angel One APIs:", "info")
+        angel_endpoints = {
+            "Market Data Status": "http://localhost:8000/api/v1/market-data/status",
+            "Get Quote": "http://localhost:8000/api/v1/market-data/quotes",
+            "LTP (Last Traded Price)": "http://localhost:8000/api/v1/market-data/RELIANCE/ltp",
+            "Portfolio": "http://localhost:8000/api/v1/market-data/watchlist",
+        }
+
+        for name, url in angel_endpoints.items():
+            try:
+                if requests:
+                    response = requests.get(url, timeout=5)
+                    success = 200 <= response.status_code < 500  # Accept 4xx as "reachable"
+                    status_code = response.status_code
+                else:
+                    result = subprocess.run(
+                        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    status_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                    success = 200 <= status_code < 500
+
+                results["angel_one"][name] = success
+                if success:
+                    self.log(f"  ✅ {name}: Reachable (Status: {status_code})", "success")
+                else:
+                    self.log(f"  ❌ {name}: Failed (Status: {status_code})", "error")
+            except Exception as e:
+                self.log(f"  ❌ {name}: Error - {e}", "error")
+                results["angel_one"][name] = False
+
+            time.sleep(0.3)
+
+        # Dhan API Tests
+        self.log("\n🟢 Testing Dhan APIs:", "info")
+        dhan_endpoints = {
+            "Market Feed": "http://localhost:8000/api/v1/market-data/status",
+            "Historical Data": "http://localhost:8000/api/v1/market-data/RELIANCE",
+            "Portfolio": "http://localhost:8000/api/v1/market-data/watchlist",
+        }
+
+        for name, url in dhan_endpoints.items():
+            try:
+                if requests:
+                    response = requests.get(url, timeout=5)
+                    success = 200 <= response.status_code < 500
+                    status_code = response.status_code
+                else:
+                    result = subprocess.run(
+                        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    status_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                    success = 200 <= status_code < 500
+
+                results["dhan"][name] = success
+                if success:
+                    self.log(f"  ✅ {name}: Reachable (Status: {status_code})", "success")
+                else:
+                    self.log(f"  ❌ {name}: Failed (Status: {status_code})", "error")
+            except Exception as e:
+                self.log(f"  ❌ {name}: Error - {e}", "error")
+                results["dhan"][name] = False
+
+            time.sleep(0.3)
+
+        # Summary
+        angel_passed = sum(1 for v in results["angel_one"].values() if v)
+        angel_total = len(results["angel_one"])
+        dhan_passed = sum(1 for v in results["dhan"].values() if v)
+        dhan_total = len(results["dhan"])
+
+        self.log("\n📊 Broker API Summary:", "info")
+        self.log(f"  Angel One: {angel_passed}/{angel_total} endpoints reachable",
+                 "success" if angel_passed == angel_total else "warning")
+        self.log(f"  Dhan: {dhan_passed}/{dhan_total} endpoints reachable",
+                 "success" if dhan_passed == dhan_total else "warning")
+
+        return results
+
+    def test_news_api(self) -> Dict[str, bool]:
+        """Test News API endpoints"""
+        self.log("📰 Testing News APIs...", "header")
+
+        results = {}
+
+        # Check if backend is running
+        if "backend" not in self.processes or self.processes["backend"].poll() is not None:
+            self.log("❌ Backend is not running. Please start the backend first.", "error")
+            return results
+
+        try:
+            import requests
+        except ImportError:
+            self.log("⚠️  requests library not available, using curl", "warning")
+            requests = None
+
+        news_endpoints = {
+            "News Health": "http://localhost:8000/api/v1/news/health",
+            "Headlines": "http://localhost:8000/api/v1/news/headlines",
+            "Company News": "http://localhost:8000/api/v1/news/company/RELIANCE",
+        }
+
+        for name, url in news_endpoints.items():
+            try:
+                if requests:
+                    response = requests.get(url, timeout=10)
+                    success = 200 <= response.status_code < 500
+                    status_code = response.status_code
+                else:
+                    result = subprocess.run(
+                        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                        capture_output=True, text=True, timeout=15
+                    )
+                    status_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                    success = 200 <= status_code < 500
+
+                results[name] = success
+                if success:
+                    self.log(f"  ✅ {name}: Reachable (Status: {status_code})", "success")
+                else:
+                    self.log(f"  ❌ {name}: Failed (Status: {status_code})", "error")
+            except Exception as e:
+                self.log(f"  ❌ {name}: Error - {e}", "error")
+                results[name] = False
+
+            time.sleep(0.5)
+
+        # Summary
+        passed = sum(1 for v in results.values() if v)
+        total = len(results)
+        self.log(f"\n📊 News API Summary: {passed}/{total} endpoints reachable",
+                 "success" if passed == total else "warning")
+
+        return results
+
+    def test_weather_api(self) -> Dict[str, bool]:
+        """Test Weather API endpoints"""
+        self.log("🌤️  Testing Weather APIs...", "header")
+
+        results = {}
+
+        # Check if backend is running
+        if "backend" not in self.processes or self.processes["backend"].poll() is not None:
+            self.log("❌ Backend is not running. Please start the backend first.", "error")
+            return results
+
+        try:
+            import requests
+        except ImportError:
+            self.log("⚠️  requests library not available, using curl", "warning")
+            requests = None
+
+        weather_endpoints = {
+            "Weather Health": "http://localhost:8000/api/v1/weather/health",
+            "Current Weather": "http://localhost:8000/api/v1/weather/current?city=Mumbai",
+            "Forecast": "http://localhost:8000/api/v1/weather/forecast?city=Mumbai",
+        }
+
+        for name, url in weather_endpoints.items():
+            try:
+                if requests:
+                    response = requests.get(url, timeout=10)
+                    success = 200 <= response.status_code < 500
+                    status_code = response.status_code
+                else:
+                    result = subprocess.run(
+                        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                        capture_output=True, text=True, timeout=15
+                    )
+                    status_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                    success = 200 <= status_code < 500
+
+                results[name] = success
+                if success:
+                    self.log(f"  ✅ {name}: Reachable (Status: {status_code})", "success")
+                else:
+                    self.log(f"  ❌ {name}: Failed (Status: {status_code})", "error")
+            except Exception as e:
+                self.log(f"  ❌ {name}: Error - {e}", "error")
+                results[name] = False
+
+            time.sleep(0.5)
+
+        # Summary
+        passed = sum(1 for v in results.values() if v)
+        total = len(results)
+        self.log(f"\n📊 Weather API Summary: {passed}/{total} endpoints reachable",
+                 "success" if passed == total else "warning")
+
+        return results
+
+    def test_all_external_apis(self) -> Dict[str, Any]:
+        """Test all external APIs comprehensively"""
+        self.log("🔬 Testing All External APIs...", "header")
+
+        all_results = {
+            "core": self.test_api_endpoints(),
+            "brokers": self.test_broker_apis(),
+            "news": self.test_news_api(),
+            "weather": self.test_weather_api(),
+        }
+
+        # Overall summary
+        self.log("\n" + "=" * 60, "info")
+        self.log("📊 COMPREHENSIVE API TEST SUMMARY", "header")
+        self.log("=" * 60, "info")
+
+        # Core APIs
+        core_passed = sum(1 for v in all_results["core"].values() if v)
+        core_total = len(all_results["core"])
+        self.log(f"Core APIs: {core_passed}/{core_total} passed",
+                 "success" if core_passed == core_total else "warning")
+
+        # Broker APIs
+        angel_passed = sum(1 for v in all_results["brokers"]["angel_one"].values() if v)
+        angel_total = len(all_results["brokers"]["angel_one"])
+        dhan_passed = sum(1 for v in all_results["brokers"]["dhan"].values() if v)
+        dhan_total = len(all_results["brokers"]["dhan"])
+        self.log(f"Angel One APIs: {angel_passed}/{angel_total} reachable",
+                 "success" if angel_passed == angel_total else "warning")
+        self.log(f"Dhan APIs: {dhan_passed}/{dhan_total} reachable",
+                 "success" if dhan_passed == dhan_total else "warning")
+
+        # News APIs
+        news_passed = sum(1 for v in all_results["news"].values() if v)
+        news_total = len(all_results["news"])
+        self.log(f"News APIs: {news_passed}/{news_total} reachable",
+                 "success" if news_passed == news_total else "warning")
+
+        # Weather APIs
+        weather_passed = sum(1 for v in all_results["weather"].values() if v)
+        weather_total = len(all_results["weather"])
+        self.log(f"Weather APIs: {weather_passed}/{weather_total} reachable",
+                 "success" if weather_passed == weather_total else "warning")
+
+        self.log("=" * 60 + "\n", "info")
+
+        return all_results
 
     def clear_redis_cache(self) -> bool:
         """Clear Redis cache"""
@@ -874,6 +1412,104 @@ class NirajRunner:
             self.log(f"❌ Failed to clear cache directory: {e}", "error")
             return False
 
+    def get_system_diagnostics(self) -> Dict[str, Any]:
+        """Get comprehensive system diagnostics"""
+        diagnostics: Dict[str, Any] = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "mode": self.mode,
+            "system_uptime": None,
+            "services": {},
+            "disk_usage": {},
+            "process_info": {}
+        }
+
+        # System uptime
+        if self.system_start_time:
+            diagnostics["system_uptime"] = time.time() - self.system_start_time
+
+        # Service status
+        for service_name, service in self.services.items():
+            status_info = {
+                "running": service_name in self.processes and self.processes[service_name].poll() is None,
+                "uptime": self.get_uptime(service_name) if service.start_time else "N/A",
+                "restarts": service.restart_count,
+                "start_time": service.start_time
+            }
+            diagnostics["services"][service_name] = status_info
+
+        # Disk usage for key directories
+        try:
+            for dir_name in ["logs", "data", "backend", "frontend"]:
+                dir_path = PROJECT_ROOT / dir_name
+                if dir_path.exists():
+                    total_size = sum(f.stat().st_size for f in dir_path.rglob('*') if f.is_file())
+                    diagnostics["disk_usage"][dir_name] = {
+                        "bytes": total_size,
+                        "mb": round(total_size / (1024 * 1024), 2)
+                    }
+        except Exception:
+            pass
+
+        return diagnostics
+
+    def backup_configuration(self, backup_path: Optional[Path] = None) -> bool:
+        """Backup current configuration"""
+        if backup_path is None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = PROJECT_ROOT / f"niraj-backup-{timestamp}.json"
+
+        try:
+            backup_data = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "mode": self.mode,
+                "services": {},
+                "diagnostics": self.get_system_diagnostics()
+            }
+
+            # Save service configurations
+            for name, service in self.services.items():
+                backup_data["services"][name] = {
+                    "command": service.command,
+                    "cwd": str(service.cwd),
+                    "env": service.env,
+                    "startup_time": service.startup_time
+                }
+
+            with open(backup_path, 'w') as f:
+                json.dump(backup_data, f, indent=2)
+
+            self.log(f"✅ Configuration backed up to: {backup_path}", "success")
+            return True
+        except Exception as e:
+            self.log(f"❌ Failed to backup configuration: {e}", "error")
+            return False
+
+    def quick_restart_all(self) -> None:
+        """Quick restart all running services"""
+        self.log("🔄 Quick restarting all services...", "info")
+
+        running_services = [
+            name for name, process in self.processes.items()
+            if process.poll() is None
+        ]
+
+        if not running_services:
+            self.log("⚠️  No services are currently running", "warning")
+            return
+
+        # Stop all
+        for service_name in running_services:
+            self.stop_service(service_name)
+
+        time.sleep(2)
+
+        # Start all
+        for service_name in running_services:
+            self.start_service(service_name)
+            self.services[service_name].restart_count += 1
+
+        self.log("✅ All services restarted successfully", "success")
+
 
 class MenuInterface:
     """Interactive menu interface for NIRAJ system"""
@@ -881,41 +1517,121 @@ class MenuInterface:
     def __init__(self, runner: NirajRunner):
         self.runner = runner
         self.running = True
+        self.breadcrumbs: List[str] = ["Main Menu"]
+        self.command_history: List[str] = []
+
+    def show_breadcrumbs(self):
+        """Display breadcrumb navigation"""
+        if COLORAMA_AVAILABLE:
+            breadcrumb_str = f"{Fore.CYAN} » {Style.RESET_ALL}".join(self.breadcrumbs)
+            print(f"\n{Fore.BLUE}📍 Navigation: {Style.RESET_ALL}{breadcrumb_str}\n")
+        else:
+            breadcrumb_str = " » ".join(self.breadcrumbs)
+            print(f"\n📍 Navigation: {breadcrumb_str}\n")
+
+    def push_breadcrumb(self, item: str):
+        """Add item to breadcrumb trail"""
+        self.breadcrumbs.append(item)
+
+    def pop_breadcrumb(self):
+        """Remove last item from breadcrumb trail"""
+        if len(self.breadcrumbs) > 1:
+            self.breadcrumbs.pop()
+
+    def add_to_history(self, command: str):
+        """Add command to history"""
+        self.command_history.append(command)
+        if len(self.command_history) > 50:  # Keep last 50 commands
+            self.command_history.pop(0)
 
     def display_banner(self):
-        """Display NIRAJ banner"""
+        """Display NIRAJ banner with enhanced styling"""
         if COLORAMA_AVAILABLE:
-            print(f"{Fore.CYAN}{Style.BRIGHT}")
-            print("╔══════════════════════════════════════════════════════════════╗")
-            print("║                         🚀 NIRAJ                             ║")
-            print("║         Advanced Self-Learning Algorithmic AI               ║")
-            print("║              Personal Trading System                        ║")
-            print("║                                                              ║")
-            print("║                    Interactive Menu                         ║")
-            print("╚══════════════════════════════════════════════════════════════╝")
-            print(f"{Style.RESET_ALL}")
+            # Get current date and time
+            now = datetime.datetime.now()
+            date_str = now.strftime("%Y-%m-%d")
+            time_str = now.strftime("%H:%M:%S")
+
+            print(f"\n{Fore.CYAN}{Style.BRIGHT}")
+            print("╔═══════════════════════════════════════════════════════════════════════╗")
+            print("║                                                                       ║")
+            print(f"║{Fore.GREEN}     ███╗   ██╗██╗██████╗  █████╗      ██╗    ████████╗██████╗ {Fore.CYAN}     ║")
+            print(f"║{Fore.GREEN}     ████╗  ██║██║██╔══██╗██╔══██╗     ██║    ╚══██╔══╝██╔══██╗{Fore.CYAN}     ║")
+            print(f"║{Fore.GREEN}     ██╔██╗ ██║██║██████╔╝███████║     ██║       ██║   ██║  ██║{Fore.CYAN}     ║")
+            print(f"║{Fore.GREEN}     ██║╚██╗██║██║██╔══██╗██╔══██║██   ██║       ██║   ██║  ██║{Fore.CYAN}     ║")
+            print(f"║{Fore.GREEN}     ██║ ╚████║██║██║  ██║██║  ██║╚█████╔╝       ██║   ██████╔╝{Fore.CYAN}     ║")
+            print(f"║{Fore.GREEN}     ╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚════╝        ╚═╝   ╚═════╝ {Fore.CYAN}     ║")
+            print("║                                                                       ║")
+            print(f"║{Fore.YELLOW}          Advanced Self-Learning Algorithmic AI Trading System{Fore.CYAN}      ║")
+            print("║                                                                       ║")
+            print(f"║{Fore.MAGENTA}                      🤖 Interactive Menu 🎯{Fore.CYAN}                       ║")
+            print("║                                                                       ║")
+            print(f"║  {Fore.WHITE}Mode: {Fore.YELLOW}{self.runner.mode.upper()}{Fore.CYAN}{' ' * (58 - len(self.runner.mode))}  ║")
+            print(f"║  {Fore.WHITE}Date: {Fore.GREEN}{date_str}  {Fore.WHITE}Time: {Fore.GREEN}{time_str}{Fore.CYAN}{' ' * 33}  ║")
+            print("║                                                                       ║")
+            print("╚═══════════════════════════════════════════════════════════════════════╝")
+            print(f"{Style.RESET_ALL}\n")
         else:
-            print("=" * 66)
-            print("                         NIRAJ")
-            print("         Advanced Self-Learning Algorithmic AI")
-            print("              Personal Trading System")
-            print("                    Interactive Menu")
-            print("=" * 66)
+            now = datetime.datetime.now()
+            print("\n" + "=" * 75)
+            print(" " * 28 + "NIRAJ LTD")
+            print(" " * 15 + "Advanced Self-Learning Algorithmic AI")
+            print(" " * 20 + "Personal Trading System")
+            print(" " * 25 + "Interactive Menu")
+            print()
+            print(f"Mode: {self.runner.mode.upper()}  |  Date: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 75 + "\n")
 
     def display_main_menu(self):
-        """Display main menu options"""
-        print("\n📋 Main Menu:")
-        print("  1. 🚀 Start Services")
-        print("  2. 🛑 Stop Services")
-        print("  3. 📊 Service Status")
-        print("  4. 📦 Install Dependencies")
-        print("  5. ⚙️  Configuration")
-        print("  6. 🔧 Service Management")
-        print("  7. 🧪 API Testing")
-        print("  8. 🗑️  Cache & Logs Management")
-        print("  9. � Help & Documentation")
-        print("  0. ❌ Exit")
-        print()
+        """Display main menu options with enhanced styling"""
+        if COLORAMA_AVAILABLE:
+            # System status indicators
+            running_services = len([p for p in self.runner.processes.values() if p.poll() is None])
+            total_services = len(self.runner.services)
+            status_color = Fore.GREEN if running_services > 0 else Fore.YELLOW
+            
+            print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                            📋 MAIN MENU                                {Style.RESET_ALL}{Fore.CYAN}    ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.WHITE}  Services: {status_color}{running_services}/{total_services} Running{Style.RESET_ALL}{' ' * (61 - len(f'{running_services}/{total_services} Running'))}{Fore.CYAN}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.MAGENTA}{Style.BRIGHT}🎯 QUICK ACTIONS{Style.RESET_ALL}{Fore.CYAN}{' ' * 60}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}1.{Fore.WHITE} 🚀 Start Services{Fore.CYAN}              {Fore.GREEN}7.{Fore.WHITE} 🧪 API Testing & Validation{Fore.CYAN}       ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}2.{Fore.WHITE} 🛑 Stop Services{Fore.CYAN}               {Fore.GREEN}8.{Fore.WHITE} 🗑️  Cache & Logs Management{Fore.CYAN}        ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}3.{Fore.WHITE} 📊 System & Service Status{Fore.CYAN}     {Fore.GREEN}9.{Fore.WHITE} � Help & Documentation{Fore.CYAN}           ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.BLUE}{Style.BRIGHT}⚙️  CONFIGURATION & MANAGEMENT{Style.RESET_ALL}{Fore.CYAN}{' ' * 44}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}4.{Fore.WHITE} 📦 Install Dependencies{Fore.CYAN}        {Fore.GREEN}10.{Fore.WHITE} ⚡ Quick Actions Menu{Fore.CYAN}          ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}5.{Fore.WHITE} ⚙️  Configuration Settings{Fore.CYAN}     {Fore.GREEN}11.{Fore.WHITE} 🔧 Advanced Service Mgmt{Fore.CYAN}       ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}6.{Fore.WHITE} 🔄 Restart All Services{Fore.CYAN}        {Fore.GREEN}12.{Fore.WHITE} � System Diagnostics{Fore.CYAN}          ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.YELLOW}{Style.BRIGHT}💹 TRADING MODES{Style.RESET_ALL}{Fore.CYAN}{' ' * 59}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}13.{Fore.WHITE} 📊 Paper Trading Dashboard{Fore.CYAN}    {Fore.RED}15.{Fore.WHITE} 🎮 GPU & System Monitor{Fore.CYAN}        ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.RED}14.{Fore.WHITE} 🔴 Real Trading (LIVE){Fore.CYAN}          {Fore.GREEN}16.{Fore.WHITE} ⌨️  Keyboard Shortcuts{Fore.CYAN}          ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.RED}0.{Fore.WHITE} ❌ Exit System{Fore.CYAN}{' ' * 60}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+        else:
+            running_services = len([p for p in self.runner.processes.values() if p.poll() is None])
+            total_services = len(self.runner.services)
+            
+            print("\n" + "=" * 80)
+            print("                              MAIN MENU")
+            print(f"  Services: {running_services}/{total_services} Running")
+            print("=" * 80)
+            print("\n🎯 QUICK ACTIONS")
+            print("  1. 🚀 Start Services              7. 🧪 API Testing & Validation")
+            print("  2. 🛑 Stop Services               8. 🗑️  Cache & Logs Management")
+            print("  3. 📊 System & Service Status     9. 📚 Help & Documentation")
+            print("\n⚙️  CONFIGURATION & MANAGEMENT")
+            print("  4. 📦 Install Dependencies        10. ⚡ Quick Actions Menu")
+            print("  5. ⚙️  Configuration Settings     11. 🔧 Advanced Service Mgmt")
+            print("  6. � Restart All Services        12. 📈 System Diagnostics")
+            print("\n💹 TRADING MODES")
+            print("  13. 📊 Paper Trading Dashboard    15. 🎮 GPU & System Monitor")
+            print("  14. 🔴 Real Trading (LIVE)        16. ⌨️  Keyboard Shortcuts")
+            print("\n  0. ❌ Exit System")
+            print("=" * 80 + "\n")
 
     def display_start_menu(self):
         """Display service selection menu"""
@@ -955,13 +1671,15 @@ class MenuInterface:
         print()
 
     def display_service_menu(self):
-        """Display service management menu"""
+        """Display service management menu with enhanced options"""
         print("\n🔧 Service Management:")
         print("  1. 🔄 Restart Service")
         print("  2. 🔍 View Service Logs")
         print("  3. 🏥 Health Check")
-        print("  4. 📊 Performance Metrics")
+        print("  4. 📊 System Diagnostics")
         print("  5. 🔧 Service Configuration")
+        print("  6. ⚡ Quick Restart All")
+        print("  7. 💾 Backup Configuration")
         print("  0. ⬅️  Back to Main Menu")
         print()
 
@@ -978,15 +1696,27 @@ class MenuInterface:
         print()
 
     def get_user_input(self, prompt: str = "Enter your choice: ") -> str:
-        """Get user input with error handling"""
+        """Get user input with enhanced error handling and validation"""
         try:
-            return input(
-                f"{Fore.YELLOW if COLORAMA_AVAILABLE else ''}{prompt}{Style.RESET_ALL if COLORAMA_AVAILABLE else ''}"
-            ).strip()
+            if COLORAMA_AVAILABLE:
+                user_prompt = f"{Fore.YELLOW}{Style.BRIGHT}➜ {prompt}{Style.RESET_ALL}"
+            else:
+                user_prompt = f"➜ {prompt}"
+
+            return input(user_prompt).strip()
         except (KeyboardInterrupt, EOFError):
-            print("\n\n👋 Goodbye!")
+            if COLORAMA_AVAILABLE:
+                print(f"\n\n{Fore.CYAN}👋 Goodbye! Thank you for using NIRAJ Trading System.{Style.RESET_ALL}")
+            else:
+                print("\n\n👋 Goodbye! Thank you for using NIRAJ Trading System.")
             self.running = False
             return "0"
+        except Exception as e:
+            if COLORAMA_AVAILABLE:
+                print(f"{Fore.RED}❌ Input error: {e}{Style.RESET_ALL}")
+            else:
+                print(f"❌ Input error: {e}")
+            return ""
 
     def safe_input(self, prompt: str = "\n📱 Press Enter to continue...") -> bool:
         """Safe input that handles EOF gracefully"""
@@ -999,11 +1729,14 @@ class MenuInterface:
 
     def handle_start_services(self):
         """Handle start services menu"""
+        self.push_breadcrumb("Start Services")
         while True:
+            self.show_breadcrumbs()
             self.display_start_menu()
             choice = self.get_user_input()
 
             if choice == "0":
+                self.pop_breadcrumb()
                 break
             elif choice == "1":
                 self.start_single_service("backend")
@@ -1075,11 +1808,14 @@ class MenuInterface:
 
     def handle_service_management(self):
         """Handle service management menu"""
+        self.push_breadcrumb("Service Management")
         while True:
+            self.show_breadcrumbs()
             self.display_service_menu()
             choice = self.get_user_input()
 
             if choice == "0":
+                self.pop_breadcrumb()
                 break
             elif choice == "1":
                 self.restart_service()
@@ -1088,9 +1824,13 @@ class MenuInterface:
             elif choice == "3":
                 self.health_check()
             elif choice == "4":
-                self.performance_metrics()
+                self.show_system_diagnostics()
             elif choice == "5":
                 self.service_configuration()
+            elif choice == "6":
+                self.quick_restart_all_services()
+            elif choice == "7":
+                self.backup_config()
             else:
                 print("❌ Invalid choice. Please try again.")
 
@@ -1343,6 +2083,64 @@ class MenuInterface:
             if service.health_check_url:
                 print(f"  Health Check: {service.health_check_url}")
 
+    def show_system_diagnostics(self):
+        """Display comprehensive system diagnostics"""
+        print("\n🔍 System Diagnostics")
+        print("=" * 70)
+
+        diagnostics = self.runner.get_system_diagnostics()
+
+        print(f"\n📅 Timestamp: {diagnostics['timestamp']}")
+        print(f"⚙️  Mode: {diagnostics['mode']}")
+
+        if diagnostics['system_uptime']:
+            uptime_sec = diagnostics['system_uptime']
+            hours = int(uptime_sec // 3600)
+            minutes = int((uptime_sec % 3600) // 60)
+            print(f"⏱️  System Uptime: {hours}h {minutes}m")
+
+        print("\n📊 Service Status:")
+        for service_name, info in diagnostics['services'].items():
+            status_icon = "✅" if info['running'] else "❌"
+            print(f"  {status_icon} {service_name}:")
+            print(f"     Uptime: {info['uptime']}")
+            print(f"     Restarts: {info['restarts']}")
+
+        print("\n💾 Disk Usage:")
+        for dir_name, usage in diagnostics['disk_usage'].items():
+            print(f"  📁 {dir_name}: {usage['mb']} MB ({usage['bytes']:,} bytes)")
+
+        print("\n" + "=" * 70)
+
+    def quick_restart_all_services(self):
+        """Quick restart all running services"""
+        print("\n⚡ Quick Restart All Services")
+
+        try:
+            confirm = input("⚠️  This will restart all running services. Continue? (y/N): ").lower().strip()
+            if confirm in ["y", "yes"]:
+                self.runner.quick_restart_all()
+                print("✅ All services restarted successfully!")
+            else:
+                print("❌ Operation cancelled")
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Operation cancelled")
+
+    def backup_config(self):
+        """Backup current configuration"""
+        print("\n💾 Backup Configuration")
+
+        try:
+            custom_path = input("Enter backup path (press Enter for default): ").strip()
+            backup_path = Path(custom_path) if custom_path else None
+
+            if self.runner.backup_configuration(backup_path):
+                print("✅ Configuration backup completed successfully!")
+            else:
+                print("❌ Configuration backup failed")
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Operation cancelled")
+
     def show_quick_start(self):
         """Show quick start guide"""
         print("\n📖 Quick Start Guide:")
@@ -1427,11 +2225,15 @@ class MenuInterface:
     def display_api_testing_menu(self):
         """Display API testing menu"""
         print("\n🧪 API Testing:")
-        print("  1. 🔍 Test All API Endpoints")
+        print("  1. 🔍 Test All API Endpoints (Core)")
         print("  2. 🏥 Quick Health Check")
-        print("  3. 📄 Test Specific Endpoint")
-        print("  4. 📊 View API Documentation")
-        print("  5. 🔄 Test WebSocket Connection")
+        print("  3. � Test Broker APIs (Angel One & Dhan)")
+        print("  4. 📰 Test News APIs")
+        print("  5. 🌤️  Test Weather APIs")
+        print("  6. 🔬 Test All External APIs (Comprehensive)")
+        print("  7. �📄 Test Specific Endpoint")
+        print("  8. 📊 View API Documentation")
+        print("  9. 🔄 Test WebSocket Connection")
         print("  0. ⬅️  Back to Main Menu")
         print()
 
@@ -1460,10 +2262,18 @@ class MenuInterface:
             elif choice == "2":
                 self.quick_health_check()
             elif choice == "3":
-                self.test_specific_endpoint()
+                self.runner.test_broker_apis()
             elif choice == "4":
-                self.view_api_docs()
+                self.runner.test_news_api()
             elif choice == "5":
+                self.runner.test_weather_api()
+            elif choice == "6":
+                self.runner.test_all_external_apis()
+            elif choice == "7":
+                self.test_specific_endpoint()
+            elif choice == "8":
+                self.view_api_docs()
+            elif choice == "9":
                 self.test_websocket()
             else:
                 print("❌ Invalid choice. Please try again.")
@@ -1580,7 +2390,6 @@ class MenuInterface:
         try:
             choice = input("\nOpen in browser? (y/N): ").lower().strip()
             if choice in ["y", "yes"]:
-                import webbrowser
                 webbrowser.open("http://localhost:8000/docs")
                 print("✅ Opened API documentation in browser")
         except (KeyboardInterrupt, EOFError):
@@ -1711,45 +2520,1168 @@ class MenuInterface:
             print("\nOperation cancelled.")
 
     def run(self):
-        """Main menu loop"""
+        """Main menu loop with enhanced navigation"""
         self.display_banner()
 
         while self.running:
+            self.show_breadcrumbs()
             self.display_main_menu()
+
+            # Show helpful hint with system info
+            if COLORAMA_AVAILABLE:
+                uptime = ""
+                if self.runner.system_start_time:
+                    uptime_sec = time.time() - self.runner.system_start_time
+                    uptime_min = int(uptime_sec / 60)
+                    uptime = f" | Uptime: {uptime_min}m" if uptime_min > 0 else ""
+                print(f"{Fore.CYAN}💡 Tip: Type 'help' for shortcuts | Press Ctrl+C to exit{uptime}{Style.RESET_ALL}\n")
+            else:
+                print("💡 Tip: Type 'help' for shortcuts | Press Ctrl+C to exit\n")
+
             choice = self.get_user_input()
 
             if not self.running:  # User pressed Ctrl+C
                 break
 
+            self.add_to_history(choice)
+
             if choice == "0":
-                print("👋 Goodbye!")
+                if COLORAMA_AVAILABLE:
+                    print(f"\n{Fore.GREEN}👋 Thank you for using NIRAJ Trading System!{Style.RESET_ALL}")
+                else:
+                    print("\n👋 Thank you for using NIRAJ Trading System!")
                 break
             elif choice == "1":
                 self.handle_start_services()
             elif choice == "2":
                 self.handle_stop_services()
             elif choice == "3":
-                self.runner.show_status()
-                self.safe_input()
+                self.show_enhanced_status()
             elif choice == "4":
                 self.runner.install_dependencies()
                 self.safe_input()
             elif choice == "5":
                 self.handle_configuration()
             elif choice == "6":
-                self.handle_service_management()
+                self.quick_restart_all_services()
             elif choice == "7":
                 self.handle_api_testing()
             elif choice == "8":
                 self.handle_cache_logs_management()
             elif choice == "9":
                 self.handle_help()
+            elif choice == "10":
+                self.show_quick_actions_menu()
+            elif choice == "11":
+                self.handle_service_management()
+            elif choice == "12":
+                self.show_system_diagnostics()
+            elif choice == "13":
+                self.handle_trading_dashboard(paper_mode=True)
+            elif choice == "14":
+                self.handle_trading_dashboard(paper_mode=False)
+            elif choice == "15":
+                self.show_gpu_system_monitor()
+            elif choice == "16":
+                self.show_keyboard_shortcuts()
+                self.safe_input()
+            elif choice.lower() == "help":
+                self.show_keyboard_shortcuts()
+                self.safe_input()
+            elif choice.lower() == "status":
+                self.show_enhanced_status()
+            elif choice.lower() == "clear":
+                os.system('clear' if os.name != 'nt' else 'cls')
             else:
-                print("❌ Invalid choice. Please try again.")
+                if COLORAMA_AVAILABLE:
+                    print(f"{Fore.RED}❌ Invalid choice. Please enter 0-16, 'help', 'status', or 'clear'.{Style.RESET_ALL}")
+                else:
+                    print("❌ Invalid choice. Please enter 0-16, 'help', 'status', or 'clear'.")
 
         # Cleanup
         self.runner.stop_monitoring()
         self.runner.stop_all()
+
+    def handle_trading_dashboard(self, paper_mode: bool = True):
+        """Handle trading dashboard launch"""
+        mode_text = "Paper Trading (₹10,000)" if paper_mode else "Real Trading"
+
+        print(f"\n📊 {mode_text} Dashboard")
+        print("=" * 70)
+
+        if not paper_mode:
+            print(f"{Fore.RED if COLORAMA_AVAILABLE else ''}⚠️  WARNING: Real trading mode will use actual funds!{Style.RESET_ALL if COLORAMA_AVAILABLE else ''}")
+            confirm = input("Type 'YES' to confirm real trading mode: ")
+            if confirm != "YES":
+                print("Real trading cancelled.")
+                self.safe_input()
+                return
+
+        # Start backend if not running
+        if "backend" not in self.runner.processes or self.runner.processes["backend"].poll() is not None:
+            print("Starting backend API...")
+            if not self.runner.start_service("backend"):
+                print("Failed to start backend!")
+                self.safe_input()
+                return
+
+        # Start redis if not running
+        if "redis" not in self.runner.processes or self.runner.processes["redis"].poll() is not None:
+            print("Starting Redis...")
+            self.runner.start_service("redis")
+
+        # Create and start dashboard
+        trading_mode = TradingMode.PAPER if paper_mode else TradingMode.REAL
+        dashboard = TradingDashboard(
+            runner=self.runner,
+            mode=trading_mode,
+            initial_balance=Decimal('10000.0')
+        )
+
+        print(f"\n🚀 Starting {mode_text} dashboard...")
+        print("📊 Dashboard will update every 1 second")
+        print("Press Ctrl+C to stop\n")
+
+        time.sleep(2)
+
+        dashboard.start()
+
+        try:
+            # Keep running until interrupted
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n\nStopping dashboard...")
+            dashboard.stop()
+            print("Dashboard stopped.")
+            self.safe_input()
+
+    def show_keyboard_shortcuts(self):
+        """Display keyboard shortcuts and tips"""
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                 ⌨️  KEYBOARD SHORTCUTS & TIPS{Style.RESET_ALL}{Fore.CYAN}                   ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}Navigation:{Style.RESET_ALL}{Fore.CYAN}{' ' * 59}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 0-16 to select menu options{Fore.CYAN}{' ' * 36}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'help' for this guide{Fore.CYAN}{' ' * 42}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'status' for quick status check{Fore.CYAN}{' ' * 32}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'clear' to clear screen{Fore.CYAN}{' ' * 40}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Press Ctrl+C to exit gracefully{Fore.CYAN}{' ' * 36}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Press Enter to continue after viewing info{Fore.CYAN}{' ' * 26}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{' ' * 71}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}Quick Tips:{Style.RESET_ALL}{Fore.CYAN}{' ' * 58}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 3{Fore.WHITE} - Check service status before starting{Fore.CYAN}{' ' * 23}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 4{Fore.WHITE} - Install dependencies on first run{Fore.CYAN}{' ' * 25}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 1 > 5{Fore.WHITE} - Complete development setup{Fore.CYAN}{' ' * 27}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 7{Fore.WHITE} - Test APIs after starting services{Fore.CYAN}{' ' * 25}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 13{Fore.WHITE} - Paper trading (safe testing){Fore.CYAN}{' ' * 28}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.YELLOW}• Option 15{Fore.WHITE} - Monitor GPU and system resources{Fore.CYAN}{' ' * 23}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+        else:
+            print("\n⌨️  Keyboard Shortcuts & Tips")
+            print("=" * 70)
+            print("  Navigation:")
+            print("    • Type 0-16 to select menu options")
+            print("    • Type 'help' for this guide")
+            print("    • Type 'status' for quick status check")
+            print("    • Type 'clear' to clear screen")
+            print("    • Press Ctrl+C to exit gracefully")
+            print("    • Press Enter to continue after viewing info")
+            print("\n  Quick Tips:")
+            print("    • Option 3 - Check service status before starting")
+            print("    • Option 4 - Install dependencies on first run")
+            print("    • Option 1 > 5 - Complete development setup")
+            print("    • Option 7 - Test APIs after starting services")
+            print("    • Option 13 - Paper trading (safe testing)")
+            print("    • Option 15 - Monitor GPU and system resources")
+            print("=" * 70)
+
+    def show_enhanced_status(self):
+        """Show enhanced status with system info"""
+        self.runner.show_status()
+        
+        # Show additional system info
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                      📊 SYSTEM INFORMATION{Style.RESET_ALL}{Fore.CYAN}                        ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}")
+        else:
+            print("\n" + "=" * 70)
+            print("                      � SYSTEM INFORMATION")
+            print("=" * 70)
+        
+        # Try to show system stats
+        try:
+            if PSUTIL_AVAILABLE:
+                cpu = psutil.cpu_percent(interval=1)
+                mem = psutil.virtual_memory()
+                disk = shutil.disk_usage(PROJECT_ROOT)
+                
+                if COLORAMA_AVAILABLE:
+                    cpu_color = Fore.GREEN if cpu < 50 else Fore.YELLOW if cpu < 75 else Fore.RED
+                    mem_color = Fore.GREEN if mem.percent < 50 else Fore.YELLOW if mem.percent < 75 else Fore.RED
+                    disk_color = Fore.GREEN if disk.used / disk.total < 0.5 else Fore.YELLOW if disk.used / disk.total < 0.75 else Fore.RED
+                    
+                    print(f"  🔥 CPU Usage: {cpu_color}{cpu:.1f}%{Style.RESET_ALL}")
+                    print(f"  💾 Memory: {mem_color}{mem.percent:.1f}%{Style.RESET_ALL} ({mem.used/(1024**3):.1f}G / {mem.total/(1024**3):.1f}G)")
+                    print(f"  💿 Disk: {disk_color}{disk.used/disk.total*100:.1f}%{Style.RESET_ALL} ({disk.used/(1024**3):.1f}G / {disk.total/(1024**3):.1f}G)")
+                else:
+                    print(f"  CPU Usage: {cpu:.1f}%")
+                    print(f"  Memory: {mem.percent:.1f}% ({mem.used/(1024**3):.1f}G / {mem.total/(1024**3):.1f}G)")
+                    print(f"  Disk: {disk.used/disk.total*100:.1f}% ({disk.used/(1024**3):.1f}G / {disk.total/(1024**3):.1f}G)")
+        except Exception:
+            print("  ℹ️  System stats unavailable (install psutil)")
+        
+        print()
+        self.safe_input()
+
+    def show_quick_actions_menu(self):
+        """Show quick actions menu"""
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                        ⚡ QUICK ACTIONS{Style.RESET_ALL}{Fore.CYAN}                           ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}1.{Fore.WHITE} 🚀 Start Full Dev Stack (Backend+Frontend+Redis+Ollama){Fore.CYAN}        ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}2.{Fore.WHITE} 🏭 Start Production Stack (Backend+Redis){Fore.CYAN}{' ' * 29}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}3.{Fore.WHITE} 🔄 Restart All Running Services{Fore.CYAN}{' ' * 37}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}4.{Fore.WHITE} 🛑 Stop All Services{Fore.CYAN}{' ' * 47}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}5.{Fore.WHITE} 🗑️  Clear All Cache & Logs{Fore.CYAN}{' ' * 41}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}6.{Fore.WHITE} 📊 Open Paper Trading Dashboard{Fore.CYAN}{' ' * 36}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}7.{Fore.WHITE} 🧪 Run Full API Test Suite{Fore.CYAN}{' ' * 40}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}8.{Fore.WHITE} 💾 Backup Configuration{Fore.CYAN}{' ' * 44}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}0.{Fore.WHITE} ⬅️  Back to Main Menu{Fore.CYAN}{' ' * 46}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+        else:
+            print("\n⚡ QUICK ACTIONS")
+            print("=" * 70)
+            print("  1. 🚀 Start Full Dev Stack (Backend+Frontend+Redis+Ollama)")
+            print("  2. 🏭 Start Production Stack (Backend+Redis)")
+            print("  3. 🔄 Restart All Running Services")
+            print("  4. 🛑 Stop All Services")
+            print("  5. 🗑️  Clear All Cache & Logs")
+            print("  6. 📊 Open Paper Trading Dashboard")
+            print("  7. 🧪 Run Full API Test Suite")
+            print("  8. 💾 Backup Configuration")
+            print("  0. ⬅️  Back to Main Menu")
+            print("=" * 70 + "\n")
+        
+        choice = self.get_user_input()
+        
+        if choice == "0":
+            return
+        elif choice == "1":
+            self.start_multiple_services(["backend", "frontend", "redis", "ollama"])
+        elif choice == "2":
+            self.start_multiple_services(["backend", "redis"])
+        elif choice == "3":
+            self.quick_restart_all_services()
+        elif choice == "4":
+            self.runner.stop_all()
+            print("\n✅ All services stopped")
+            self.safe_input()
+        elif choice == "5":
+            self.clear_everything()
+        elif choice == "6":
+            self.handle_trading_dashboard(paper_mode=True)
+        elif choice == "7":
+            self.runner.test_all_external_apis()
+            self.safe_input()
+        elif choice == "8":
+            self.backup_config()
+
+    def show_gpu_system_monitor(self):
+        """Show real-time GPU and system monitoring"""
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                   🎮 GPU & SYSTEM MONITOR{Style.RESET_ALL}{Fore.CYAN}                       ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
+        else:
+            print("\n" + "=" * 70)
+            print("                   🎮 GPU & SYSTEM MONITOR")
+            print("=" * 70)
+        
+        if not PSUTIL_AVAILABLE:
+            print("\n⚠️  psutil not installed. Install it with: pip install psutil")
+            self.safe_input()
+            return
+        
+        print("\n📊 Collecting system statistics... (5 seconds)\n")
+        
+        for i in range(5):
+            # CPU
+            cpu = psutil.cpu_percent(interval=1)
+            cpu_color = Fore.GREEN if cpu < 50 else Fore.YELLOW if cpu < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
+            reset = Style.RESET_ALL if COLORAMA_AVAILABLE else ""
+            
+            # Memory
+            mem = psutil.virtual_memory()
+            mem_color = Fore.GREEN if mem.percent < 50 else Fore.YELLOW if mem.percent < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
+            
+            # Disk
+            disk = shutil.disk_usage(PROJECT_ROOT)
+            disk_pct = disk.used / disk.total * 100
+            disk_color = Fore.GREEN if disk_pct < 50 else Fore.YELLOW if disk_pct < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
+            
+            print(f"\r🔥 CPU: {cpu_color}{cpu:5.1f}%{reset}  💾 RAM: {mem_color}{mem.percent:5.1f}%{reset}  💿 Disk: {disk_color}{disk_pct:5.1f}%{reset}", end='', flush=True)
+        
+        print("\n")
+        
+        # Try GPU info
+        try:
+            smi = shutil.which('nvidia-smi')
+            if smi:
+                print("🎮 GPU Information:")
+                result = subprocess.run([smi, '--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,fan.speed',
+                                         '--format=csv,noheader,nounits'],
+                                        capture_output=True, text=True, timeout=2)
+                if result.returncode == 0 and result.stdout.strip():
+                    line = result.stdout.strip()
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) >= 5:
+                        print(f"  Name: {parts[0]}")
+                        print(f"  Utilization: {parts[1]}%")
+                        print(f"  Memory: {parts[2]}MB / {parts[3]}MB")
+                        print(f"  Temperature: {parts[4]}°C")
+                        if len(parts) >= 6:
+                            print(f"  Fan Speed: {parts[5]}%")
+                else:
+                    print("  ℹ️  No GPU data available")
+            else:
+                print("🎮 GPU: nvidia-smi not found (NVIDIA GPUs only)")
+        except Exception as e:
+            print(f"🎮 GPU: Unable to query ({str(e)})")
+        
+        print()
+        self.safe_input()
+
+    def show_advanced_service_management(self):
+        """Show advanced service management menu"""
+        while True:
+            if COLORAMA_AVAILABLE:
+                print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                   🔧 ADVANCED SERVICE MANAGEMENT{Style.RESET_ALL}{Fore.CYAN}                  ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║  {Fore.GREEN}Start Services:{Style.RESET_ALL}{Fore.CYAN}{' ' * 56}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║    {Fore.WHITE}1. Backend          2. Frontend         3. Redis{Fore.CYAN}            ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║    {Fore.WHITE}4. Ollama           5. PostgreSQL       6. Custom{Fore.CYAN}           ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║{' ' * 71}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║  {Fore.YELLOW}Stop Services:{Style.RESET_ALL}{Fore.CYAN}{' ' * 57}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║    {Fore.WHITE}7. Backend          8. Frontend         9. Redis{Fore.CYAN}            ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║    {Fore.WHITE}10. Ollama         11. PostgreSQL      12. All{Fore.CYAN}             ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║{' ' * 71}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║  {Fore.CYAN}Restart Services:{Style.RESET_ALL}{Fore.CYAN}{' ' * 54}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║    {Fore.WHITE}13. Backend        14. Frontend        15. All{Fore.CYAN}             ║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║{' ' * 71}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}║  {Fore.GREEN}0.{Fore.WHITE} ⬅️  Back to Main Menu{Fore.CYAN}{' ' * 46}║{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+            else:
+                print("\n🔧 ADVANCED SERVICE MANAGEMENT")
+                print("=" * 70)
+                print("  Start Services:")
+                print("    1. Backend          2. Frontend         3. Redis")
+                print("    4. Ollama           5. PostgreSQL       6. Custom")
+                print("\n  Stop Services:")
+                print("    7. Backend          8. Frontend         9. Redis")
+                print("    10. Ollama         11. PostgreSQL      12. All")
+                print("\n  Restart Services:")
+                print("    13. Backend        14. Frontend        15. All")
+                print("\n  0. ⬅️  Back to Main Menu")
+                print("=" * 70 + "\n")
+            
+            choice = self.get_user_input()
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.runner.start_service("backend")
+                self.safe_input()
+            elif choice == "2":
+                self.runner.start_service("frontend")
+                self.safe_input()
+            elif choice == "3":
+                self.runner.start_service("redis")
+                self.safe_input()
+            elif choice == "4":
+                self.runner.start_service("ollama")
+                self.safe_input()
+            elif choice == "5":
+                self.runner.start_service("postgresql")
+                self.safe_input()
+            elif choice == "6":
+                service_name = input("\nEnter service name: ").strip()
+                if service_name:
+                    self.runner.start_service(service_name)
+                self.safe_input()
+            elif choice == "7":
+                self.runner.stop_service("backend")
+                self.safe_input()
+            elif choice == "8":
+                self.runner.stop_service("frontend")
+                self.safe_input()
+            elif choice == "9":
+                self.runner.stop_service("redis")
+                self.safe_input()
+            elif choice == "10":
+                self.runner.stop_service("ollama")
+                self.safe_input()
+            elif choice == "11":
+                self.runner.stop_service("postgresql")
+                self.safe_input()
+            elif choice == "12":
+                self.runner.stop_all()
+                print("\n✅ All services stopped")
+                self.safe_input()
+            elif choice == "13":
+                self.runner.stop_service("backend")
+                time.sleep(1)
+                self.runner.start_service("backend")
+                self.safe_input()
+            elif choice == "14":
+                self.runner.stop_service("frontend")
+                time.sleep(1)
+                self.runner.start_service("frontend")
+                self.safe_input()
+            elif choice == "15":
+                self.quick_restart_all_services()
+
+
+# ============================================================================
+# TRADING DASHBOARD & REAL-TIME FEATURES
+# ============================================================================
+
+class TradingMode(Enum):
+    """Trading mode enumeration"""
+    PAPER = "paper"
+    REAL = "real"
+
+
+@dataclass
+class TradingAccount:
+    """Trading account data"""
+    broker: str  # 'dhan' or 'angel_one'
+    balance: Decimal = Decimal('0.0')
+    positions: List[Dict[str, Any]] = field(default_factory=list)
+    trades: List[Dict[str, Any]] = field(default_factory=list)
+    pnl: Decimal = Decimal('0.0')
+    pnl_percentage: Decimal = Decimal('0.0')
+    last_update: Optional[datetime.datetime] = None
+
+
+@dataclass
+class MarketData:
+    """Market data snapshot"""
+    bank_nifty_price: Optional[Decimal] = None
+    bank_nifty_change: Optional[Decimal] = None
+    bank_nifty_change_percent: Optional[Decimal] = None
+    nifty_price: Optional[Decimal] = None
+    nifty_change: Optional[Decimal] = None
+    trend: str = "UNKNOWN"
+    volatility: str = "LOW"
+    last_update: Optional[datetime.datetime] = None
+
+
+@dataclass
+class AIStatus:
+    """AI engine status"""
+    is_active: bool = False
+    is_training: bool = False
+    is_thinking: bool = False
+    current_task: str = "Idle"
+    confidence: float = 0.0
+    signals: List[Dict[str, Any]] = field(default_factory=list)
+    last_update: Optional[datetime.datetime] = None
+
+
+@dataclass
+class SystemStats:
+    """System resource usage snapshot"""
+    cpu_percent: float = 0.0
+    cpu_cores: int = 0
+    load_avg_1m: float = 0.0
+    load_ratio: float = 0.0
+    memory_used: float = 0.0
+    memory_total: float = 0.0
+    memory_percent: float = 0.0
+    swap_used: float = 0.0
+    swap_total: float = 0.0
+    disk_used: float = 0.0
+    disk_total: float = 0.0
+    disk_percent: float = 0.0
+    net_sent: float = 0.0  # MB since dashboard start
+    net_recv: float = 0.0  # MB since dashboard start
+    gpu_name: Optional[str] = None
+    gpu_util: Optional[float] = None
+    gpu_mem_util: Optional[float] = None
+    gpu_temp: Optional[float] = None
+    gpu_fan: Optional[float] = None
+    temperatures: Dict[str, float] = field(default_factory=dict)
+    last_update: Optional[datetime.datetime] = None
+
+
+class TradingDashboard:
+    """Real-time trading dashboard with 1-second updates"""
+
+    def __init__(
+        self,
+        runner: NirajRunner,
+        mode: TradingMode = TradingMode.PAPER,
+        initial_balance: Decimal = Decimal('10000.0')
+    ):
+        self.runner = runner
+        self.mode = mode
+        self.is_terminal_mode = True
+        self.update_interval = 1.0  # 1 second updates
+        self.is_running = False
+        self.update_thread: Optional[threading.Thread] = None
+
+        # Trading accounts
+        self.dhan_account = TradingAccount(broker="dhan", balance=initial_balance)
+        self.angel_account = TradingAccount(broker="angel_one", balance=initial_balance)
+
+        # Market data
+        self.market_data = MarketData()
+
+        # AI status
+        self.ai_status = AIStatus()
+
+        # News headlines
+        self.news_headlines: List[str] = []
+
+        # Chart pattern (simple text representation)
+        self.chart_pattern: List[str] = []
+
+        # Backend API base URL
+        self.api_base_url = "http://localhost:8000/api/v1"
+
+        # Statistics
+        self.total_trades = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        self.total_pnl = Decimal('0.0')
+        # System stats
+        self.system_stats = SystemStats()
+        self._net_base = psutil.net_io_counters() if PSUTIL_AVAILABLE else None
+
+    def start(self):
+        """Start the dashboard"""
+        self.is_running = True
+        self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.update_thread.start()
+        self.runner.log("📊 Trading Dashboard started", "success")
+
+    def stop(self):
+        """Stop the dashboard"""
+        self.is_running = False
+        if self.update_thread:
+            self.update_thread.join(timeout=5)
+        self.runner.log("📊 Trading Dashboard stopped", "info")
+
+    def _update_loop(self):
+        """Main update loop that runs every second"""
+        while self.is_running:
+            try:
+                self._fetch_all_data()
+                self._fetch_system_stats()
+                if self.is_terminal_mode:
+                    self._render_terminal_dashboard()
+                time.sleep(self.update_interval)
+            except Exception:
+                # Silent fail on update errors
+                time.sleep(self.update_interval)
+
+    def _fetch_all_data(self):
+        """Fetch all data from backend APIs"""
+        try:
+            # Use requests if available, otherwise skip
+            try:
+                import requests
+            except ImportError:
+                return
+
+            # Fetch balances and positions
+            self._fetch_account_data(requests)
+
+            # Fetch market data
+            self._fetch_market_data(requests)
+
+            # Fetch news
+            self._fetch_news(requests)
+
+            # Fetch AI status
+            self._fetch_ai_status(requests)
+
+        except Exception:
+            pass  # Silent fail for data fetch
+
+    def _fetch_account_data(self, requests):
+        """Fetch account balances and positions"""
+        try:
+            # For paper trading, use simulated data
+            if self.mode == TradingMode.PAPER:
+                # Calculate PNL from positions
+                self.dhan_account.last_update = datetime.datetime.now()
+                self.angel_account.last_update = datetime.datetime.now()
+            else:
+                # Fetch real data from brokers
+                # Dhan balance and positions
+                try:
+                    dhan_resp = requests.get(
+                        f"{self.api_base_url}/portfolio/balance/dhan",
+                        timeout=0.5
+                    )
+                    if dhan_resp.status_code == 200:
+                        data = dhan_resp.json()
+                        self.dhan_account.balance = Decimal(str(data.get('balance', 0)))
+                        self.dhan_account.pnl = Decimal(str(data.get('pnl', 0)))
+                except Exception:
+                    pass
+
+                # Angel One balance and positions
+                try:
+                    angel_resp = requests.get(
+                        f"{self.api_base_url}/portfolio/balance/angel_one",
+                        timeout=0.5
+                    )
+                    if angel_resp.status_code == 200:
+                        data = angel_resp.json()
+                        self.angel_account.balance = Decimal(str(data.get('balance', 0)))
+                        self.angel_account.pnl = Decimal(str(data.get('pnl', 0)))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _fetch_market_data(self, requests):
+        """Fetch Bank Nifty and market data"""
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/market-data/NIFTY BANK/ltp",
+                timeout=0.5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.market_data.bank_nifty_price = Decimal(str(data.get('ltp', 0)))
+                self.market_data.bank_nifty_change = Decimal(str(data.get('change', 0)))
+                self.market_data.bank_nifty_change_percent = Decimal(str(data.get('change_percent', 0)))
+                self.market_data.last_update = datetime.datetime.now()
+
+                # Determine trend
+                if self.market_data.bank_nifty_change > 0:
+                    self.market_data.trend = "BULLISH ▲"
+                elif self.market_data.bank_nifty_change < 0:
+                    self.market_data.trend = "BEARISH ▼"
+                else:
+                    self.market_data.trend = "NEUTRAL ■"
+        except Exception:
+            pass
+
+    def _fetch_news(self, requests):
+        """Fetch latest news headlines"""
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/news/headlines?limit=5",
+                timeout=0.5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.news_headlines = [
+                    item.get('title', '')[:60] + "..."
+                    for item in data.get('articles', [])[:5]
+                ]
+        except Exception:
+            self.news_headlines = ["News service unavailable"]
+
+    def _fetch_ai_status(self, requests):
+        """Fetch AI engine status"""
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/ai/status",
+                timeout=0.5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.ai_status.is_active = data.get('active', False)
+                self.ai_status.is_training = data.get('training', False)
+                self.ai_status.is_thinking = data.get('thinking', False)
+                self.ai_status.current_task = data.get('task', 'Idle')
+                self.ai_status.confidence = data.get('confidence', 0.0)
+                self.ai_status.last_update = datetime.datetime.now()
+        except Exception:
+            self.ai_status.current_task = "AI service unavailable"
+
+    def _render_terminal_dashboard(self):
+        """Render the dashboard in terminal"""
+        # Clear screen
+        os.system('clear' if os.name != 'nt' else 'cls')
+
+        # Get terminal width
+        try:
+            term_width = shutil.get_terminal_size().columns
+        except Exception:
+            term_width = 120
+
+        # Header
+        self._print_header(term_width)
+
+        # Trading mode and time
+        self._print_mode_time()
+
+        # Account balances
+        self._print_accounts()
+
+        # Market data
+        self._print_market_data()
+
+        # Positions and trades
+        self._print_positions_trades()
+
+        # PNL Summary
+        self._print_pnl_summary()
+
+        # News
+        self._print_news()
+
+        # AI Status
+        self._print_ai_status()
+
+        # Chart pattern
+        self._print_chart_pattern()
+        # System stats (hardware telemetry)
+        self._print_system_stats()
+
+        # Footer
+        self._print_footer(term_width)
+
+    def _print_header(self, width: int):
+        """Print dashboard header"""
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}{Style.BRIGHT}{'═' * width}")
+            title = "NIRAJ TRADING SYSTEM - LIVE DASHBOARD"
+            print(f"{title.center(width)}")
+            print(f"{'═' * width}{Style.RESET_ALL}\n")
+        else:
+            print(f"\n{'=' * width}")
+            print("NIRAJ TRADING SYSTEM - LIVE DASHBOARD".center(width))
+            print(f"{'=' * width}\n")
+
+    def _print_mode_time(self):
+        """Print trading mode and current time"""
+        now = datetime.datetime.now()
+        mode_text = "PAPER TRADING (₹10,000)" if self.mode == TradingMode.PAPER else "LIVE TRADING"
+        display_mode = "Terminal Mode" if self.is_terminal_mode else "Web Mode"
+
+        if COLORAMA_AVAILABLE:
+            mode_color = Fore.YELLOW if self.mode == TradingMode.PAPER else Fore.RED
+            print(f"{mode_color}{Style.BRIGHT}🔴 {mode_text} | {display_mode}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}🕐 {now.strftime('%Y-%m-%d %H:%M:%S')} IST{Style.RESET_ALL}\n")
+        else:
+            print(f"🔴 {mode_text} | {display_mode}")
+            print(f"🕐 {now.strftime('%Y-%m-%d %H:%M:%S')} IST\n")
+
+    def _print_accounts(self):
+        """Print account balances"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{Style.BRIGHT}┌─ ACCOUNT BALANCES ────────────────────────────────────────┐{Style.RESET_ALL}")
+
+            # Dhan account
+            dhan_bal = self.dhan_account.balance
+            dhan_pnl = self.dhan_account.pnl
+            dhan_color = Fore.GREEN if dhan_pnl >= 0 else Fore.RED
+            print(f"{Fore.BLUE}│ 💰 DHAN:{Style.RESET_ALL}       ₹{dhan_bal:,.2f}  |  PNL: {dhan_color}₹{dhan_pnl:,.2f}{Style.RESET_ALL}")
+
+            # Angel One account
+            angel_bal = self.angel_account.balance
+            angel_pnl = self.angel_account.pnl
+            angel_color = Fore.GREEN if angel_pnl >= 0 else Fore.RED
+            print(f"{Fore.BLUE}│ 💰 ANGEL ONE:{Style.RESET_ALL}  ₹{angel_bal:,.2f}  |  PNL: {angel_color}₹{angel_pnl:,.2f}{Style.RESET_ALL}")
+
+            # Total
+            total_bal = dhan_bal + angel_bal
+            total_pnl = dhan_pnl + angel_pnl
+            total_color = Fore.GREEN if total_pnl >= 0 else Fore.RED
+            print(f"{Fore.CYAN}│ {Style.BRIGHT}TOTAL:{Style.RESET_ALL}      ₹{total_bal:,.2f}  |  PNL: {total_color}₹{total_pnl:,.2f}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ ACCOUNT BALANCES ────────────────────────────────────────┐")
+            print(f"│ 💰 DHAN:       ₹{self.dhan_account.balance:,.2f}  |  PNL: ₹{self.dhan_account.pnl:,.2f}")
+            print(f"│ 💰 ANGEL ONE:  ₹{self.angel_account.balance:,.2f}  |  PNL: ₹{self.angel_account.pnl:,.2f}")
+            total_bal = self.dhan_account.balance + self.angel_account.balance
+            total_pnl = self.dhan_account.pnl + self.angel_account.pnl
+            print(f"│ TOTAL:      ₹{total_bal:,.2f}  |  PNL: ₹{total_pnl:,.2f}")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_market_data(self):
+        """Print market data"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.MAGENTA}{Style.BRIGHT}┌─ MARKET DATA ─────────────────────────────────────────────┐{Style.RESET_ALL}")
+
+            price = self.market_data.bank_nifty_price or Decimal('0')
+            change = self.market_data.bank_nifty_change or Decimal('0')
+            change_pct = self.market_data.bank_nifty_change_percent or Decimal('0')
+
+            color = Fore.GREEN if change >= 0 else Fore.RED
+            print(f"{Fore.YELLOW}│ 📈 BANK NIFTY:{Style.RESET_ALL} {price:,.2f}  {color}{change:+,.2f} ({change_pct:+.2f}%){Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}│ 📊 TREND:{Style.RESET_ALL}      {self.market_data.trend}")
+            print(f"{Fore.YELLOW}│ 📉 VOLATILITY:{Style.RESET_ALL} {self.market_data.volatility}")
+            print(f"{Fore.MAGENTA}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ MARKET DATA ─────────────────────────────────────────────┐")
+            price = self.market_data.bank_nifty_price or Decimal('0')
+            change = self.market_data.bank_nifty_change or Decimal('0')
+            change_pct = self.market_data.bank_nifty_change_percent or Decimal('0')
+            print(f"│ 📈 BANK NIFTY: {price:,.2f}  {change:+,.2f} ({change_pct:+.2f}%)")
+            print(f"│ 📊 TREND:      {self.market_data.trend}")
+            print(f"│ 📉 VOLATILITY: {self.market_data.volatility}")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_positions_trades(self):
+        """Print active positions and recent trades"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.GREEN}{Style.BRIGHT}┌─ POSITIONS & TRADES ──────────────────────────────────────┐{Style.RESET_ALL}")
+
+            # Dhan trades
+            dhan_trades = len(self.dhan_account.trades)
+            dhan_positions = len(self.dhan_account.positions)
+            print(f"{Fore.BLUE}│ DHAN:{Style.RESET_ALL}       {dhan_positions} positions | {dhan_trades} trades today")
+
+            # Angel One trades
+            angel_trades = len(self.angel_account.trades)
+            angel_positions = len(self.angel_account.positions)
+            print(f"{Fore.BLUE}│ ANGEL ONE:{Style.RESET_ALL}  {angel_positions} positions | {angel_trades} trades today")
+
+            # Total stats
+            print(f"{Fore.GREEN}│ {Style.BRIGHT}TOTAL:{Style.RESET_ALL}      {self.total_trades} trades | W: {self.winning_trades} | L: {self.losing_trades}")
+            print(f"{Fore.GREEN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ POSITIONS & TRADES ──────────────────────────────────────┐")
+            print(f"│ DHAN:       {len(self.dhan_account.positions)} positions | {len(self.dhan_account.trades)} trades today")
+            print(f"│ ANGEL ONE:  {len(self.angel_account.positions)} positions | {len(self.angel_account.trades)} trades today")
+            print(f"│ TOTAL:      {self.total_trades} trades | W: {self.winning_trades} | L: {self.losing_trades}")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_pnl_summary(self):
+        """Print PNL summary"""
+        total_pnl = self.dhan_account.pnl + self.angel_account.pnl
+
+        if COLORAMA_AVAILABLE:
+            color = Fore.GREEN if total_pnl >= 0 else Fore.RED
+            print(f"{color}{Style.BRIGHT}┌─ PNL SUMMARY ─────────────────────────────────────────────┐{Style.RESET_ALL}")
+            print(f"{color}│ TODAY'S PNL:  ₹{total_pnl:,.2f}{Style.RESET_ALL}")
+
+            # Calculate win rate
+            win_rate = (self.winning_trades / self.total_trades * 100) if self.total_trades > 0 else 0
+            print(f"{Fore.WHITE}│ WIN RATE:     {win_rate:.1f}%{Style.RESET_ALL}")
+            print(f"{color}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ PNL SUMMARY ─────────────────────────────────────────────┐")
+            print(f"│ TODAY'S PNL:  ₹{total_pnl:,.2f}")
+            win_rate = (self.winning_trades / self.total_trades * 100) if self.total_trades > 0 else 0
+            print(f"│ WIN RATE:     {win_rate:.1f}%")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_news(self):
+        """Print news headlines"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.YELLOW}{Style.BRIGHT}┌─ NEWS HEADLINES ──────────────────────────────────────────┐{Style.RESET_ALL}")
+            for i, headline in enumerate(self.news_headlines[:5], 1):
+                print(f"{Fore.WHITE}│ {i}. {headline[:55]:<55}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ NEWS HEADLINES ──────────────────────────────────────────┐")
+            for i, headline in enumerate(self.news_headlines[:5], 1):
+                print(f"│ {i}. {headline[:55]}")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_ai_status(self):
+        """Print AI engine status"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.MAGENTA}{Style.BRIGHT}┌─ AI ENGINE STATUS ────────────────────────────────────────┐{Style.RESET_ALL}")
+
+            status_emoji = "🟢" if self.ai_status.is_active else "🔴"
+            status_text = "ACTIVE" if self.ai_status.is_active else "INACTIVE"
+            print(f"{Fore.WHITE}│ STATUS:     {status_emoji} {status_text}{Style.RESET_ALL}")
+
+            if self.ai_status.is_training:
+                print(f"{Fore.YELLOW}│ TRAINING:   🔄 In Progress{Style.RESET_ALL}")
+            elif self.ai_status.is_thinking:
+                print(f"{Fore.CYAN}│ THINKING:   🧠 Analyzing market...{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}│ TASK:       {self.ai_status.current_task}{Style.RESET_ALL}")
+
+            confidence_color = Fore.GREEN if self.ai_status.confidence > 0.7 else (Fore.YELLOW if self.ai_status.confidence > 0.4 else Fore.RED)
+            print(f"{Fore.WHITE}│ CONFIDENCE: {confidence_color}{self.ai_status.confidence:.1%}{Style.RESET_ALL}")
+            print(f"{Fore.MAGENTA}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ AI ENGINE STATUS ────────────────────────────────────────┐")
+            status_text = "ACTIVE" if self.ai_status.is_active else "INACTIVE"
+            print(f"│ STATUS:     {status_text}")
+            if self.ai_status.is_training:
+                print("│ TRAINING:   In Progress")
+            elif self.ai_status.is_thinking:
+                print("│ THINKING:   Analyzing market...")
+            else:
+                print(f"│ TASK:       {self.ai_status.current_task}")
+            print(f"│ CONFIDENCE: {self.ai_status.confidence:.1%}")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_chart_pattern(self):
+        """Print Bank Nifty chart pattern (simple ASCII representation)"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{Style.BRIGHT}┌─ BANK NIFTY CHART PATTERN ────────────────────────────────┐{Style.RESET_ALL}")
+
+            # Simple trend indicator
+            change = self.market_data.bank_nifty_change or Decimal('0')
+            if change > 0:
+                pattern = "│     📈📈📈 UPTREND - Support at previous low"
+            elif change < 0:
+                pattern = "│     📉📉📉 DOWNTREND - Resistance at previous high"
+            else:
+                pattern = "│     📊📊📊 CONSOLIDATION - Range bound"
+
+            print(f"{Fore.WHITE}{pattern}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("┌─ BANK NIFTY CHART PATTERN ────────────────────────────────┐")
+            change = self.market_data.bank_nifty_change or Decimal('0')
+            if change > 0:
+                print("│     UPTREND - Support at previous low")
+            elif change < 0:
+                print("│     DOWNTREND - Resistance at previous high")
+            else:
+                print("│     CONSOLIDATION - Range bound")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_footer(self, width: int):
+        """Print dashboard footer"""
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{'─' * width}")
+            print(f"{Fore.WHITE}Press Ctrl+C to stop | Switch to Web: 'w' | Refresh: 1s{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'═' * width}{Style.RESET_ALL}")
+        else:
+            print(f"{'─' * width}")
+            print("Press Ctrl+C to stop | Switch to Web: 'w' | Refresh: 1s")
+            print(f"{'=' * width}")
+
+    # ---------------- System Stats Rendering -----------------
+    def _print_system_stats(self):
+        stats = self.system_stats
+        if not stats.last_update:
+            return
+
+        def get_health_color(percent: float, thresholds=(50, 75, 90)) -> str:
+            """Get color based on usage percentage"""
+            if not COLORAMA_AVAILABLE:
+                return ""
+            if percent < thresholds[0]:
+                return Fore.GREEN
+            elif percent < thresholds[1]:
+                return Fore.YELLOW
+            elif percent < thresholds[2]:
+                return Fore.YELLOW + Style.BRIGHT
+            else:
+                return Fore.RED
+
+        def format_bar(percent: float, width: int = 10) -> str:
+            """Create a visual progress bar"""
+            filled = int(width * (percent / 100))
+            bar = "█" * filled + "░" * (width - filled)
+            return bar
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{Style.BRIGHT}┌─ SYSTEM HEALTH & PERFORMANCE ─────────────────────────────┐{Style.RESET_ALL}")
+        else:
+            print("┌─ SYSTEM HEALTH & PERFORMANCE ─────────────────────────────┐")
+
+        # CPU with color coding and bar
+        cpu_color = get_health_color(stats.cpu_percent)
+        cpu_bar = format_bar(stats.cpu_percent, 15) if COLORAMA_AVAILABLE else ""
+        if COLORAMA_AVAILABLE:
+            cpu_line = f"🔥 CPU: {cpu_color}{stats.cpu_percent:5.1f}%{Style.RESET_ALL} {cpu_bar} ({stats.cpu_cores}c) Load: {stats.load_avg_1m:4.2f}"
+        else:
+            cpu_line = f"CPU: {stats.cpu_percent:5.1f}% ({stats.cpu_cores}c) Load: {stats.load_avg_1m:4.2f}"
+
+        # Memory with color coding and bar
+        mem_color = get_health_color(stats.memory_percent)
+        mem_bar = format_bar(stats.memory_percent, 15) if COLORAMA_AVAILABLE else ""
+        if COLORAMA_AVAILABLE:
+            mem_line = f"💾 RAM: {mem_color}{stats.memory_percent:5.1f}%{Style.RESET_ALL} {mem_bar} {stats.memory_used:4.1f}/{stats.memory_total:4.1f}G"
+        else:
+            mem_line = f"RAM: {stats.memory_percent:5.1f}% {stats.memory_used:4.1f}/{stats.memory_total:4.1f}G"
+
+        # Disk with color coding
+        disk_color = get_health_color(stats.disk_percent)
+        if COLORAMA_AVAILABLE:
+            disk_line = f"💿 DSK: {disk_color}{stats.disk_percent:5.1f}%{Style.RESET_ALL} {stats.disk_used:5.1f}/{stats.disk_total:5.1f}G | NET ↑{stats.net_sent:5.1f}M ↓{stats.net_recv:5.1f}M"
+        else:
+            disk_line = f"DSK: {stats.disk_percent:5.1f}% {stats.disk_used:5.1f}/{stats.disk_total:5.1f}G | NET ↑{stats.net_sent:5.1f}M ↓{stats.net_recv:5.1f}M"
+
+        # GPU with enhanced display
+        if stats.gpu_name:
+            gpu_util = stats.gpu_util or 0
+            gpu_temp = stats.gpu_temp or 0
+            gpu_mem = stats.gpu_mem_util or 0
+
+            gpu_util_color = get_health_color(gpu_util)
+            gpu_temp_color = get_health_color(gpu_temp, (60, 75, 85))
+            gpu_mem_color = get_health_color(gpu_mem)
+
+            if COLORAMA_AVAILABLE:
+                gpu_name_short = stats.gpu_name[:20] if len(stats.gpu_name) > 20 else stats.gpu_name
+                gpu_line = f"🎮 GPU: {Fore.CYAN}{gpu_name_short}{Style.RESET_ALL}"
+                gpu_metrics = f"   └─ Load:{gpu_util_color}{gpu_util:5.0f}%{Style.RESET_ALL} Mem:{gpu_mem_color}{gpu_mem:5.0f}%{Style.RESET_ALL} Temp:{gpu_temp_color}{gpu_temp:3.0f}°C{Style.RESET_ALL}"
+                if stats.gpu_fan is not None:
+                    fan_color = Fore.CYAN if stats.gpu_fan < 50 else Fore.YELLOW if stats.gpu_fan < 80 else Fore.RED
+                    gpu_metrics += f" Fan:{fan_color}{stats.gpu_fan:3.0f}%{Style.RESET_ALL}"
+            else:
+                gpu_line = f"GPU: {stats.gpu_name[:25]}"
+                gpu_metrics = f"   Load:{gpu_util:5.0f}% Mem:{gpu_mem:5.0f}% Temp:{gpu_temp:3.0f}°C"
+                if stats.gpu_fan is not None:
+                    gpu_metrics += f" Fan:{stats.gpu_fan:3.0f}%"
+        else:
+            if COLORAMA_AVAILABLE:
+                gpu_line = f"🎮 GPU: {Fore.WHITE}{Style.DIM}N/A (No NVIDIA GPU detected){Style.RESET_ALL}"
+            else:
+                gpu_line = "GPU: N/A"
+            gpu_metrics = None
+
+        # Temperature sensors
+        temp_line = None
+        if stats.temperatures:
+            temps = []
+            for sensor, temp in list(stats.temperatures.items())[:3]:
+                temp_color = get_health_color(temp, (50, 70, 85))
+                if COLORAMA_AVAILABLE:
+                    temps.append(f"{sensor[:8]}:{temp_color}{temp:.0f}°C{Style.RESET_ALL}")
+                else:
+                    temps.append(f"{sensor[:8]}:{temp:.0f}°C")
+            if temps:
+                temp_line = f"🌡️  Temps: {' '.join(temps)}"
+
+        # Print all lines
+        for line in [cpu_line, mem_line, disk_line, gpu_line]:
+            print(f"│ {line[:70].ljust(70) if not COLORAMA_AVAILABLE else line}")
+
+        if gpu_metrics:
+            print(f"│ {gpu_metrics}")
+
+        if temp_line:
+            print(f"│ {temp_line}")
+
+        # System health indicator
+        avg_usage = (stats.cpu_percent + stats.memory_percent + stats.disk_percent) / 3
+        if COLORAMA_AVAILABLE:
+            health_emoji = "🟢" if avg_usage < 50 else "🟡" if avg_usage < 75 else "🔴"
+            health_text = "OPTIMAL" if avg_usage < 50 else "MODERATE" if avg_usage < 75 else "HIGH LOAD"
+            health_color = Fore.GREEN if avg_usage < 50 else Fore.YELLOW if avg_usage < 75 else Fore.RED
+            print(f"│ {health_emoji} System Health: {health_color}{health_text}{Style.RESET_ALL} (Avg: {avg_usage:.1f}%)")
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    # ---------------- System Stats Collection -----------------
+    def _fetch_system_stats(self):
+        if not PSUTIL_AVAILABLE:
+            return
+        try:
+            s = self.system_stats
+            s.cpu_percent = psutil.cpu_percent(interval=None)
+            s.cpu_cores = psutil.cpu_count(logical=True) or 0
+            if hasattr(os, 'getloadavg'):
+                la = os.getloadavg()
+                s.load_avg_1m = la[0]
+                if s.cpu_cores:
+                    s.load_ratio = la[0] / s.cpu_cores
+            vm = psutil.virtual_memory()
+            s.memory_used = vm.used / (1024**3)
+            s.memory_total = vm.total / (1024**3)
+            s.memory_percent = vm.percent
+            sw = psutil.swap_memory()
+            s.swap_used = sw.used / (1024**3)
+            s.swap_total = sw.total / (1024**3)
+            du = shutil.disk_usage(PROJECT_ROOT)
+            s.disk_used = du.used / (1024**3)
+            s.disk_total = du.total / (1024**3)
+            s.disk_percent = (du.used / du.total * 100) if du.total else 0
+            if self._net_base:
+                cur = psutil.net_io_counters()
+                s.net_sent = (cur.bytes_sent - self._net_base.bytes_sent) / (1024**2)
+                s.net_recv = (cur.bytes_recv - self._net_base.bytes_recv) / (1024**2)
+            # Temperatures (best effort)
+            try:
+                temps = psutil.sensors_temperatures()  # type: ignore[attr-defined]
+                flat: Dict[str, float] = {}
+                for k, arr in temps.items():
+                    if arr:
+                        flat[k] = getattr(arr[0], 'current', None) or 0.0
+                s.temperatures = flat
+            except Exception:
+                pass
+            self._populate_gpu_stats(s)
+            s.last_update = datetime.datetime.now()
+        except Exception:
+            pass
+
+    def _populate_gpu_stats(self, s: SystemStats):
+        try:
+            smi = shutil.which('nvidia-smi')
+            if not smi:
+                return
+            cmd = [smi, '--query-gpu=name,utilization.gpu,utilization.memory,temperature.gpu,fan.speed', '--format=csv,noheader,nounits']
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
+            if res.returncode != 0 or not res.stdout.strip():
+                return
+            line = res.stdout.strip().splitlines()[0]
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) >= 5:
+                s.gpu_name = parts[0]
+                try:
+                    s.gpu_util = float(parts[1])
+                    s.gpu_mem_util = float(parts[2])
+                    s.gpu_temp = float(parts[3])
+                except ValueError:
+                    return
+                try:
+                    s.gpu_fan = float(parts[4])
+                except ValueError:
+                    s.gpu_fan = None
+        except Exception:
+            pass
+
+    def toggle_mode(self):
+        """Toggle between terminal and web mode"""
+        self.is_terminal_mode = not self.is_terminal_mode
+        mode = "Terminal" if self.is_terminal_mode else "Web"
+        self.runner.log(f"🔄 Switched to {mode} Mode", "info")
+
+        # If switching to web mode, start frontend if not running
+        if not self.is_terminal_mode:
+            if "frontend" not in self.runner.processes:
+                self.runner.start_service("frontend")
+        else:
+            # Stop frontend to reduce CPU load
+            if "frontend" in self.runner.processes:
+                self.runner.stop_service("frontend")
+
+
+# ---------------- Fan Control Utilities -----------------
+def set_fan_speed(percent: int) -> bool:
+    """Attempt to set NVIDIA GPU fan speed (best effort).
+    Returns True if command was attempted (not necessarily that hardware obeyed).
+    Requires nvidia-settings and proper permissions; many laptops lock fan control.
+    """
+    try:
+        nvset = shutil.which('nvidia-settings')
+        if not nvset:
+            return False
+        # Enable manual fan control
+        subprocess.run([nvset, '-a', '[gpu:0]/GPUFanControlState=1'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([nvset, '-a', f'[fan:0]/GPUTargetFanSpeed={percent}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
 
 
 def main():
@@ -1759,13 +3691,59 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python niraj.py                                             # Interactive menu mode
+  # Interactive Menu Mode
+  python niraj.py                                             # Launch interactive menu
+
+  # Trading Dashboard Modes
+  python niraj.py --terminal-mode --paper-trading             # Paper trading (₹10K virtual)
+  python niraj.py --terminal-mode --real-trading              # Real trading (CAUTION!)
+  python niraj.py --dashboard-only --paper-trading            # Dashboard only (needs backend)
+
+  # GPU Fan Control (NVIDIA only, requires nvidia-settings)
+  python niraj.py --terminal-mode --fan-speed max             # Maximum cooling
+  python niraj.py --terminal-mode --fan-speed 70              # Balanced (70%)
+  python niraj.py --terminal-mode --fan-speed 30              # Quiet mode (30%)
+  python niraj.py --real-trading --fan-speed 50               # Real trading with 50% fan
+
+  # Service Management
   python niraj.py --enable-api --enable-frontend              # Start API and frontend
+  python niraj.py --enable-api --enable-redis --enable-ollama # Full backend stack
   python niraj.py --mode production --enable-api --enable-redis  # Production mode
   python niraj.py status                                       # Show service status
   python niraj.py stop                                         # Stop all services
   python niraj.py install                                      # Install dependencies
+
+  # Advanced Configuration
   python niraj.py --config custom.json --enable-backend        # Use custom config
+  python niraj.py --mode testing --enable-api                  # Testing environment
+
+Dashboard Features (updates every 1 second):
+  • Account Balances: Dhan + Angel One with live PNL
+  • Market Data: Bank Nifty price, trend, pattern analysis
+  • News Feed: Latest 5 headlines from market news
+  • AI Status: Training state, confidence, signals
+  • System Stats: CPU, RAM, Disk, Network, GPU, Temps
+  • GPU Monitoring: Utilization, memory, temperature, fan speed
+
+System Monitoring:
+  • CPU: Usage %, core count, load average with color bars
+  • Memory: RAM usage, swap stats with visual indicators
+  • Disk: Storage usage, network traffic counters
+  • GPU: NVIDIA cards (name, load, memory, temp, fan)
+  • Temps: CPU/System temperature sensors
+  • Health: Overall system health indicator
+
+Fan Control Notes:
+  • Requires NVIDIA GPU with nvidia-settings installed
+  • Options: 10, 30, 50, 70, 100, max (max = 100%)
+  • Many laptops lock fan control via BIOS
+  • Monitor temperatures when using manual fan speeds
+  • Default auto mode if not specified
+
+For detailed documentation, see:
+  • SYSTEM_MONITORING_FEATURES.md - System stats & GPU control
+  • README.md - General project documentation
+  • docs/ - API reference and guides
         """,
     )
 
@@ -1807,6 +3785,36 @@ Examples:
     )
 
     parser.add_argument(
+        "--terminal-mode",
+        action="store_true",
+        help="Start in terminal trading dashboard mode",
+    )
+
+    parser.add_argument(
+        "--paper-trading",
+        action="store_true",
+        help="Enable paper trading mode with ₹10,000 virtual balance",
+    )
+
+    parser.add_argument(
+        "--real-trading",
+        action="store_true",
+        help="Enable real trading mode (use with caution!)",
+    )
+
+    parser.add_argument(
+        "--dashboard-only",
+        action="store_true",
+        help="Run only the trading dashboard (requires backend to be running)",
+    )
+
+    parser.add_argument(
+        "--fan-speed",
+        choices=["max", "100", "70", "50", "30", "10"],
+        help="Set NVIDIA GPU fan speed percentage (requires nvidia-settings). 'max'=100",
+    )
+
+    parser.add_argument(
         "command",
         nargs="?",
         choices=["status", "stop", "install", "menu"],
@@ -1817,6 +3825,75 @@ Examples:
 
     # Create runner
     runner = NirajRunner(mode=args.mode, config_file=args.config)
+
+    # Optional fan speed control (best effort)
+    if args.fan_speed:
+        percent_map = {"max": 100, "100": 100, "70": 70, "50": 50, "30": 30, "10": 10}
+        target = percent_map.get(args.fan_speed, 100)
+        if set_fan_speed(target):
+            runner.log(f"🌀 Set GPU fan speed to {target}% (manual mode)", "success")
+        else:
+            runner.log("GPU fan control unavailable (needs NVIDIA + nvidia-settings + permissions)", "warning")
+
+    # Handle trading dashboard modes
+    if args.dashboard_only or args.terminal_mode:
+        # Determine trading mode
+        trading_mode = TradingMode.REAL if args.real_trading else TradingMode.PAPER
+
+        # Create trading dashboard
+        dashboard = TradingDashboard(
+            runner=runner,
+            mode=trading_mode,
+            initial_balance=Decimal('10000.0')
+        )
+
+        # If dashboard_only, just start dashboard (backend must be running)
+        if args.dashboard_only:
+            runner.log("📊 Starting Trading Dashboard Only", "header")
+            runner.log("⚠️  Make sure backend is running!", "warning")
+            dashboard.start()
+
+            try:
+                # Keep running until interrupted
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                dashboard.stop()
+                runner.log("Dashboard stopped", "info")
+            return
+
+        # If terminal_mode, start backend and dashboard
+        runner.log("🚀 Starting Terminal Trading Mode", "header")
+
+        # Start backend and redis
+        if not runner.start_service("backend"):
+            runner.log("Failed to start backend", "error")
+            return
+        if not runner.start_service("redis"):
+            runner.log("Failed to start redis", "error")
+
+        # Start dashboard
+        dashboard.start()
+
+        # Setup signal handlers
+        def signal_handler(signum, frame):
+            runner.log("Shutting down...", "warning")
+            dashboard.stop()
+            runner.stop_all()
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        try:
+            # Keep running until interrupted
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            dashboard.stop()
+            runner.stop_all()
+
+        return
 
     # Check if any services are specified or if it's a command
     has_services = any(
