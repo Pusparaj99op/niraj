@@ -231,8 +231,11 @@ class IndicesResponse(BaseModel):
 
 
 # Helper functions
-async def get_market_service():
-    """Get appropriate market data service based on user preference"""
+async def get_market_service() -> AngelOneClient:
+    """Get appropriate market data service based on user preference
+
+    Returns AngelOneClient only since DhanClient doesn't support required methods.
+    """
     global _angel_client, _dhan_client, _auth_manager
 
     if not _auth_manager:
@@ -241,16 +244,14 @@ async def get_market_service():
             detail="Market data service not initialized",
         )
 
-    # Try Angel One first, fallback to Dhan
+    # Use Angel One client only (DhanClient lacks required methods)
     try:
         if _angel_client:
             return _angel_client
-        elif _dhan_client:
-            return _dhan_client
         else:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="No market data service available",
+                detail="Angel One market data service not available",
             )
     except Exception as e:
         logger.error("Error getting market service", error=str(e))

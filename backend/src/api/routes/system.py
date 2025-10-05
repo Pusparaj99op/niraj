@@ -15,26 +15,28 @@ from typing import Dict, Any, Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import structlog
 
 from ...core.database import DatabaseManager
 
-try:
-    from ...core.cache import CacheManager
-
+# Optional imports: provide lightweight Protocol-like fallbacks so attribute
+# access remains typed while avoiding assigning None to imported symbols which
+# triggered mypy "Cannot assign to a type" errors previously.
+try:  # pragma: no cover - import guard
+    from ...core.cache import CacheManager  # type: ignore
     CACHE_AVAILABLE = True
-except ImportError:
-    CacheManager = None
+except Exception:  # pragma: no cover - fallback
+    class CacheManager:  # type: ignore[no-redef]
+        ...  # Minimal stub
     CACHE_AVAILABLE = False
 
-try:
-    from ...ai.gemma3_integration import Gemma3Client
-
+try:  # pragma: no cover - import guard
+    from ...ai.gemma3_integration import Gemma3Client  # type: ignore
     AI_AVAILABLE = True
-except ImportError:
-    Gemma3Client = None
+except Exception:  # pragma: no cover - fallback
+    class Gemma3Client:  # type: ignore[no-redef]
+        ...
     AI_AVAILABLE = False
 
 from ...services.system_service import SystemService, SystemServiceError
@@ -82,7 +84,11 @@ class AIPredictionsResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Enhanced error response model"""
+    """Enhanced error response model used for documentation.
+
+    We raise HTTPException with this structure in the detail field to keep
+    route return type consistent with declared success models.
+    """
 
     error: str
     error_code: str
@@ -106,30 +112,27 @@ async def get_system_service() -> SystemService:
 
 
 # Error handling utilities
-def create_error_response(
+def _error_detail(
+    *,
     error: str,
     error_code: str,
     message: str,
-    status_code: int,
     details: Optional[Dict[str, Any]] = None,
     path: Optional[str] = None,
-) -> JSONResponse:
-    """Create standardized error response"""
-    return JSONResponse(
-        status_code=status_code,
-        content=ErrorResponse(
-            error=error,
-            error_code=error_code,
-            message=message,
-            details=details,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path,
-        ).dict(),
-    )
+) -> Dict[str, Any]:
+    """Build error detail payload for HTTPException.detail."""
+    return ErrorResponse(
+        error=error,
+        error_code=error_code,
+        message=message,
+        details=details,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        path=path,
+    ).dict()
 
 
-def handle_system_error(e: Exception, request_path: str) -> JSONResponse:
-    """Handle system-related errors with appropriate HTTP status codes"""
+def handle_system_error(e: Exception, request_path: str) -> HTTPException:
+    """Map exceptions to HTTPException preserving structure."""
     logger.warning(
         "System operation error",
         error_type=type(e).__name__,
@@ -144,13 +147,15 @@ def handle_system_error(e: Exception, request_path: str) -> JSONResponse:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
 
-    return create_error_response(
-        error=type(e).__name__,
-        error_code=error_code,
-        message=str(e),
+    return HTTPException(
         status_code=status_code,
-        details={"service": getattr(e, "service", None)},
-        path=request_path,
+        detail=_error_detail(
+            error=type(e).__name__,
+            error_code=error_code,
+            message=str(e),
+            details={"service": getattr(e, "service", None)},
+            path=request_path,
+        ),
     )
 
 
@@ -231,9 +236,9 @@ async def get_system_status(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Get system status error", error=str(e))
-        return handle_system_error(e, "/system/status")
+        raise handle_system_error(e, "/system/status")
 
 
 @router.get(
@@ -350,9 +355,9 @@ async def get_ai_predictions(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Get AI predictions error", error=str(e))
-        return handle_system_error(e, "/ai/predictions")
+        raise handle_system_error(e, "/ai/predictions")
 
 
 # Service initialization functions

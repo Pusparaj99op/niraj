@@ -222,9 +222,9 @@ async def set_cached_indicators(key: str, data: Dict[str, Any], ttl: int = 600):
 
 
 # Technical indicator calculation functions
-def calculate_sma(prices: List[float], period: int) -> List[float]:
+def calculate_sma(prices: List[float], period: int) -> List[Optional[float]]:
     """Calculate Simple Moving Average"""
-    sma = []
+    sma: List[Optional[float]] = []
     for i in range(len(prices)):
         if i >= period - 1:
             avg = sum(prices[i - period + 1 : i + 1]) / period
@@ -234,21 +234,25 @@ def calculate_sma(prices: List[float], period: int) -> List[float]:
     return sma
 
 
-def calculate_ema(prices: List[float], period: int) -> List[float]:
+def calculate_ema(prices: List[float], period: int) -> List[Optional[float]]:
     """Calculate Exponential Moving Average"""
-    ema = []
+    ema: List[Optional[float]] = []
     multiplier = 2 / (period + 1)
 
     for i, price in enumerate(prices):
         if i == 0:
             ema.append(price)
         else:
-            ema.append((price * multiplier) + (ema[i - 1] * (1 - multiplier)))
+            prev_ema = ema[i - 1]
+            if prev_ema is not None:
+                ema.append((price * multiplier) + (prev_ema * (1 - multiplier)))
+            else:
+                ema.append(price)
 
     return ema
 
 
-def calculate_rsi(prices: List[float], period: int = 14) -> List[float]:
+def calculate_rsi(prices: List[float], period: int = 14) -> List[Optional[float]]:
     """Calculate Relative Strength Index"""
     if len(prices) < period + 1:
         return [None] * len(prices)
@@ -287,15 +291,15 @@ def calculate_rsi(prices: List[float], period: int = 14) -> List[float]:
 
 def calculate_macd(
     prices: List[float], fast: int = 12, slow: int = 26, signal: int = 9
-) -> Dict[str, List[float]]:
+) -> Dict[str, List[Optional[float]]]:
     """Calculate MACD (Moving Average Convergence Divergence)"""
     ema_fast = calculate_ema(prices, fast)
     ema_slow = calculate_ema(prices, slow)
 
-    macd_line = []
+    macd_line: List[Optional[float]] = []
     for i in range(len(prices)):
         if ema_fast[i] is not None and ema_slow[i] is not None:
-            macd_line.append(ema_fast[i] - ema_slow[i])
+            macd_line.append(ema_fast[i] - ema_slow[i])  # type: ignore[operator]
         else:
             macd_line.append(None)
 
@@ -305,7 +309,7 @@ def calculate_macd(
         signal_line_values = calculate_ema(valid_macd, signal)
 
         # Reconstruct signal line with proper alignment
-        signal_line = [None] * len(macd_line)
+        signal_line: List[Optional[float]] = [None] * len(macd_line)
         valid_idx = 0
         for i, val in enumerate(macd_line):
             if val is not None:
@@ -315,10 +319,10 @@ def calculate_macd(
     else:
         signal_line = [None] * len(macd_line)
 
-    histogram = []
+    histogram: List[Optional[float]] = []
     for i in range(len(macd_line)):
         if macd_line[i] is not None and signal_line[i] is not None:
-            histogram.append(macd_line[i] - signal_line[i])
+            histogram.append(macd_line[i] - signal_line[i])  # type: ignore[operator]
         else:
             histogram.append(None)
 
@@ -327,19 +331,19 @@ def calculate_macd(
 
 def calculate_bollinger_bands(
     prices: List[float], period: int = 20, std_dev: float = 2
-) -> Dict[str, List[float]]:
+) -> Dict[str, List[Optional[float]]]:
     """Calculate Bollinger Bands"""
     sma = calculate_sma(prices, period)
 
-    upper_band = []
-    lower_band = []
+    upper_band: List[Optional[float]] = []
+    lower_band: List[Optional[float]] = []
 
     for i in range(len(prices)):
-        if i >= period - 1:
+        if i >= period - 1 and sma[i] is not None:
             period_prices = prices[i - period + 1 : i + 1]
-            std = (sum([(x - sma[i]) ** 2 for x in period_prices]) / period) ** 0.5
-            upper_band.append(sma[i] + (std_dev * std))
-            lower_band.append(sma[i] - (std_dev * std))
+            std = (sum([(x - sma[i]) ** 2 for x in period_prices]) / period) ** 0.5  # type: ignore[operator]
+            upper_band.append(sma[i] + (std_dev * std))  # type: ignore[operator]
+            lower_band.append(sma[i] - (std_dev * std))  # type: ignore[operator]
         else:
             upper_band.append(None)
             lower_band.append(None)
@@ -349,7 +353,7 @@ def calculate_bollinger_bands(
 
 def calculate_atr(
     high: List[float], low: List[float], close: List[float], period: int = 14
-) -> List[float]:
+) -> List[Optional[float]]:
     """Calculate Average True Range"""
     true_ranges = []
 
@@ -369,8 +373,8 @@ def generate_signal(
     indicator_name: str,
     current_value: float,
     previous_values: List[float],
-    price: float = None,
-    **kwargs,
+    price: Optional[float] = None,
+    **kwargs: Any,
 ) -> tuple[str, float]:
     """Generate trading signal from indicator"""
     if not previous_values or current_value is None:
@@ -425,7 +429,7 @@ def generate_signal(
 # Mock function to get price data (in real implementation, fetch from market data API)
 async def get_price_data(
     symbol: str, timeframe: str, periods: int
-) -> List[Dict[str, float]]:
+) -> List[Dict[str, Any]]:
     """Get price data for symbol (mock implementation)"""
     # This would normally fetch real market data
     # For now, return mock data
@@ -520,7 +524,9 @@ async def get_all_indicators(
             # Extract price arrays
             closes = [float(d["close"]) for d in price_data]
             timestamps = [
-                datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00"))
+                datetime.fromisoformat(str(d["timestamp"]).replace("Z", "+00:00"))
+                if isinstance(d["timestamp"], str)
+                else datetime.fromtimestamp(float(d["timestamp"]), tz=timezone.utc)
                 for d in price_data
             ]
 
@@ -540,10 +546,16 @@ async def get_all_indicators(
             # Build indicator responses
             current_price = closes[-1] if closes else 0
 
+            # Helper to filter None values for signal generation
+            def filter_none(values: List[Optional[float]]) -> List[float]:
+                """Filter out None values from indicator list"""
+                return [v for v in values if v is not None]
+
             # SMA
             if sma_values and sma_values[-1] is not None:
+                sma_filtered = filter_none(sma_values[-5:])
                 sma_signal, sma_strength = generate_signal(
-                    "sma", sma_values[-1], sma_values[-5:], current_price
+                    "sma", sma_values[-1], sma_filtered, current_price
                 )
                 indicators["SMA"] = IndicatorData(
                     name="Simple Moving Average",
@@ -565,8 +577,9 @@ async def get_all_indicators(
 
             # EMA
             if ema_values and ema_values[-1] is not None:
+                ema_filtered = filter_none(ema_values[-5:])
                 ema_signal, ema_strength = generate_signal(
-                    "ema", ema_values[-1], ema_values[-5:], current_price
+                    "ema", ema_values[-1], ema_filtered, current_price
                 )
                 indicators["EMA"] = IndicatorData(
                     name="Exponential Moving Average",
@@ -586,8 +599,9 @@ async def get_all_indicators(
 
             # RSI
             if rsi_values and rsi_values[-1] is not None:
+                rsi_filtered = filter_none(rsi_values[-5:])
                 rsi_signal, rsi_strength = generate_signal(
-                    "rsi", rsi_values[-1], rsi_values[-5:]
+                    "rsi", rsi_values[-1], rsi_filtered
                 )
                 indicators["RSI"] = IndicatorData(
                     name="Relative Strength Index",
@@ -607,10 +621,11 @@ async def get_all_indicators(
 
             # MACD
             if macd_data["macd"] and macd_data["macd"][-1] is not None:
+                macd_filtered = filter_none(macd_data["macd"][-5:])
                 macd_signal, macd_strength = generate_signal(
                     "macd",
                     macd_data["macd"][-1],
-                    macd_data["macd"][-5:],
+                    macd_filtered,
                     signal_value=(
                         macd_data["signal"][-1] if macd_data["signal"][-1] else 0
                     ),
@@ -858,7 +873,7 @@ async def indicators_health_check(
 
         # Test a simple calculation
         try:
-            test_prices = [100, 101, 99, 102, 98, 103, 97]
+            test_prices: List[float] = [100.0, 101.0, 99.0, 102.0, 98.0, 103.0, 97.0]
             test_sma = calculate_sma(test_prices, 5)
             if test_sma:
                 health_status["calculation_test"] = "passed"

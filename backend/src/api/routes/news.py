@@ -187,9 +187,24 @@ async def get_news_client() -> NewsClient:
 
 
 def article_to_response(article: Article) -> NewsArticleResponse:
-    """Convert Article model to response model"""
+    """Convert Article model to response model
+
+    Note: Generates synthetic id, stock_symbols, and market_sectors from Article data.
+    """
+    # Generate a unique ID from URL hash
+    import hashlib
+    article_id = hashlib.md5(article.url.encode()).hexdigest()[:16]
+
+    # Extract stock symbols from tags if available
+    stock_symbols = [tag for tag in article.tags if tag.isupper() and len(tag) <= 10]
+
+    # Extract market sectors from category/tags
+    market_sectors: List[str] = []
+    if article.category:
+        market_sectors.append(article.category)
+
     return NewsArticleResponse(
-        id=article.id,
+        id=article_id,
         title=article.title,
         description=article.description,
         content=article.content,
@@ -199,11 +214,11 @@ def article_to_response(article: Article) -> NewsArticleResponse:
         provider=article.provider,
         author=article.author,
         published_at=article.published_at,
-        relevance_score=article.relevance_score,
+        relevance_score=article.relevance_score or 0.0,
         sentiment_score=article.sentiment_score,
         tags=article.tags,
-        stock_symbols=article.stock_symbols,
-        market_sectors=article.market_sectors,
+        stock_symbols=stock_symbols,
+        market_sectors=market_sectors,
     )
 
 
@@ -547,11 +562,11 @@ async def get_market_news(
                 symbols=symbols, sectors=sectors, limit=limit
             )
 
-            # Filter by relevance score
+            # Filter by relevance score (handle None values)
             filtered_articles = [
                 article
                 for article in articles
-                if article.relevance_score >= min_relevance
+                if article.relevance_score is not None and article.relevance_score >= min_relevance
             ]
 
             # Convert to response format
@@ -657,13 +672,18 @@ async def get_company_news(
             )
 
             # Filter and sort by relevance
+            # Note: Article model doesn't have stock_symbols, so we check title/tags
             relevant_articles = [
                 article
                 for article in articles
-                if symbol in article.stock_symbols
+                if symbol.upper() in [tag.upper() for tag in article.tags]
                 or symbol.lower() in article.title.lower()
             ]
-            relevant_articles.sort(key=lambda x: x.relevance_score, reverse=True)
+            # Sort by relevance_score, handling None values
+            relevant_articles.sort(
+                key=lambda x: x.relevance_score if x.relevance_score is not None else 0.0,
+                reverse=True
+            )
 
             # Convert to response format
             article_responses = [

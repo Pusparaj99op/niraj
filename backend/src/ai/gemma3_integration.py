@@ -50,14 +50,18 @@ class ModelCapability(str, Enum):
 
 
 class Gemma3IntegrationError(Exception):
-    """Base exception for Gemma3 integration errors"""
+    """Base exception for Gemma3 integration errors.
+
+    Note: `error_code` and `model_response` are optional. Explicit Optional annotations
+    avoid Pylance complaining about assigning None to str.
+    """
 
     def __init__(
-        self, message: str, error_code: str = None, model_response: str = None
-    ):
-        self.message = message
-        self.error_code = error_code
-        self.model_response = model_response
+        self, message: str, error_code: Optional[str] = None, model_response: Optional[str] = None
+    ) -> None:
+        self.message: str = message
+        self.error_code: Optional[str] = error_code
+        self.model_response: Optional[str] = model_response
         super().__init__(self.message)
 
 
@@ -141,7 +145,8 @@ class Gemma3Client:
 
         # Model tracking
         self.ai_model: Optional[AIModel] = None
-        self.session = None
+        # aiohttp.ClientSession created lazily; keep as Optional for type safety
+        self.session: Optional[aiohttp.ClientSession] = None
         self.is_connected = False
         self.model_capabilities = [
             ModelCapability.TEXT_GENERATION,
@@ -225,11 +230,13 @@ class Gemma3Client:
         except Exception as e:
             logger.error("Error during disconnection", error=str(e))
 
-    async def _test_connection(self):
+    async def _test_connection(self) -> None:
         """Test connection to Ollama server"""
         try:
             url = f"{self.base_url}/api/tags"
-            async with self.session.get(url) as response:
+            if self.session is None:
+                raise ModelConnectionError("HTTP session not initialized")
+            async with self.session.get(url) as response:  # type: ignore[union-attr]
                 if response.status == 200:
                     data = await response.json()
                     models = [model.get("name", "") for model in data.get("models", [])]
@@ -251,14 +258,16 @@ class Gemma3Client:
         except aiohttp.ClientError as e:
             raise ModelConnectionError(f"Connection test failed: {str(e)}")
 
-    async def _pull_model(self):
+    async def _pull_model(self) -> None:
         """Pull the model if it's not available"""
         try:
             logger.info("Attempting to pull model", model=self.model_name)
             url = f"{self.base_url}/api/pull"
             payload = {"name": self.model_name}
 
-            async with self.session.post(url, json=payload) as response:
+            if self.session is None:
+                raise ModelConnectionError("HTTP session not initialized for pull")
+            async with self.session.post(url, json=payload) as response:  # type: ignore[union-attr]
                 if response.status == 200:
                     logger.info("Model pull initiated", model=self.model_name)
                 else:
@@ -267,7 +276,7 @@ class Gemma3Client:
         except Exception as e:
             logger.error("Error pulling model", error=str(e))
 
-    async def _initialize_model_tracking(self):
+    async def _initialize_model_tracking(self) -> None:
         """Initialize AI model tracking in database"""
         try:
             self.ai_model = AIModel(
@@ -368,11 +377,14 @@ class Gemma3Client:
                 model_version=self.model_name,
                 token_count=len(raw_response.split()),
                 raw_response=raw_response,
-                metadata={
+            )
+            # Populate metadata post-construction to avoid potential mismatched kwargs complaints
+            response.metadata.update(
+                {
                     "request_id": f"req_{int(time.time())}_{self.total_requests}",
                     "timestamp": datetime.utcnow().isoformat(),
                     "input_hash": self._hash_input(request.input_data),
-                },
+                }
             )
 
             logger.info(
@@ -600,7 +612,9 @@ class Gemma3Client:
                 },
             }
 
-            async with self.session.post(url, json=payload) as response:
+            if self.session is None:
+                raise ModelInferenceError("HTTP session not initialized for generate")
+            async with self.session.post(url, json=payload) as response:  # type: ignore[union-attr]
                 if response.status == 200:
                     data = await response.json()
                     return data.get("response", "")
@@ -753,7 +767,7 @@ class Gemma3Client:
                     "analysis_type": request.analysis_type.value,
                 },
                 tags=["gemma3", "ollama", request.analysis_type.value],
-                metadata={
+                prediction_metadata={
                     "model_version": self.model_name,
                     "request_timestamp": datetime.utcnow().isoformat(),
                 },
@@ -773,7 +787,7 @@ class Gemma3Client:
             logger.error("Failed to record prediction", error=str(e))
 
     async def analyze_market_sentiment(
-        self, market_data: Dict[str, Any], news_data: List[Dict[str, Any]] = None
+        self, market_data: Dict[str, Any], news_data: Optional[List[Dict[str, Any]]] = None
     ) -> AnalysisResponse:
         """Analyze overall market sentiment"""
         input_data = {"market_data": market_data, "news_data": news_data or []}
@@ -942,7 +956,7 @@ gemma3_client = Gemma3Client()
 
 # Convenience functions
 async def get_market_sentiment(
-    market_data: Dict[str, Any], news_data: List[Dict[str, Any]] = None
+    market_data: Dict[str, Any], news_data: Optional[List[Dict[str, Any]]] = None
 ) -> AnalysisResponse:
     """Get market sentiment analysis"""
     async with gemma3_client:

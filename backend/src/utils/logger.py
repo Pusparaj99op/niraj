@@ -261,14 +261,16 @@ class TradingLogHandler(logging.Handler):
 
     def emit(self, record):
         """Emit a trading log record"""
+        # Use getattr with hasattr for type-safe attribute access
         if hasattr(record, "trade_data"):
             # Special handling for trade records
             timestamp = datetime.now().isoformat()
+            trade_data = getattr(record, "trade_data", {})
             trade_entry = {
                 "timestamp": timestamp,
                 "level": record.levelname,
                 "message": record.getMessage(),
-                "trade_data": record.trade_data,
+                "trade_data": trade_data,
             }
 
             with open(self.log_file, "a", encoding="utf-8") as f:
@@ -287,14 +289,16 @@ class AILogHandler(logging.Handler):
 
     def emit(self, record):
         """Emit an AI log record"""
+        # Use getattr with hasattr for type-safe attribute access
         if hasattr(record, "ai_data"):
             # Special handling for AI records
             timestamp = datetime.now().isoformat()
+            ai_data = getattr(record, "ai_data", {})
             ai_entry = {
                 "timestamp": timestamp,
                 "level": record.levelname,
                 "message": record.getMessage(),
-                "ai_data": record.ai_data,
+                "ai_data": ai_data,
             }
 
             with open(self.log_file, "a", encoding="utf-8") as f:
@@ -354,7 +358,7 @@ def log_system_event(event: str, details: Dict[str, Any], level: str = "INFO"):
     log_func(event, **details)
 
 
-def log_error(error: Exception, context: Dict[str, Any] = None):
+def log_error(error: Exception, context: Optional[Dict[str, Any]] = None):
     """Log errors with context"""
     logger = get_structured_logger("niraj.error")
     logger.error(

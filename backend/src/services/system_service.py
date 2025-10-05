@@ -116,7 +116,7 @@ class APIConnectionStatus:
 class SystemServiceError(Exception):
     """Custom exception for system service errors"""
 
-    def __init__(self, message: str, service: str = None, error_code: str = None):
+    def __init__(self, message: str, service: Optional[str] = None, error_code: Optional[str] = None):
         self.message = message
         self.service = service
         self.error_code = error_code
@@ -485,15 +485,15 @@ class SystemService:
                 }
 
             # CPU usage
-            cpu_usage = psutil.cpu_percent(interval=1)
+            cpu_usage = psutil.cpu_percent(interval=1) if psutil else 0.0
 
             # Memory usage
-            memory = psutil.virtual_memory()
-            memory_usage = memory.percent
+            memory = psutil.virtual_memory() if psutil else None
+            memory_usage = memory.percent if memory else 0.0
 
             # Disk usage
-            disk = psutil.disk_usage("/")
-            disk_usage = disk.percent
+            disk = psutil.disk_usage("/") if psutil else None
+            disk_usage = disk.percent if disk else 0.0
 
             # Active strategies (simplified - would query database)
             active_strategies = 0

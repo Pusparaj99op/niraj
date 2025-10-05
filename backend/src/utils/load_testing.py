@@ -237,13 +237,16 @@ class VirtualUser:
                 response = await websocket.recv()
                 response_time_ms = (time.time() - start_time) * 1000
 
+                # Handle response which could be str or bytes
+                response_size = len(response) if isinstance(response, str) else len(response)
+
                 result = RequestResult(
                     timestamp=timestamp,
                     endpoint=ws_endpoint,
                     method="WS",
                     status_code=200,  # WebSocket doesn't have status codes
                     response_time_ms=response_time_ms,
-                    size_bytes=len(response.encode("utf-8")),
+                    size_bytes=response_size,
                     success=True,
                     user_id=self.user_id,
                 )

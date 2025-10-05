@@ -115,6 +115,7 @@ main() {
         -not -path "*/logs/*" \
         -not -path "*/__pycache__/*" \
         -not -path "*/__pycache__/*" \
+        -not -path "*/backend/tests/*" \
         -not -path "*/node_modules/*" \
         -not -path "*/.pytest_cache/*" \
         -not -path "*/.mypy_cache/*" \

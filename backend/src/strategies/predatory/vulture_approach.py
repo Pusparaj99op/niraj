@@ -1446,7 +1446,7 @@ class VultureStrategy(BaseStrategy):
             logger.error("Failed to create opportunity from signal", error=str(e))
             return None
 
-    async def calculate_position_size(self, signal: TradingSignal, portfolio) -> float:
+    async def calculate_position_size(self, signal: TradingSignal, portfolio) -> int:
         """
         Calculate position size with vulture-specific conservative risk management
 
@@ -1455,7 +1455,7 @@ class VultureStrategy(BaseStrategy):
             portfolio: Current portfolio state
 
         Returns:
-            Position size as percentage of portfolio
+            Position size as number of shares/contracts (integer)
         """
         try:
             # Base position size from signal
@@ -1482,8 +1482,8 @@ class VultureStrategy(BaseStrategy):
                 except Exception:
                     pass
 
-            # Calculate final position size
-            position_size = (
+            # Calculate final position size percentage
+            position_size_pct = (
                 base_size
                 * fear_multiplier
                 * confidence_multiplier
@@ -1492,14 +1492,25 @@ class VultureStrategy(BaseStrategy):
             )
 
             # Ensure within strategy limits (even more conservative than base)
-            position_size = min(position_size, self.config.max_position_size * 0.8)
-            position_size = max(position_size, 0.005)  # Minimum 0.5% position
+            position_size_pct = min(position_size_pct, self.config.max_position_size * 0.8)
+            position_size_pct = max(position_size_pct, 0.005)  # Minimum 0.5% position
+
+            # Convert percentage to number of shares
+            portfolio_value = getattr(portfolio, "total_value", 100000.0)  # Default to 100k
+            entry_price = signal.entry_price if signal.entry_price else 1.0
+
+            position_value = portfolio_value * position_size_pct
+            num_shares = int(position_value / entry_price)
+
+            # Ensure at least 1 share
+            num_shares = max(1, num_shares)
 
             logger.debug(
                 "Position size calculated",
                 signal_id=signal.signal_id,
                 base_size=base_size,
-                final_size=position_size,
+                position_size_pct=position_size_pct,
+                num_shares=num_shares,
                 adjustments={
                     "fear": fear_multiplier,
                     "confidence": confidence_multiplier,
@@ -1508,11 +1519,18 @@ class VultureStrategy(BaseStrategy):
                 },
             )
 
-            return position_size
+            return num_shares
 
         except Exception as e:
             logger.error("Position size calculation failed", error=str(e))
-            return signal.position_size_percentage * 0.5  # Conservative fallback
+            # Conservative fallback: calculate minimal position
+            try:
+                portfolio_value = getattr(portfolio, "total_value", 100000.0)
+                entry_price = signal.entry_price if signal.entry_price else 1.0
+                fallback_pct = signal.position_size_percentage * 0.5
+                return max(1, int((portfolio_value * fallback_pct) / entry_price))
+            except Exception:
+                return 1  # Absolute minimum fallback
 
     async def manage_risk(self, portfolio) -> List[str]:
         """

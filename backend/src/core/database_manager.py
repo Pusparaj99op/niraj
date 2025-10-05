@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Callable
 
-from sqlalchemy import create_engine, text, event, inspect, func
+from sqlalchemy import create_engine, text, event, inspect, func, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     AsyncEngine,
@@ -675,10 +675,10 @@ class AdvancedDatabaseManager:
             await session.rollback()
             raise DatabaseManagerError(f"Failed to update record: {str(e)}") from e
 
-    async def delete(self, session: AsyncSession, obj: ORM_T) -> bool:
+    async def delete(self, session: AsyncSession, obj: object) -> bool:
         """Delete a database record"""
         try:
-            await session.delete(obj)
+            await session.delete(obj)  # type: ignore[arg-type]
             await session.flush()
             logger.debug("Record deleted", model=obj.__class__.__name__)
             return True
@@ -737,16 +737,18 @@ class AdvancedDatabaseManager:
     ) -> int:
         """Count records with optional filters"""
         try:
-            query = session.query(func.count(model.id))
+            # Use select() instead of session.query() for async sessions
+            stmt = select(func.count()).select_from(model)  # type: ignore[arg-type]
 
             if filters:
                 for key, value in filters.items():
                     if hasattr(model, key):
-                        query = query.filter(getattr(model, key) == value)
+                        stmt = stmt.filter(getattr(model, key) == value)
 
-            result = await query.scalar()
-            logger.debug("Count query executed", model=model.__name__, count=result)
-            return result or 0
+            result = await session.execute(stmt)
+            count = result.scalar() or 0
+            logger.debug("Count query executed", model=model.__name__, count=count)
+            return count
 
         except Exception as e:
             raise DatabaseManagerError(f"Count query failed: {str(e)}") from e

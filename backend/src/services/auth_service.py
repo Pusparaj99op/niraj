@@ -102,6 +102,7 @@ class RateLimitError(AuthenticationError):
 
     def __init__(self, message: str, retry_after: Optional[int] = None):
         super().__init__(message, "RATE_LIMIT_ERROR", {"retry_after": retry_after})
+        self.retry_after = retry_after
 
 
 class SecurityError(AuthenticationError):

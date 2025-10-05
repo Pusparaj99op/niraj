@@ -6,6 +6,7 @@ Following TDD principles, these tests should fail initially until the
 endpoint is implemented.
 """
 
+from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -54,7 +55,12 @@ class TestAuthLoginContract:
         ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
-        response_json = response.json()
+        response_json: Any = response.json()
+
+        # Verify response is a dictionary
+        assert isinstance(
+            response_json, dict
+        ), f"Response must be a dictionary, got {type(response_json)}"
 
         # Verify all required fields are present
         required_fields = ["access_token", "token_type", "expires_in", "user_id"]
@@ -67,6 +73,7 @@ class TestAuthLoginContract:
         assert len(access_token) > 0, "access_token cannot be empty"
 
         token_type = response_json["token_type"]
+        assert isinstance(token_type, str), "token_type must be string"
         assert token_type == "bearer", "token_type must be 'bearer'"
 
         expires_in = response_json["expires_in"]
@@ -75,12 +82,15 @@ class TestAuthLoginContract:
 
         user_id = response_json["user_id"]
         assert isinstance(user_id, str), "user_id must be string"
+        assert len(user_id) > 0, "user_id cannot be empty"
 
         # Verify user_id is a valid UUID format
         try:
-            uuid.UUID(user_id)
-        except ValueError:
-            pytest.fail("user_id must be a valid UUID")
+            parsed_uuid = uuid.UUID(user_id)
+            # Ensure the string representation matches (no extra formatting)
+            assert str(parsed_uuid) == user_id, "user_id must be a valid UUID string"
+        except (ValueError, TypeError, AttributeError) as e:
+            pytest.fail(f"user_id must be a valid UUID: {e}")
 
     def test_login_invalid_credentials_contract(self, client: TestClient) -> None:
         """
@@ -104,7 +114,10 @@ class TestAuthLoginContract:
         ), f"Expected status {expected_status}, got {actual_status}"
 
         # Assert - Response Structure
-        response_json = response.json()
+        response_json: Any = response.json()
+        assert isinstance(
+            response_json, dict
+        ), f"Response must be a dictionary, got {type(response_json)}"
         assert "error" in response_json, "401 response must contain 'error' field"
 
         error_msg = response_json["error"]
@@ -133,7 +146,10 @@ class TestAuthLoginContract:
         ), f"Expected status {expected_codes}, got {actual_status}"
 
         # Assert - Response contains error information
-        response_json = response.json()
+        response_json: Any = response.json()
+        assert isinstance(
+            response_json, dict
+        ), f"Response must be a dictionary, got {type(response_json)}"
         has_error_info = "error" in response_json or "detail" in response_json
         assert has_error_info, "Response must contain error information"
 
@@ -159,7 +175,10 @@ class TestAuthLoginContract:
         ), f"Expected status {expected_codes}, got {actual_status}"
 
         # Assert - Response contains error information
-        response_json = response.json()
+        response_json: Any = response.json()
+        assert isinstance(
+            response_json, dict
+        ), f"Response must be a dictionary, got {type(response_json)}"
         has_error_info = "error" in response_json or "detail" in response_json
         assert has_error_info, "Response must contain error information"
 
@@ -182,7 +201,10 @@ class TestAuthLoginContract:
         ), f"Expected status {expected_codes}, got {actual_status}"
 
         # Assert - Response contains error information
-        response_json = response.json()
+        response_json: Any = response.json()
+        assert isinstance(
+            response_json, dict
+        ), f"Response must be a dictionary, got {type(response_json)}"
         has_error_info = "error" in response_json or "detail" in response_json
         assert has_error_info, "Response must contain error information"
 
@@ -197,7 +219,7 @@ class TestAuthLoginContract:
         # Act
         response: Response = client.post(
             "/api/v1/auth/login",
-            data="invalid json content",
+            content=b"invalid json content",
             headers={"Content-Type": "application/json"},
         )
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 # Handle imports for both package and standalone usage
 try:
-    from ..utils.logger import get_logger, log_performance, LogContext
+    from ..utils.logger import get_logger, log_performance, LogContext  # type: ignore[assignment]
 except ImportError:
     # Fallback for standalone usage
     def get_logger(name: str) -> logging.Logger:
@@ -30,10 +30,10 @@ except ImportError:
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
         return logger
 
-    def log_performance(name: str = None):
+    def log_performance(func_name: Optional[str] = None):
         """Simple performance logging decorator fallback"""
 
         def decorator(func):
@@ -44,13 +44,13 @@ except ImportError:
     class LogContext:
         """Simple context manager fallback"""
 
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> "LogContext":
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *args: Any) -> None:
             pass
 
 
@@ -701,7 +701,7 @@ class DhanClient:
         Raises:
             OrderError: If order placement fails
         """
-        order_data = {
+        order_data: Dict[str, Any] = {
             "dhanClientId": self.client_id,
             "transactionType": transaction_type,
             "exchangeSegment": exchange_segment,
@@ -894,7 +894,7 @@ class DhanClient:
         Raises:
             OrderError: If slice order placement fails
         """
-        order_data = {
+        order_data: Dict[str, Any] = {
             "dhanClientId": self.client_id,
             "transactionType": transaction_type,
             "exchangeSegment": exchange_segment,
@@ -1178,7 +1178,7 @@ class DhanClient:
         Raises:
             DhanError: If request fails
         """
-        data = {
+        data: Dict[str, Any] = {
             "symbol": symbol,
             "exchangeSegment": exchange_segment,
             "instrument": instrument_type,

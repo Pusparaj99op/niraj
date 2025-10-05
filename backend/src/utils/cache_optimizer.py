@@ -777,7 +777,12 @@ class DistributedCacheCoordinator:
         # Set in distributed cache
         if self.redis_cache:
             try:
-                await self.redis_cache.set(key, value, ttl=ttl_seconds)
+                # Only set in redis if ttl_seconds is provided
+                if ttl_seconds is not None:
+                    await self.redis_cache.set(key, value, ttl=ttl_seconds)
+                else:
+                    # Use a default TTL when None is provided
+                    await self.redis_cache.set(key, value, ttl=300)
             except Exception as e:
                 logger.warning("Failed to set distributed cache", key=key, error=str(e))
 

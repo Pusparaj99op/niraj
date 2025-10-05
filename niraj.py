@@ -688,6 +688,192 @@ class NirajRunner:
             except subprocess.CalledProcessError as e:
                 self.log(f"❌ Failed to install frontend dependencies: {e}", "error")
 
+    def test_api_endpoints(self) -> Dict[str, bool]:
+        """Test all API endpoints and return results"""
+        self.log("🧪 Testing API endpoints...", "header")
+
+        endpoints = {
+            "Health Check": "http://localhost:8000/health",
+            "System Info": "http://localhost:8000/info",
+            "API Root": "http://localhost:8000/",
+            "API Documentation": "http://localhost:8000/docs",
+            "OpenAPI Schema": "http://localhost:8000/openapi.json",
+        }
+
+        results: Dict[str, bool] = {}
+
+        # Check if backend is running
+        if "backend" not in self.processes or self.processes["backend"].poll() is not None:
+            self.log("❌ Backend is not running. Please start the backend first.", "error")
+            return results
+
+        for name, url in endpoints.items():
+            self.log(f"Testing {name}: {url}", "info")
+            try:
+                # Try using requests library
+                try:
+                    import requests
+                    response = requests.get(url, timeout=5)
+                    status_code = response.status_code
+                    success = 200 <= status_code < 300
+                except ImportError:
+                    # Fallback to curl
+                    result = subprocess.run(
+                        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    status_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                    success = 200 <= status_code < 300
+
+                if success:
+                    self.log(f"  ✅ {name}: OK (Status: {status_code})", "success")
+                    results[name] = True
+                else:
+                    self.log(f"  ❌ {name}: Failed (Status: {status_code})", "error")
+                    results[name] = False
+
+            except Exception as e:
+                self.log(f"  ❌ {name}: Error - {e}", "error")
+                results[name] = False
+
+            time.sleep(0.5)  # Small delay between requests
+
+        # Summary
+        passed = sum(1 for v in results.values() if v)
+        total = len(results)
+        self.log(f"\n📊 API Test Summary: {passed}/{total} endpoints passed",
+                 "success" if passed == total else "warning")
+
+        return results
+
+    def clear_redis_cache(self) -> bool:
+        """Clear Redis cache"""
+        self.log("🗑️  Clearing Redis cache...", "info")
+
+        try:
+            # Try using redis-cli
+            result = subprocess.run(
+                ["redis-cli", "FLUSHALL"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                self.log("✅ Redis cache cleared successfully", "success")
+                return True
+            else:
+                self.log(f"❌ Failed to clear Redis cache: {result.stderr}", "error")
+                return False
+
+        except FileNotFoundError:
+            self.log("❌ redis-cli not found. Please install Redis tools.", "error")
+            return False
+        except Exception as e:
+            self.log(f"❌ Error clearing Redis cache: {e}", "error")
+            return False
+
+    def clear_logs(self, log_path: Optional[Path] = None) -> bool:
+        """Clear log files"""
+        self.log("🗑️  Clearing logs...", "info")
+
+        log_files = []
+        if log_path:
+            log_files.append(log_path)
+        else:
+            # Default log locations
+            log_files = [
+                PROJECT_ROOT / "logs" / "niraj.log",
+                PROJECT_ROOT / "backend" / "logs" / "niraj.log",
+            ]
+
+        cleared = 0
+        for log_file in log_files:
+            if log_file.exists():
+                try:
+                    with open(log_file, 'w') as f:
+                        f.write("")
+                    self.log(f"✅ Cleared: {log_file}", "success")
+                    cleared += 1
+                except Exception as e:
+                    self.log(f"❌ Failed to clear {log_file}: {e}", "error")
+            else:
+                self.log(f"⚠️  Log file not found: {log_file}", "warning")
+
+        if cleared > 0:
+            self.log(f"✅ Cleared {cleared} log file(s)", "success")
+            return True
+        else:
+            self.log("⚠️  No log files were cleared", "warning")
+            return False
+
+    def view_logs(self, lines: int = 50) -> None:
+        """View recent log entries"""
+        self.log(f"📋 Viewing last {lines} log lines...", "header")
+
+        log_files = [
+            PROJECT_ROOT / "logs" / "niraj.log",
+            PROJECT_ROOT / "backend" / "logs" / "niraj.log",
+        ]
+
+        for log_file in log_files:
+            if log_file.exists():
+                self.log(f"\n📄 {log_file}:", "info")
+                try:
+                    result = subprocess.run(
+                        ["tail", "-n", str(lines), str(log_file)],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.stdout:
+                        print(result.stdout)
+                    else:
+                        self.log("  (empty)", "info")
+                except Exception as e:
+                    self.log(f"  ❌ Error reading log: {e}", "error")
+            else:
+                self.log(f"⚠️  Log file not found: {log_file}", "warning")
+
+    def get_log_size(self) -> Dict[str, int]:
+        """Get size of log files in bytes"""
+        log_files = [
+            PROJECT_ROOT / "logs" / "niraj.log",
+            PROJECT_ROOT / "backend" / "logs" / "niraj.log",
+        ]
+
+        sizes: Dict[str, int] = {}
+        for log_file in log_files:
+            if log_file.exists():
+                try:
+                    sizes[str(log_file)] = log_file.stat().st_size
+                except Exception:
+                    sizes[str(log_file)] = 0
+
+        return sizes
+
+    def clear_cache_directory(self, cache_dir: Optional[Path] = None) -> bool:
+        """Clear cache directory"""
+        self.log("🗑️  Clearing cache directory...", "info")
+
+        if cache_dir is None:
+            cache_dir = PROJECT_ROOT / "backend" / "__pycache__"
+
+        if not cache_dir.exists():
+            self.log(f"⚠️  Cache directory not found: {cache_dir}", "warning")
+            return False
+
+        try:
+            import shutil
+            shutil.rmtree(cache_dir)
+            self.log(f"✅ Cleared cache directory: {cache_dir}", "success")
+            return True
+        except Exception as e:
+            self.log(f"❌ Failed to clear cache directory: {e}", "error")
+            return False
+
 
 class MenuInterface:
     """Interactive menu interface for NIRAJ system"""
@@ -725,9 +911,9 @@ class MenuInterface:
         print("  4. 📦 Install Dependencies")
         print("  5. ⚙️  Configuration")
         print("  6. 🔧 Service Management")
-        print("  7. 📚 Help & Documentation")
-        print("  8. 🌍 Environment Settings")
-        print("  9. 📋 Logs & Monitoring")
+        print("  7. 🧪 API Testing")
+        print("  8. 🗑️  Cache & Logs Management")
+        print("  9. � Help & Documentation")
         print("  0. ❌ Exit")
         print()
 
@@ -1238,6 +1424,292 @@ class MenuInterface:
         print("3. Verify system requirements")
         print("4. Check GitHub issues for similar problems")
 
+    def display_api_testing_menu(self):
+        """Display API testing menu"""
+        print("\n🧪 API Testing:")
+        print("  1. 🔍 Test All API Endpoints")
+        print("  2. 🏥 Quick Health Check")
+        print("  3. 📄 Test Specific Endpoint")
+        print("  4. 📊 View API Documentation")
+        print("  5. 🔄 Test WebSocket Connection")
+        print("  0. ⬅️  Back to Main Menu")
+        print()
+
+    def display_cache_logs_menu(self):
+        """Display cache and logs management menu"""
+        print("\n🗑️  Cache & Logs Management:")
+        print("  1. 🗑️  Clear Redis Cache")
+        print("  2. 🗑️  Clear All Logs")
+        print("  3. 📋 View Recent Logs")
+        print("  4. 📊 Show Log File Sizes")
+        print("  5. 🗑️  Clear Python Cache (__pycache__)")
+        print("  6. 🧹 Clear Everything (Cache + Logs)")
+        print("  0. ⬅️  Back to Main Menu")
+        print()
+
+    def handle_api_testing(self):
+        """Handle API testing menu"""
+        while True:
+            self.display_api_testing_menu()
+            choice = self.get_user_input()
+
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.test_all_endpoints()
+            elif choice == "2":
+                self.quick_health_check()
+            elif choice == "3":
+                self.test_specific_endpoint()
+            elif choice == "4":
+                self.view_api_docs()
+            elif choice == "5":
+                self.test_websocket()
+            else:
+                print("❌ Invalid choice. Please try again.")
+
+            if choice != "0":
+                self.safe_input()
+
+    def handle_cache_logs_management(self):
+        """Handle cache and logs management menu"""
+        while True:
+            self.display_cache_logs_menu()
+            choice = self.get_user_input()
+
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.runner.clear_redis_cache()
+            elif choice == "2":
+                self.runner.clear_logs()
+            elif choice == "3":
+                self.view_logs_interactive()
+            elif choice == "4":
+                self.show_log_sizes()
+            elif choice == "5":
+                self.clear_python_cache()
+            elif choice == "6":
+                self.clear_everything()
+            else:
+                print("❌ Invalid choice. Please try again.")
+
+            if choice != "0":
+                self.safe_input()
+
+    def test_all_endpoints(self):
+        """Test all API endpoints"""
+        results = self.runner.test_api_endpoints()
+
+        if results:
+            print("\n" + "=" * 60)
+            print("API Test Results:")
+            print("=" * 60)
+            for endpoint, success in results.items():
+                status = "✅ PASS" if success else "❌ FAIL"
+                print(f"  {endpoint}: {status}")
+            print("=" * 60)
+
+    def quick_health_check(self):
+        """Quick health check for backend"""
+        print("\n🏥 Performing Quick Health Check...")
+
+        # Check if backend is running
+        if "backend" not in self.runner.processes or self.runner.processes["backend"].poll() is not None:
+            print("❌ Backend is not running. Please start the backend first.")
+            return
+
+        try:
+            import requests
+            response = requests.get("http://localhost:8000/health", timeout=5)
+            if response.status_code == 200:
+                print("✅ Backend API is healthy!")
+                print(f"Response: {response.json()}")
+            else:
+                print(f"⚠️  Backend returned status code: {response.status_code}")
+        except ImportError:
+            # Fallback to curl
+            result = subprocess.run(
+                ["curl", "-s", "http://localhost:8000/health"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                print("✅ Backend API is healthy!")
+                print(f"Response: {result.stdout}")
+            else:
+                print("❌ Health check failed")
+        except Exception as e:
+            print(f"❌ Health check failed: {e}")
+
+    def test_specific_endpoint(self):
+        """Test a specific endpoint"""
+        print("\n📄 Test Specific Endpoint")
+        try:
+            url = input("Enter endpoint URL (e.g., http://localhost:8000/health): ").strip()
+            if not url:
+                print("❌ No URL provided")
+                return
+
+            print(f"\n🔍 Testing: {url}")
+
+            try:
+                import requests
+                response = requests.get(url, timeout=5)
+                print(f"Status Code: {response.status_code}")
+                print(f"Response: {response.text[:500]}")  # First 500 chars
+            except ImportError:
+                result = subprocess.run(
+                    ["curl", "-s", "-w", "\nHTTP Code: %{http_code}", url],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                print(result.stdout)
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
+
+    def view_api_docs(self):
+        """Open API documentation in browser"""
+        print("\n📊 API Documentation URLs:")
+        print("  Swagger UI: http://localhost:8000/docs")
+        print("  ReDoc: http://localhost:8000/redoc")
+        print("  OpenAPI Schema: http://localhost:8000/openapi.json")
+
+        try:
+            choice = input("\nOpen in browser? (y/N): ").lower().strip()
+            if choice in ["y", "yes"]:
+                import webbrowser
+                webbrowser.open("http://localhost:8000/docs")
+                print("✅ Opened API documentation in browser")
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
+        except Exception as e:
+            print(f"❌ Failed to open browser: {e}")
+
+    def test_websocket(self):
+        """Test WebSocket connection"""
+        print("\n🔄 WebSocket Testing")
+        print("WebSocket URL: ws://localhost:8000/ws")
+        print("(Full WebSocket testing would require additional libraries)")
+        print("\nTo test manually:")
+        print("  1. Use a WebSocket client tool")
+        print("  2. Connect to: ws://localhost:8000/ws")
+        print("  3. Send test messages")
+
+    def view_logs_interactive(self):
+        """View logs interactively"""
+        print("\n📋 View Logs")
+        try:
+            lines_input = input("Number of lines to show (default: 50): ").strip()
+            lines = int(lines_input) if lines_input else 50
+            self.runner.view_logs(lines)
+        except ValueError:
+            print("❌ Invalid number, using default (50)")
+            self.runner.view_logs(50)
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
+
+    def show_log_sizes(self):
+        """Show log file sizes"""
+        print("\n📊 Log File Sizes:")
+        sizes = self.runner.get_log_size()
+
+        if not sizes:
+            print("  No log files found")
+            return
+
+        total_size = 0
+        for log_file, size in sizes.items():
+            size_mb = size / (1024 * 1024)
+            size_kb = size / 1024
+
+            if size_mb > 1:
+                print(f"  {log_file}: {size_mb:.2f} MB")
+            elif size_kb > 1:
+                print(f"  {log_file}: {size_kb:.2f} KB")
+            else:
+                print(f"  {log_file}: {size} bytes")
+
+            total_size += size
+
+        total_mb = total_size / (1024 * 1024)
+        print(f"\n  Total: {total_mb:.2f} MB")
+
+    def clear_python_cache(self):
+        """Clear Python cache directories"""
+        print("\n🗑️  Clearing Python Cache...")
+
+        # Find all __pycache__ directories
+        cache_dirs = []
+        for root, dirs, _ in os.walk(PROJECT_ROOT):
+            if "__pycache__" in dirs:
+                cache_dirs.append(Path(root) / "__pycache__")
+
+        if not cache_dirs:
+            print("  No __pycache__ directories found")
+            return
+
+        print(f"  Found {len(cache_dirs)} cache directories")
+
+        try:
+            confirm = input("Clear all Python cache directories? (y/N): ").lower().strip()
+            if confirm in ["y", "yes"]:
+                cleared = 0
+                for cache_dir in cache_dirs:
+                    try:
+                        import shutil
+                        shutil.rmtree(cache_dir)
+                        print(f"  ✅ Cleared: {cache_dir}")
+                        cleared += 1
+                    except Exception as e:
+                        print(f"  ❌ Failed to clear {cache_dir}: {e}")
+
+                print(f"\n✅ Cleared {cleared}/{len(cache_dirs)} cache directories")
+            else:
+                print("Operation cancelled.")
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
+
+    def clear_everything(self):
+        """Clear all cache and logs"""
+        print("\n🧹 Clear Everything (Cache + Logs)")
+        print("This will:")
+        print("  - Clear Redis cache")
+        print("  - Clear all log files")
+        print("  - Clear Python __pycache__ directories")
+
+        try:
+            confirm = input("\n⚠️  Are you sure? This cannot be undone! (yes/N): ").strip()
+            if confirm.lower() == "yes":
+                print("\n🧹 Clearing everything...")
+
+                # Clear Redis
+                self.runner.clear_redis_cache()
+
+                # Clear logs
+                self.runner.clear_logs()
+
+                # Clear Python cache
+                cache_dirs = []
+                for root, dirs, _ in os.walk(PROJECT_ROOT):
+                    if "__pycache__" in dirs:
+                        cache_dirs.append(Path(root) / "__pycache__")
+
+                for cache_dir in cache_dirs:
+                    try:
+                        import shutil
+                        shutil.rmtree(cache_dir)
+                    except Exception:
+                        pass
+
+                print("\n✅ All cache and logs cleared successfully!")
+            else:
+                print("Operation cancelled.")
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
+
     def run(self):
         """Main menu loop"""
         self.display_banner()
@@ -1267,16 +1739,11 @@ class MenuInterface:
             elif choice == "6":
                 self.handle_service_management()
             elif choice == "7":
-                self.handle_help()
+                self.handle_api_testing()
             elif choice == "8":
-                self.change_environment_mode()
-                self.safe_input()
+                self.handle_cache_logs_management()
             elif choice == "9":
-                print("\n📋 Logs & Monitoring:")
-                print(
-                    "Real-time monitoring and log aggregation would be implemented here."
-                )
-                self.safe_input()
+                self.handle_help()
             else:
                 print("❌ Invalid choice. Please try again.")
 

@@ -22,7 +22,7 @@ except ImportError:
     np = None
     HAS_NUMPY = False
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, cast
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
@@ -51,7 +51,6 @@ from ..core.database_manager import AdvancedDatabaseManager
 from .gemma3_integration import (
     Gemma3Client,
     AnalysisRequest,
-    AnalysisResponse,
     AnalysisType as GemmaAnalysisType,
 )
 from .rag_processor import RAGProcessor
@@ -1212,7 +1211,8 @@ class LearningEngine:
 
         except Exception as e:
             logger.error("Reinforcement training failed", error=str(e))
-            raise TrainingError f"Reinforcement training failed: {str(e)}"
+            raise TrainingError(f"Reinforcement training failed: {str(e)}")
+
     async def _execute_online_training(
         self, session: LearningSession, config: Dict[str, Any]
     ):

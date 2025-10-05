@@ -29,7 +29,12 @@ import structlog
 
 from ...core.database import DatabaseManager
 from ...core.cache import CacheManager
-from ...services.portfolio_service import PortfolioService, PortfolioServiceError
+from ...services.portfolio_service import (
+    PortfolioService,
+    PortfolioServiceError,
+    ClosePositionResult,
+    PriceUpdateSummary,
+)
 from ...models.portfolio import (
     PortfolioCreateRequest,
     PortfolioUpdateRequest,
@@ -463,7 +468,7 @@ async def close_portfolio_position(
     close_request: ClosePositionRequest,
     user_id: str = Depends(get_current_user_id),
     portfolio_service: PortfolioService = Depends(get_portfolio_service),
-) -> Dict[str, Any]:
+) -> ClosePositionResult:
     """
     Close a portfolio position
 
@@ -647,7 +652,7 @@ async def update_position_prices(
     price_request: PriceUpdateRequest,
     user_id: str = Depends(get_current_user_id),
     portfolio_service: PortfolioService = Depends(get_portfolio_service),
-) -> Dict[str, Any]:
+) -> PriceUpdateSummary:
     """
     Update prices for multiple symbols
 

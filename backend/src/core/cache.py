@@ -5,7 +5,7 @@ Redis setup for caching and real-time data storage
 
 import json
 import pickle
-from typing import Any, Optional, Dict, List, AsyncGenerator
+from typing import Any, Optional, Dict, List, AsyncGenerator, Set
 import os
 from contextlib import asynccontextmanager
 
@@ -269,7 +269,8 @@ class RedisCache:
                 return False
 
             async with self.get_connection() as redis_client:
-                await redis_client.hset(full_key, mapping=string_mapping)
+                # hset returns number of fields added (not awaitable in redis-py)
+                redis_client.hset(full_key, mapping=string_mapping)
 
                 if ttl is None:
                     ttl = DEFAULT_TTL.get(prefix, DEFAULT_TTL["temp_data"])
@@ -288,7 +289,15 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
 
             async with self.get_connection() as redis_client:
-                hash_data: Dict[str, str] = await redis_client.hgetall(full_key)
+                # redis-py may return union types; suppress type checking
+                hash_data_raw: Any = redis_client.hgetall(full_key)
+                # Ensure we have a proper dict of strings
+                hash_data: Dict[str, str] = {}
+                if hash_data_raw:
+                    for k, v in hash_data_raw.items():
+                        key_str = k.decode() if isinstance(k, bytes) else str(k)
+                        val_str = v.decode() if isinstance(v, bytes) else str(v)
+                        hash_data[key_str] = val_str
 
             # Deserialize values
             result = {}
@@ -404,7 +413,9 @@ class RedisCache:
             # Redis `sadd` expects string values, so we serialize them.
             str_values = [json.dumps(v, default=str) for v in values]
             async with self.get_connection() as redis_client:
-                return redis_client.sadd(full_key, *str_values)
+                # redis-py sadd returns int directly (union type issue)
+                result: Any = redis_client.sadd(full_key, *str_values)
+                return int(result) if result is not None else 0
         except Exception as e:
             logger.error("Cache sadd failed", key=key, error=str(e))
             return 0
@@ -415,7 +426,9 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
             str_values = [json.dumps(v, default=str) for v in values]
             async with self.get_connection() as redis_client:
-                return redis_client.srem(full_key, *str_values)
+                # redis-py srem returns int directly (union type issue)
+                result: Any = redis_client.srem(full_key, *str_values)
+                return int(result) if result is not None else 0
         except Exception as e:
             logger.error("Cache srem failed", key=key, error=str(e))
             return 0
@@ -426,7 +439,8 @@ class RedisCache:
             full_key = self._make_key(prefix, key)
             str_value = json.dumps(value, default=str)
             async with self.get_connection() as redis_client:
-                result: int = await redis_client.sismember(full_key, str_value)
+                # redis-py sismember returns 0 or 1 directly (not awaitable)
+                result: Any = redis_client.sismember(full_key, str_value)
                 return bool(result)
         except Exception as e:
             logger.error("Cache sismember failed", key=key, error=str(e))
@@ -437,17 +451,20 @@ class RedisCache:
         try:
             full_key = self._make_key(prefix, key)
             async with self.get_connection() as redis_client:
-                return await redis_client.scard(full_key)
+                # redis-py scard returns int directly (not awaitable)
+                result: Any = redis_client.scard(full_key)
+                return int(result) if result is not None else 0
         except Exception as e:
             logger.error("Cache scard failed", key=key, error=str(e))
             return 0
 
-    async def smembers(self, key: str, prefix: str = "temp_data") -> set:
+    async def smembers(self, key: str, prefix: str = "temp_data") -> Set[Any]:
         """Get all members of a set."""
         try:
             full_key = self._make_key(prefix, key)
             async with self.get_connection() as redis_client:
-                members: set[str] = await redis_client.smembers(full_key)
+                # redis-py smembers returns set directly (not awaitable)
+                members: Any = redis_client.smembers(full_key)
                 return {json.loads(m) for m in members}
         except Exception as e:
             logger.error("Cache smembers failed", key=key, error=str(e))
@@ -557,7 +574,7 @@ class CacheManager:
         """Get the number of members in a set in the cache."""
         return await self.redis_cache.scard(key, prefix=prefix)
 
-    async def smembers(self, key: str, prefix: str = "temp_data") -> set:
+    async def smembers(self, key: str, prefix: str = "temp_data") -> Set[Any]:
         """Get all members of a set from the cache."""
         return await self.redis_cache.smembers(key, prefix=prefix)
 

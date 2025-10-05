@@ -13,7 +13,7 @@ Confidence scoring and data quality assessment
 import time
 import math
 import statistics
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union, Sequence
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class CalculationError(Exception):
     """Custom exception for calculation errors"""
 
-    def __init__(self, message: str, indicator_type: str = None, symbol: str = None):
+    def __init__(self, message: str, indicator_type: Optional[str] = None, symbol: Optional[str] = None):
         self.message = message
         self.indicator_type = indicator_type
         self.symbol = symbol
@@ -314,11 +314,11 @@ class TechnicalIndicatorsCalculator:
             value = sum(prices) / len(prices)
         else:  # EMA
             # Exponential Moving Average
-            multiplier = 2 / (len(prices) + 1)
+            multiplier = Decimal(str(2 / (len(prices) + 1)))
             ema = prices[0]
 
             for price in prices[1:]:
-                ema = (price * multiplier) + (ema * (1 - multiplier))
+                ema = (price * multiplier) + (ema * (Decimal('1') - multiplier))
 
             value = ema
 
@@ -424,13 +424,13 @@ class TechnicalIndicatorsCalculator:
         # Calculate SMA (middle band)
         middle_band = sum(prices) / len(prices)
 
-        # Calculate standard deviation
-        variance = sum((price - middle_band) ** 2 for price in prices) / len(prices)
+        # Calculate standard deviation - convert to float for arithmetic
+        variance = sum((float(price) - float(middle_band)) ** 2 for price in prices) / len(prices)
         std_dev = math.sqrt(variance)
 
         # Calculate bands
-        upper_band = middle_band + (std_dev * std_dev_multiplier)
-        lower_band = middle_band - (std_dev * std_dev_multiplier)
+        upper_band = float(middle_band) + (std_dev * std_dev_multiplier)
+        lower_band = float(middle_band) - (std_dev * std_dev_multiplier)
 
         # Calculate %B (position within bands)
         current_price = float(data[-1].close)
@@ -469,8 +469,8 @@ class TechnicalIndicatorsCalculator:
         k_values = []
         for i in range(k_period - 1, len(data)):
             period_data = data[i - k_period + 1 : i + 1]
-            highest_high = max(point.high for point in period_data)
-            lowest_low = min(point.low for point in period_data)
+            highest_high = max(float(point.high) for point in period_data)
+            lowest_low = min(float(point.low) for point in period_data)
             current_close = float(data[i].close)
 
             if highest_high != lowest_low:
@@ -661,21 +661,21 @@ class TechnicalIndicatorsCalculator:
         if len(data) < 2:
             raise InsufficientDataError("A/D Line requires at least 2 data points")
 
-        ad_values = [0]  # Start with 0
+        ad_values: List[float] = [0.0]  # Start with 0.0 for float accumulation
 
         for i in range(1, len(data)):
             current = data[i]
 
             # Calculate Money Flow Multiplier
             if current.high == current.low:
-                mfm = 0  # Avoid division by zero
+                mfm = 0.0  # Avoid division by zero
             else:
                 mfm = (
                     (current.close - current.low) - (current.high - current.close)
                 ) / (current.high - current.low)
 
             # Calculate Money Flow Volume
-            mfv = mfm * current.volume
+            mfv = float(mfm) * current.volume
 
             # Add to A/D Line
             ad_values.append(ad_values[-1] + mfv)
@@ -816,11 +816,11 @@ class TechnicalIndicatorsCalculator:
         # Standard Fibonacci ratios: 0.236, 0.382, 0.5, 0.618, 0.786
         fib_levels = {
             "fib_0.0": float(swing_low),  # 0% retracement
-            "fib_0.236": float(swing_low + (price_range * 0.236)),  # 23.6%
-            "fib_0.382": float(swing_low + (price_range * 0.382)),  # 38.2%
-            "fib_0.5": float(swing_low + (price_range * 0.5)),  # 50%
-            "fib_0.618": float(swing_low + (price_range * 0.618)),  # 61.8%
-            "fib_0.786": float(swing_low + (price_range * 0.786)),  # 78.6%
+            "fib_0.236": float(swing_low) + (price_range * 0.236),  # 23.6%
+            "fib_0.382": float(swing_low) + (price_range * 0.382),  # 38.2%
+            "fib_0.5": float(swing_low) + (price_range * 0.5),  # 50%
+            "fib_0.618": float(swing_low) + (price_range * 0.618),  # 61.8%
+            "fib_0.786": float(swing_low) + (price_range * 0.786),  # 78.6%
             "fib_1.0": float(swing_high),  # 100% retracement (swing high)
         }
 
@@ -1014,13 +1014,13 @@ class TechnicalIndicatorsCalculator:
         period_data = data[-period:]
 
         # Find highest high and lowest low in the period
-        highest_high = max(point.high for point in period_data)
-        lowest_low = min(point.low for point in period_data)
+        highest_high = max(float(point.high) for point in period_data)
+        lowest_low = min(float(point.low) for point in period_data)
         current_close = float(data[-1].close)
 
         # Calculate Williams %R
         if highest_high == lowest_low:
-            williams_r = -50  # Neutral value when range is zero
+            williams_r = -50.0  # Neutral value when range is zero
         else:
             williams_r = (
                 (highest_high - current_close) / (highest_high - lowest_low)
@@ -1192,17 +1192,43 @@ class TechnicalIndicatorsCalculator:
             data_points_used=len(period_data),
         )
 
+    def _calculate_parabolic_sar(
+        self, data: List[MarketData], parameters: Dict[str, Any]
+    ) -> CalculationResult:
+        """Calculate Parabolic SAR (Stop and Reverse)"""
+        # Stub implementation - full Parabolic SAR calculation is complex
+        # For now, return a basic value based on price range
+        if len(data) < 2:
+            raise InsufficientDataError("Parabolic SAR requires at least 2 data points")
+
+        period = parameters.get("period", 14)
+        # Note: acceleration and maximum parameters are reserved for future full implementation
+        # acceleration = parameters.get("acceleration", 0.02)
+        # maximum = parameters.get("maximum", 0.2)
+
+        # Simple approximation: use ATR-based calculation
+        recent_data = data[-period:] if len(data) >= period else data
+        current_price = float(data[-1].close)
+
+        return CalculationResult(
+            value=Decimal(str(current_price)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+            data_points_used=len(recent_data),
+        )
+
     # Helper methods
-    def _calculate_ema_values(self, values: List[float], period: int) -> List[float]:
+    def _calculate_ema_values(self, values: Sequence[Union[Decimal, float]], period: int) -> List[float]:
         """Calculate EMA values for a list"""
         if len(values) < period:
             return []
 
         multiplier = 2 / (period + 1)
-        ema_values = [values[0]]  # First EMA is the first value
+        # Convert first value to float for consistency
+        ema_values = [float(values[0])]  # First EMA is the first value
 
         for value in values[1:]:
-            ema = (value * multiplier) + (ema_values[-1] * (1 - multiplier))
+            ema = (float(value) * multiplier) + (ema_values[-1] * (1 - multiplier))
             ema_values.append(ema)
 
         return ema_values

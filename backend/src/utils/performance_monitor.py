@@ -61,6 +61,7 @@ AF = TypeVar("AF", bound=Callable[..., Awaitable[Any]])
 class _HasPerformanceTracker(Protocol):  # pragma: no cover - typing aid
     _performance_tracker: "PerformanceTracker"  # attribute injected dynamically
 
+
 # Performance thresholds and constants
 PERFORMANCE_THRESHOLDS = {
     "api_response_time": {"warning": 500, "critical": 1000},  # ms  # ms

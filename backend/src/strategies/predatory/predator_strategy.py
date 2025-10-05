@@ -1482,7 +1482,7 @@ class PredatorStrategy(BaseStrategy):
             logger.error("Failed to convert opportunity to signal", error=str(e))
             return None
 
-    async def calculate_position_size(self, signal: TradingSignal, portfolio: Any) -> float:
+    async def calculate_position_size(self, signal: TradingSignal, portfolio: Any) -> int:
         """
         Calculate position size with predator-specific risk management
 
@@ -1491,7 +1491,7 @@ class PredatorStrategy(BaseStrategy):
             portfolio: Current portfolio state
 
         Returns:
-            Position size as percentage of portfolio
+            Position size as number of shares/contracts (integer)
         """
         try:
             # Base position size from signal
@@ -1516,8 +1516,8 @@ class PredatorStrategy(BaseStrategy):
             if hasattr(portfolio, "current_drawdown") and portfolio.current_drawdown > 0.05:
                 portfolio_risk_multiplier = 0.5  # Reduce size if portfolio is down
 
-            # Calculate final position size
-            position_size = (
+            # Calculate final position size percentage
+            position_size_pct = (
                 base_size
                 * risk_multiplier
                 * confidence_multiplier
@@ -1526,14 +1526,26 @@ class PredatorStrategy(BaseStrategy):
             )
 
             # Ensure within strategy limits
-            position_size = min(position_size, self.config.max_position_size)
-            position_size = max(position_size, 0.01)  # Minimum 1% position
+            position_size_pct = min(position_size_pct, self.config.max_position_size)
+            position_size_pct = max(position_size_pct, 0.01)  # Minimum 1% position
+
+            # Convert percentage to number of shares
+            # Assume portfolio has total_value and signal has entry_price
+            portfolio_value = getattr(portfolio, "total_value", 100000.0)  # Default to 100k
+            entry_price = signal.entry_price if signal.entry_price else 1.0
+
+            position_value = portfolio_value * position_size_pct
+            num_shares = int(position_value / entry_price)
+
+            # Ensure at least 1 share
+            num_shares = max(1, num_shares)
 
             logger.debug(
                 "Position size calculated",
                 signal_id=signal.signal_id,
                 base_size=base_size,
-                final_size=position_size,
+                position_size_pct=position_size_pct,
+                num_shares=num_shares,
                 adjustments={
                     "risk": risk_multiplier,
                     "confidence": confidence_multiplier,
@@ -1542,11 +1554,18 @@ class PredatorStrategy(BaseStrategy):
                 },
             )
 
-            return position_size
+            return num_shares
 
         except Exception as e:
             logger.error("Position size calculation failed", error=str(e))
-            return signal.position_size_percentage * 0.5  # Conservative fallback
+            # Conservative fallback: calculate minimal position
+            try:
+                portfolio_value = getattr(portfolio, "total_value", 100000.0)
+                entry_price = signal.entry_price if signal.entry_price else 1.0
+                fallback_pct = signal.position_size_percentage * 0.5
+                return max(1, int((portfolio_value * fallback_pct) / entry_price))
+            except Exception:
+                return 1  # Absolute minimum fallback
 
     async def manage_risk(self, portfolio: Any) -> List[str]:
         """

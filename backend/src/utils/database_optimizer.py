@@ -603,18 +603,28 @@ class OptimizedConnectionPool:
     def get_pool_stats(self) -> Dict[str, Any]:
         """Get connection pool statistics"""
         with self._lock:
-            pool_info = {}
+            pool_info: Dict[str, Any] = {}
 
-            if self._engine and hasattr(self._engine.pool, "size"):
-                pool_info.update(
-                    {
-                        "pool_size": self._engine.pool.size(),
-                        "checked_in": self._engine.pool.checkedin(),
-                        "checked_out": self._engine.pool.checkedout(),
-                        "overflow": self._engine.pool.overflow(),
-                        "invalidated": self._engine.pool.invalidated(),
-                    }
-                )
+            if self._engine and isinstance(self._engine.pool, QueuePool):
+                # QueuePool has these attributes, but they're callable methods
+                try:
+                    pool_info.update(
+                        {
+                            "pool_size": self._engine.pool.size(),
+                            "checked_in": self._engine.pool.checkedin(),
+                            "checked_out": self._engine.pool.checkedout(),
+                            "overflow": self._engine.pool.overflow(),
+                            "invalidated": getattr(self._engine.pool, '_invalidated_count', 0),
+                        }
+                    )
+                except AttributeError:
+                    # If attributes are not available, use generic pool info
+                    pool_obj = getattr(self._engine.pool, '_pool', None)
+                    pool_info.update(
+                        {
+                            "pool_size": len(pool_obj) if pool_obj is not None and hasattr(pool_obj, '__len__') else 0,
+                        }
+                    )
 
             return {
                 **self.stats,

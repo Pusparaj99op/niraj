@@ -858,7 +858,7 @@ class RAGProcessor:
             pass  # Don't fail the operation for metrics update
 
     async def augment_analysis(
-        self, analysis_request: AnalysisRequest, max_context_items: int = None
+        self, analysis_request: AnalysisRequest, max_context_items: Optional[int] = None
     ) -> AnalysisRequest:
         """
         Augment analysis request with relevant knowledge
@@ -1134,12 +1134,12 @@ class RAGProcessor:
             response = await self.gemma3_client.analyze(enhanced_request)
 
             # Add RAG metadata to response
-            if response.metadata:
+            if response.metadata is not None:
                 response.metadata["rag_enhanced"] = True
-                if "knowledge_metadata" in (enhanced_request.context or {}):
-                    response.metadata.update(
-                        enhanced_request.context["knowledge_metadata"]
-                    )
+                ctx = enhanced_request.context or {}
+                km = ctx.get("knowledge_metadata") if isinstance(ctx, dict) else None
+                if isinstance(km, dict):
+                    response.metadata.update(km)
 
             return response
 

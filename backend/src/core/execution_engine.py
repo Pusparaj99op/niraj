@@ -30,7 +30,7 @@ from ..core.data_manager import DataManager
 class ExecutionEngineError(Exception):
     """Base exception for execution engine errors"""
 
-    def __init__(self, message: str, error_code: str = None, order_id: str = None):
+    def __init__(self, message: str, error_code: Optional[str] = None, order_id: Optional[str] = None):
         self.message = message
         self.error_code = error_code
         self.order_id = order_id
@@ -196,8 +196,9 @@ class RiskManager:
     Advanced risk management system with multiple layers of protection
     """
 
-    def __init__(self, db_manager: AdvancedDatabaseManager, config: Dict[str, Any]):
+    def __init__(self, db_manager: AdvancedDatabaseManager, data_manager: DataManager, config: Dict[str, Any]):
         self.db_manager = db_manager
+        self.data_manager = data_manager
         self.config = config
         self.logger = get_logger("niraj.execution.risk_manager")
 
@@ -447,10 +448,10 @@ class RiskManager:
 
                     try:
                         # Get historical returns for correlation calculation
-                        hist_data1 = await self.data_manager.get_historical_data(
+                        hist_data1 = await self.data_manager.get_historical_data(  # type: ignore[attr-defined]
                             symbol1, "NSE", "1D", limit=correlation_window_days
                         )
-                        hist_data2 = await self.data_manager.get_historical_data(
+                        hist_data2 = await self.data_manager.get_historical_data(  # type: ignore[attr-defined]
                             symbol2, "NSE", "1D", limit=correlation_window_days
                         )
 
@@ -559,7 +560,7 @@ class RiskManager:
             # Get recent volatility data
             volatility_window_days = self.config.get("volatility_window_days", 20)
 
-            hist_data = await self.data_manager.get_historical_data(
+            hist_data = await self.data_manager.get_historical_data(  # type: ignore[attr-defined]
                 order.symbol, "NSE", "1D", limit=volatility_window_days
             )
 
@@ -635,7 +636,7 @@ class RiskManager:
             max_position_value = portfolio_value * Decimal(str(adjusted_percentage))
 
             # Get current price for quantity calculation
-            current_price = await self.data_manager.get_current_price(
+            current_price = await self.data_manager.get_current_price(  # type: ignore[attr-defined]
                 order.symbol, "NSE"
             )
             if not current_price:
@@ -704,10 +705,12 @@ class OrderRouter:
         self,
         angel_client: AngelOneClient,
         dhan_client: DhanClient,
+        data_manager: DataManager,
         config: Dict[str, Any],
     ):
         self.angel_client = angel_client
         self.dhan_client = dhan_client
+        self.data_manager = data_manager
         self.config = config
         self.logger = get_logger("niraj.execution.order_router")
 
@@ -931,7 +934,7 @@ class OrderRouter:
         try:
             if broker_type == BrokerType.ANGEL_ONE:
                 # Use data manager to get symbol token
-                token = await self.data_manager._get_symbol_token(symbol, "NSE")
+                token = await self.data_manager._get_symbol_token(symbol, "NSE")  # type: ignore[attr-defined]
                 if token:
                     return token
 
@@ -1058,7 +1061,7 @@ class PositionManager:
             return self.position_cache[cache_key]
 
         # Query database
-        async with self.db_manager.get_session() as session:  # noqa: F841
+        async with self.db_manager.get_async_session() as session:  # noqa: F841
             # This would query the portfolio table
             # For now, return a new position
             # TODO: Implement actual database query
@@ -1104,7 +1107,7 @@ class PositionManager:
     async def _persist_position(self, position: Portfolio) -> None:
         """Persist position to database"""
         try:
-            async with self.db_manager.get_session() as session:  # noqa: F841
+            async with self.db_manager.get_async_session() as session:  # noqa: F841
                 # This would update/insert the portfolio record
                 # Implementation depends on the ORM setup
                 # TODO: Implement actual database persistence
@@ -1166,8 +1169,8 @@ class ExecutionEngine:
         self.logger = get_logger("niraj.execution.engine")
 
         # Core components
-        self.risk_manager = RiskManager(db_manager, config)
-        self.order_router = OrderRouter(angel_client, dhan_client, config)
+        self.risk_manager = RiskManager(db_manager, data_manager, config)
+        self.order_router = OrderRouter(angel_client, dhan_client, data_manager, config)
         self.position_manager = PositionManager(db_manager, config)
         self.data_manager = data_manager
 

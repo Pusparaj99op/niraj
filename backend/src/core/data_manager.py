@@ -153,7 +153,9 @@ async def retry_with_exponential_backoff(
 
             await asyncio.sleep(actual_delay)
 
-    # All retries failed
+    # All retries failed - ensure last_exception is not None
+    if last_exception is None:
+        raise RuntimeError("All retries failed but no exception was captured")
     raise last_exception
 
 
@@ -952,11 +954,11 @@ class HistoricalDataManager:
             max_workers=self.config.max_concurrent_requests
         )
 
+        # Log initialization without problematic parameters
+        sources_list = list(self.adapters.keys())
+        cache_status = self.cache is not None
         self.logger.info(
-            "Historical Data Manager initialized",
-            sources=list(self.adapters.keys()),
-            cache_enabled=self.cache is not None,
-            config=self.config.__dict__,
+            f"Historical Data Manager initialized with sources: {sources_list}, cache_enabled: {cache_status}"
         )
 
     @asynccontextmanager
@@ -981,7 +983,7 @@ class HistoricalDataManager:
                     "Data request completed successfully"
                 )
 
-            except Exception as e:
+            except Exception:
                 # Update failure statistics
                 self.stats["requests_failed"] += 1
                 duration = time.time() - start_time
@@ -1187,10 +1189,15 @@ class HistoricalDataManager:
             return data
 
         try:
-            # Use retry mechanism with circuit breaker
-            return await self._execute_with_circuit_breaker(
-                adapter.circuit_breaker, _fetch_attempt
-            )
+            # Use retry mechanism with circuit breaker if available
+            # Cast to concrete adapter type that has circuit_breaker
+            if hasattr(adapter, 'circuit_breaker'):
+                return await self._execute_with_circuit_breaker(
+                    adapter.circuit_breaker,  # type: ignore[attr-defined]
+                    _fetch_attempt
+                )
+            else:
+                return await _fetch_attempt()
         except asyncio.TimeoutError:
             self.logger.error(f"Timeout fetching from {source}")
             return None
@@ -1613,7 +1620,7 @@ class HistoricalDataManager:
                 # Safely access circuit_breaker attribute
                 circuit_breaker_state = {}
                 if hasattr(adapter, 'circuit_breaker'):
-                    circuit_breaker_state = adapter.circuit_breaker.get_state()
+                    circuit_breaker_state = adapter.circuit_breaker.get_state()  # type: ignore[attr-defined]
 
                 health_status["components"][source.value] = {
                     "status": "healthy" if adapter_healthy else "unhealthy",
@@ -1840,12 +1847,19 @@ async def create_data_manager(
     if angel_one_config:
         from ..api.angel_one_client import AngelOneClient
 
-        angel_one_client = AngelOneClient(config=angel_one_config)
+        angel_one_client = AngelOneClient(
+            api_key=angel_one_config.get("api_key", ""),  # type: ignore[arg-type]
+            client_code=angel_one_config.get("client_id", ""),  # type: ignore[arg-type]
+            client_pin=angel_one_config.get("pin", ""),  # type: ignore[arg-type]
+        )
 
     if dhan_config:
         from ..api.dhan_client import DhanClient
 
-        dhan_client = DhanClient(config=dhan_config)
+        dhan_client = DhanClient(
+            client_id=dhan_config.get("client_id", ""),  # type: ignore[arg-type]
+            access_token=dhan_config.get("access_token", ""),  # type: ignore[arg-type]
+        )
 
     # Create cache
     cache = None

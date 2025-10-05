@@ -197,7 +197,7 @@ class TestKnowledgeItem:
         item = KnowledgeItem(
             id="item_001",
             content="Test content for market analysis",
-            knowledge_type=KnowledgeType.MARKET_ANALYSIS,
+            knowledge_type=KnowledgeType.FUNDAMENTAL_ANALYSIS,
             title="Test Market Analysis",
             symbols=["AAPL", "MSFT"],
             sectors=["Technology"],
@@ -205,7 +205,7 @@ class TestKnowledgeItem:
         )
 
         assert item.id == "item_001"
-        assert item.knowledge_type == KnowledgeType.MARKET_ANALYSIS
+        assert item.knowledge_type == KnowledgeType.FUNDAMENTAL_ANALYSIS
         assert len(item.symbols) == 2
         assert item.content_hash is not None
 
@@ -335,6 +335,7 @@ class TestRAGProcessor:
             assert result["total_items"] == 2
             assert result["successful"] == 2
             assert result["failed"] == 0
+            assert self.rag_processor.vector_db is not None
             assert self.rag_processor.vector_db.get_item_count() == 2
 
     @pytest.mark.asyncio
@@ -443,6 +444,7 @@ class TestRAGProcessor:
 
             assert enhanced_request.analysis_type == analysis_request.analysis_type
             assert enhanced_request.input_data == analysis_request.input_data
+            assert enhanced_request.context is not None
             assert "retrieved_knowledge" in enhanced_request.context
             assert "knowledge_metadata" in enhanced_request.context
 
@@ -599,7 +601,9 @@ class TestRetrievalQuery:
         )
 
         assert query.query_text == "Test query"
+        assert query.knowledge_types is not None
         assert len(query.knowledge_types) == 1
+        assert query.symbols is not None
         assert query.symbols[0] == "AAPL"
         assert query.max_results == 5
         assert query.min_relevance_score == 0.7
@@ -694,7 +698,7 @@ class TestIntegration:
 
                     # 3. Test augmentation
                     analysis_request = AnalysisRequest(
-                        analysis_type=AnalysisType.FUNDAMENTAL_ANALYSIS,
+                        analysis_type=AnalysisType.TECHNICAL_ANALYSIS,
                         input_data={
                             "symbol": "AAPL",
                             "metrics": {"revenue_growth": 0.08, "pe_ratio": 25.5},
@@ -705,6 +709,7 @@ class TestIntegration:
                         analysis_request
                     )
 
+                    assert enhanced_request.context is not None
                     assert "retrieved_knowledge" in enhanced_request.context
                     knowledge_context = enhanced_request.context["retrieved_knowledge"]
                     assert "relevant_information" in knowledge_context

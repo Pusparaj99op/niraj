@@ -18,7 +18,7 @@ import base64
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Callable, Awaitable, TypeVar, cast
+from typing import Any, Dict, Optional, Callable, Awaitable, TypeVar
 from enum import Enum
 from pathlib import Path
 import os
@@ -183,7 +183,7 @@ class AuthToken:
 
     def is_valid(self) -> bool:
         """Check if token is valid"""
-        return self.access_token and not self.is_expired()
+        return bool(self.access_token) and not self.is_expired()
 
 
 # Exception Classes
@@ -764,9 +764,7 @@ class AuthenticationManager:
                     token.expires_at.isoformat() if token.expires_at else None
                 )
                 self.logger.info(
-                    "Authentication successful",
-                    provider=provider.value,
-                    token_expires_at=expires_info,
+                    f"Authentication successful - provider: {provider.value}, token_expires_at: {expires_info}"
                 )
 
                 return token

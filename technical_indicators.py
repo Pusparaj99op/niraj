@@ -1,7 +1,7 @@
 import pandas as pd
-import numpy as np
-from typing import Optional, Tuple, Union
+from typing import Tuple
 import talib
+
 
 class TechnicalIndicators:
     """Technical indicators calculator for trading strategies."""
@@ -76,8 +76,8 @@ class TechnicalIndicators:
 
     @staticmethod
     def calculate_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
-                            fastk_period: int = 14, slowk_period: int = 3,
-                            slowd_period: int = 3) -> Tuple[pd.Series, pd.Series]:
+                             fastk_period: int = 14, slowk_period: int = 3,
+                             slowd_period: int = 3) -> Tuple[pd.Series, pd.Series]:
         """Calculate Stochastic Oscillator."""
         if high is None or low is None or close is None or len(high) == 0:
             empty = pd.Series(dtype=float)

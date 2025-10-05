@@ -67,14 +67,20 @@ class ConfidenceLevel(str, Enum):
 
 
 class ConfidenceTrackingError(Exception):
-    """Base exception for confidence tracking errors"""
+    """Base exception for confidence tracking errors.
+
+    Optional fields are explicitly annotated to satisfy strict type checking.
+    """
 
     def __init__(
-        self, message: str, error_code: str = None, context: Dict[str, Any] = None
-    ):
-        self.message = message
-        self.error_code = error_code
-        self.context = context or {}
+        self,
+        message: str,
+        error_code: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.message: str = message
+        self.error_code: Optional[str] = error_code
+        self.context: Dict[str, Any] = context or {}
         super().__init__(self.message)
 
 
@@ -277,8 +283,10 @@ class AdvancedConfidenceTracker:
             # Record for learning
             await self._record_prediction_for_learning(prediction, adjusted_metrics)
 
-            # Update model profile
-            await self._update_model_profile(profile, adjusted_metrics)
+            # Update model profile with the prediction type key
+            await self._update_model_profile(
+                profile, adjusted_metrics, prediction.prediction_type
+            )
 
             processing_time = (time.time() - start_time) * 1000
 
@@ -1033,7 +1041,10 @@ class AdvancedConfidenceTracker:
             logger.error("Failed to record prediction for learning", error=str(e))
 
     async def _update_model_profile(
-        self, profile: ModelConfidenceProfile, metrics: ConfidenceMetrics
+        self,
+        profile: ModelConfidenceProfile,
+        metrics: ConfidenceMetrics,
+        prediction_type: PredictionType,
     ) -> None:
         """Update model profile with new prediction metrics"""
         try:
@@ -1050,11 +1061,10 @@ class AdvancedConfidenceTracker:
                     + alpha * metrics.calibrated_confidence
                 )
 
-            # Update type-specific confidence
-            pred_type = metrics.metric_type
-            if pred_type not in profile.type_confidence:
-                profile.type_confidence[pred_type] = ConfidenceMetrics(
-                    metric_type=pred_type,
+            # Update type-specific confidence keyed by PredictionType
+            if prediction_type not in profile.type_confidence:
+                profile.type_confidence[prediction_type] = ConfidenceMetrics(
+                    metric_type=metrics.metric_type,
                     raw_confidence=metrics.raw_confidence,
                     calibrated_confidence=metrics.calibrated_confidence,
                     reliability_score=metrics.reliability_score,
@@ -1062,7 +1072,7 @@ class AdvancedConfidenceTracker:
                     accuracy_rate=0.0,
                 )
             else:
-                type_metrics = profile.type_confidence[pred_type]
+                type_metrics = profile.type_confidence[prediction_type]
                 type_metrics.prediction_count += 1
 
                 # Update running averages

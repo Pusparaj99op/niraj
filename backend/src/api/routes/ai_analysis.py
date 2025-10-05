@@ -70,11 +70,11 @@ _ai_client: Optional[Gemma3Client] = None
 
 # Enums
 class AnalysisTypeEnum(str, Enum):
-    """Analysis types"""
+    """Public analysis types exposed by API (maps to internal AnalysisType)."""
 
     TECHNICAL = "technical"
-    NEWS_SENTIMENT = "news_sentiment"
-    MARKET_ANALYSIS = "market_analysis"
+    NEWS = "news"  # Maps to AnalysisType.NEWS_ANALYSIS
+    MARKET = "market"  # Maps to various internal analyses
     PATTERN_RECOGNITION = "pattern_recognition"
     RISK_ASSESSMENT = "risk_assessment"
 
@@ -304,7 +304,7 @@ async def get_ai_client() -> Gemma3Client:
     return _ai_client
 
 
-def cache_key(prefix: str, *args) -> str:
+def cache_key(prefix: str, *args: object) -> str:
     """Generate cache key for AI analysis"""
     return f"ai:{prefix}:{':'.join(str(arg) for arg in args)}"
 
@@ -330,7 +330,7 @@ async def get_cached_analysis(key: str, ttl: int = 1800) -> Optional[Dict[str, A
         return None
 
 
-async def set_cached_analysis(key: str, data: Dict[str, Any], ttl: int = 1800):
+async def set_cached_analysis(key: str, data: Dict[str, Any], ttl: int = 1800) -> None:
     """Set cached analysis data with error handling"""
     if not _cache_manager:
         return
@@ -524,7 +524,7 @@ async def analyze_technical(
                     timeframe=request.timeframe,
                     analysis_timestamp=start_time,
                     overall_signal=overall_signal,
-                    confidence_score=analysis_result.confidence,
+                    confidence_score=analysis_result.confidence_score,
                     key_findings=result_data.get("key_findings", []),
                     technical_indicators=indicators_analysis,
                     support_resistance=support_resistance,
@@ -561,7 +561,7 @@ async def analyze_technical(
                 "Technical analysis completed",
                 symbol=request.symbol,
                 signal=overall_signal.value,
-                confidence=analysis_result.confidence,
+                confidence=analysis_result.confidence_score,
                 duration=f"{duration:.3f}s",
             )
 
@@ -669,7 +669,7 @@ async def analyze_news_sentiment(
             # Prepare analysis request
             try:
                 analysis_request = AnalysisRequest(
-                    analysis_type=AnalysisType.NEWS_SENTIMENT,
+                    analysis_type=AnalysisType.NEWS_ANALYSIS,
                     input_data={
                         "articles": request.articles,
                         "symbol": request.symbol,
@@ -778,9 +778,9 @@ async def analyze_news_sentiment(
                         "market_moving_potential": (
                             1.0 if abs(overall_sentiment) > 0.7 else 0.5
                         ),
-                        "confidence_level": analysis_result.confidence,
+                        "confidence_level": analysis_result.confidence_score,
                     },
-                    confidence_score=analysis_result.confidence,
+                    confidence_score=analysis_result.confidence_score,
                 )
 
             except Exception as e:
@@ -802,7 +802,7 @@ async def analyze_news_sentiment(
                 "News sentiment analysis completed",
                 symbol=request.symbol,
                 overall_sentiment=overall_sentiment,
-                confidence=analysis_result.confidence,
+                confidence=analysis_result.confidence_score,
                 duration=f"{duration:.3f}s",
             )
 
@@ -914,8 +914,8 @@ async def generate_trading_signals(
                     detail="AI service is currently unavailable",
                 )
 
-            signals = []
-            high_confidence_count = 0
+            signals: List[TradingSignal] = []
+            high_confidence_count: int = 0
 
             # Generate signals for each symbol (simplified implementation)
             for symbol in request.symbols:
@@ -986,7 +986,7 @@ async def generate_trading_signals(
 
             # Generate signal summary and response
             try:
-                signal_summary = {}
+                signal_summary: Dict[str, int] = {}
                 for signal in signals:
                     signal_type = signal.signal_type.value
                     signal_summary[signal_type] = signal_summary.get(signal_type, 0) + 1

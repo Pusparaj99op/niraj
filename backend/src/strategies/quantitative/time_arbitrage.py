@@ -20,833 +20,78 @@ from typing import (
     Any,
     List,
     Optional,
-    Iterable,
     cast,
-    TYPE_CHECKING,
 )
 from dataclasses import dataclass, field
 from enum import Enum
 import structlog
-import uuid
 import statistics
 import math
 
 try:
-    from ...core.config import get_config  # type: ignore
-    from ...models.strategy import (
-        StrategyConfig as _ImportedStrategyConfig,
-        StrategyType as _ImportedStrategyType,
-    )  # type: ignore
-    from ...models.strategy_signal import SignalType as _ImportedSignalType  # type: ignore
-    from ...models.market_data import MarketData as _ImportedMarketData  # type: ignore
-    from ...models.technical_indicator import IndicatorType as _ImportedIndicatorType  # type: ignore
-    from ...utils.technical_indicators import (
-        TechnicalIndicatorsCalculator as _ImportedTechnicalIndicatorsCalculator,
-    )  # type: ignore
-    from ...ai.gemma3_integration import (
-        Gemma3Client as _ImportedGemma3Client,
-        AnalysisType as _ImportedAnalysisType,
-        AnalysisRequest as _ImportedAnalysisRequest,
-    )  # type: ignore
-    """Time Arbitrage Strategy Implementation.
+    from ...core.config import get_config  # type: ignore[import]
+    from ...models.strategy import StrategyConfig, StrategyType  # type: ignore[import]
+    from ...models.strategy_signal import SignalType  # type: ignore[import]
+    from ...models.market_data import MarketData  # type: ignore[import]
+    from ...models.technical_indicator import IndicatorType  # type: ignore[import]
+    from ...utils.technical_indicators import TechnicalIndicatorsCalculator  # type: ignore[import]
+    from ...ai.gemma3_integration import (  # type: ignore[import]
+        Gemma3Client,
+        AnalysisType,
+        AnalysisRequest,
+    )
+    from ...ai.confidence_tracker import AdvancedConfidenceTracker  # type: ignore[import]
+    from ..base_strategy import (  # type: ignore[import]
+        BaseStrategy,
+        MarketAnalysis,
+        TradingSignal,
+        StrategyPhase,
+        SignalGenerationError,
+        RiskManagementError,
+    )
+except ImportError as e:  # pragma: no cover - should not happen in production
+    raise RuntimeError(f"Required dependencies not available: {e}") from e
 
-    Refactored for clean type checking under Pylance (standard mode). Behavior is preserved; only
-    type definitions, guards, and fallbacks were clarified.
-    """
+# Configure structured logging
+logger = structlog.get_logger(__name__)
 
-    from __future__ import annotations
 
-    import asyncio
-    import math
-    import statistics
-    import time
-    import uuid
-    from dataclasses import dataclass, field
-    from datetime import datetime, timedelta
-    from enum import Enum
-    from typing import Any, Dict, Iterable, List, Optional, Sequence, cast, TYPE_CHECKING
+# Custom Exception Types for Time Arbitrage Strategy
+class TimeArbitrageError(Exception):
+    """Base exception for Time Arbitrage strategy errors"""
+    pass
 
-    import structlog
 
-    # --------------------------------------------------------------------------------------
-    # Primary imports (used at runtime) with TYPE_CHECKING imports for static analyzers
-    # --------------------------------------------------------------------------------------
-    try:  # Runtime attempt
-        from ...core.config import get_config  # type: ignore
-        from ...models.strategy import StrategyConfig, StrategyType  # type: ignore
-        from ...models.strategy_signal import SignalType  # type: ignore
-        from ...models.market_data import MarketData  # type: ignore
-        from ...models.technical_indicator import IndicatorType  # type: ignore
-        from ...utils.technical_indicators import TechnicalIndicatorsCalculator  # type: ignore
-        from ...ai.gemma3_integration import (  # type: ignore
-            Gemma3Client,
-            AnalysisType,
-            AnalysisRequest,
-        )
-        from ...ai.confidence_tracker import AdvancedConfidenceTracker  # type: ignore
-        from ..base_strategy import (  # type: ignore
-            BaseStrategy,
-            MarketAnalysis,
-            TradingSignal,
-            StrategyPhase,
-            SignalGenerationError,
-            RiskManagementError,
-        )
-        _FALLBACK = False
-    except Exception:  # pragma: no cover - fallback mode
-        _FALLBACK = True
+class ConfigurationError(TimeArbitrageError):
+    """Configuration validation errors"""
+    pass
 
-    if _FALLBACK:  # Provide minimal substitutes (only what's accessed below)
-        def get_config(path: str, default: Any = None) -> Any:  # noqa: D401
-            defaults: Dict[str, Any] = {
-                "strategy.time.min_timeframe_divergence": 0.5,
-                "strategy.time.max_timeframe_correlation": 0.8,
-                "strategy.time.opening_range_percentage": 0.02,
-                "strategy.time.momentum_threshold": 1.5,
-                "strategy.time.mean_reversion_lookback": 10,
-                "strategy.time.min_confidence": 0.75,
-                "strategy.time.max_history_size": 500,
-                "strategy.time.pattern_recognition_window": 100,
-                "strategy.time.max_active_opportunities": 5,
-                "strategy.time.max_concurrent_positions": 3,
-                "strategy.time.emergency_stop_multiplier": 1.8,
-                "strategy.time.profit_targets": [2.0, 4.0, 6.0, 8.0, 10.0],
-                "strategy.time.max_consecutive_failures": 4,
-            }
-            return defaults.get(path, default)
 
-        class StrategyType(str, Enum):  # type: ignore[override]
-            QUANTITATIVE = "quantitative"
+class ValidationError(TimeArbitrageError):
+    """Input validation errors"""
+    pass
 
-        @dataclass
-        class StrategyConfig:  # minimal fallback
-            name: str
-            description: str
-            strategy_type: StrategyType = StrategyType.QUANTITATIVE
-            max_position_size: float = 0.04
-            max_drawdown_limit: float = 0.06
-            stop_loss_percentage: float = 0.025
-            take_profit_percentage: float = 0.06
-            min_signal_strength: float = 0.75
-            max_trades_per_day: int = 8
-            supported_symbols: List[str] = field(default_factory=list)
-            custom_params: Dict[str, Any] = field(default_factory=dict)
 
-        class SignalType(str, Enum):  # fallback
-            BUY = "buy"
-            SELL = "sell"
+class TimeframeAnalysisError(TimeArbitrageError):
+    """Timeframe analysis related errors"""
+    pass
 
-        @dataclass
-        class MarketData:  # fallback version
-            symbol: str
-            timestamp: datetime
-            open: float = 0.0
-            high: float = 0.0
-            low: float = 0.0
-            close: float = 0.0
-            volume: int = 0
 
-        class IndicatorType(str, Enum):  # fallback
-            MOMENTUM = "momentum"
-            RSI = "rsi"
-            MACD = "macd"
-            BOLLINGER_BANDS = "bollinger_bands"
-            MOVING_AVERAGE = "moving_average"
+class StatisticalArbitrageError(TimeArbitrageError):
+    """Statistical arbitrage errors"""
+    pass
 
-        class TechnicalIndicatorsCalculator:  # fallback
-            class _Result:
-                def __init__(self) -> None:
-                    self.value: float = 0.5
-                    self.values: List[float] = [0.5]
 
-            def calculate_indicator(
-                self, indicator_type: IndicatorType | str, data: Sequence[Any], **_: Any
-            ) -> "TechnicalIndicatorsCalculator._Result":
-                return TechnicalIndicatorsCalculator._Result()
+class PatternRecognitionError(TimeArbitrageError):
+    """Pattern recognition errors"""
+    pass
 
-        class AnalysisType(str, Enum):  # fallback
-            PATTERN_RECOGNITION = "pattern_recognition"
 
-        @dataclass
-        class AnalysisRequest:  # fallback
-            analysis_type: AnalysisType
-            input_data: Dict[str, Any]
-            confidence_threshold: float = 0.7
+class ResourceError(TimeArbitrageError):
+    """Resource management errors"""
+    pass
 
-        class Gemma3Client:  # fallback
-            async def connect(self) -> None:
-                return None
 
-            async def disconnect(self) -> None:
-                return None
-
-            async def analyze(self, request: AnalysisRequest) -> Any:  # noqa: D401
-                class _Resp:
-                    result = {
-                        "confidence": 0.5,
-                        "key_points": [],
-                        "rationale": "fallback",
-                    }
-                    confidence_score = 0.5
-                    processing_time_ms = 10
-
-                return _Resp()
-
-            @property
-            def is_connected(self) -> bool:  # noqa: D401
-                return True
-
-        class AdvancedConfidenceTracker:  # fallback
-            def update(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401
-                return None
-
-        class StrategyPhase(str, Enum):  # fallback
-            INITIALIZING = "initializing"
-            ANALYZING = "analyzing"
-            SIGNAL_GENERATION = "signal_generation"
-
-        class SignalGenerationError(Exception):
-            pass
-
-        class RiskManagementError(Exception):
-            pass
-
-        @dataclass
-        class MarketAnalysis:  # fallback
-            symbol: str
-            analysis_type: str = ""
-            indicators: Dict[str, Any] = field(default_factory=dict)
-            ai_insights: Dict[str, Any] = field(default_factory=dict)
-            sentiment_score: float = 0.0
-            volatility: float = 0.0
-            liquidity_score: float = 1.0
-            confidence_score: float = 0.5
-            processing_time_ms: float = 0.0
-
-        @dataclass
-        class TradingSignal:  # fallback
-            strategy_id: str
-            symbol: str
-            signal_type: SignalType
-            strength: float
-            entry_price: float
-            stop_loss_price: float
-            take_profit_price: float
-            position_size_percentage: float
-            quantity: int
-            reasoning: str
-            supporting_data: Dict[str, Any] = field(default_factory=dict)
-            expiry_minutes: int = 60
-            signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-
-        class BaseStrategy:  # fallback minimal
-            def __init__(self, config: StrategyConfig, learning_engine: Any | None = None) -> None:
-                self.config = config
-                self.learning_engine = learning_engine
-                self.strategy_id = str(uuid.uuid4())
-                self.current_phase: StrategyPhase = StrategyPhase.INITIALIZING
-                self.active_positions: Dict[str, Any] = {}
-                self.last_analysis: Dict[str, Any] = {}
-                self.performance = type("Perf", (), {"total_return": 0.0})()
-
-            async def initialize(self) -> bool:  # noqa: D401
-                return True
-
-            async def manage_risk(self, _portfolio: Any) -> List[str]:  # noqa: D401
-                return []
-
-            async def update_performance(self, _trade: Dict[str, Any]) -> None:  # noqa: D401
-                return None
-
-            async def health_check(self) -> Dict[str, Any]:  # noqa: D401
-                return {"status": "ok"}
-
-            async def cleanup(self) -> None:  # noqa: D401
-                return None
-
-            async def _close_position(self, position_id: str, _reason: str) -> None:  # noqa: D401
-                self.active_positions.pop(position_id, None)
-
-    # --------------------------------------------------------------------------------------
-    # Shared logging
-    # --------------------------------------------------------------------------------------
-    logger = structlog.get_logger(__name__)
-
-    # --------------------------------------------------------------------------------------
-    # Custom Exceptions (specific to this strategy)
-    # --------------------------------------------------------------------------------------
-    class TimeArbitrageError(Exception):
-        pass
-
-
-    class ConfigurationError(TimeArbitrageError):
-        pass
-
-
-    class ValidationError(TimeArbitrageError):
-        pass
-
-
-    class TimeframeAnalysisError(TimeArbitrageError):
-        pass
-
-
-    class StatisticalArbitrageError(TimeArbitrageError):
-        pass
-
-
-    class PatternRecognitionError(TimeArbitrageError):
-        pass
-
-
-    class ResourceError(TimeArbitrageError):
-        pass
-
-
-    # --------------------------------------------------------------------------------------
-    # Validators
-    # --------------------------------------------------------------------------------------
-    class TimeArbitrageValidator:
-        @staticmethod
-        def validate_market_data(market_data: Any) -> None:
-            if market_data is None:
-                raise ValidationError("Market data cannot be None")
-            for attr in ("symbol", "timestamp", "close", "volume"):
-                if not hasattr(market_data, attr):
-                    raise ValidationError(f"Market data missing attribute: {attr}")
-            if not isinstance(market_data.symbol, str) or not market_data.symbol.strip():
-                raise ValidationError("Invalid symbol")
-            if not isinstance(market_data.close, (int, float)) or market_data.close <= 0:
-                raise ValidationError("Invalid close price")
-            if not isinstance(market_data.volume, (int, float)) or market_data.volume < 0:
-                raise ValidationError("Invalid volume")
-            if market_data.timestamp > datetime.utcnow() + timedelta(minutes=1):
-                raise ValidationError("Timestamp in future")
-
-        @staticmethod
-        def validate_config(config: StrategyConfig) -> None:  # type: ignore[override]
-            if config.strategy_type != StrategyType.QUANTITATIVE:
-                raise ConfigurationError("strategy_type must be QUANTITATIVE")
-            if not (0 < config.max_position_size <= 0.1):
-                raise ConfigurationError("max_position_size out of range")
-            if not (0 < config.max_drawdown_limit <= 0.1):
-                raise ConfigurationError("max_drawdown_limit out of range")
-            cp = getattr(config, "custom_params", {}) or {}
-            div = cp.get("min_timeframe_divergence")
-            if div is not None and not (isinstance(div, (int, float)) and 0 <= div <= 5):
-                raise ConfigurationError("min_timeframe_divergence invalid")
-            orp = cp.get("opening_range_percentage")
-            if orp is not None and not (isinstance(orp, (int, float)) and 0 < orp <= 0.1):
-                raise ConfigurationError("opening_range_percentage invalid")
-
-
-    # --------------------------------------------------------------------------------------
-    # Enums & Data Structures
-    # --------------------------------------------------------------------------------------
-    class TimeframeType(str, Enum):
-        TICK = "tick"
-        MINUTE_1 = "1m"
-        MINUTE_5 = "5m"
-        MINUTE_15 = "15m"
-        HOUR_1 = "1h"
-        HOUR_4 = "4h"
-        DAY_1 = "1d"
-        WEEK_1 = "1w"
-
-
-    class ArbitrageType(str, Enum):
-        TIMEFRAME_DIVERGENCE = "timeframe_divergence"
-        MOMENTUM_BREAKOUT = "momentum_breakout"
-        OPENING_RANGE_BREAK = "opening_range_break"
-        INTRADAY_REVERSAL = "intraday_reversal"
-        STATISTICAL_ARBITRAGE = "statistical_arbitrage"
-        CALENDAR_EFFECT = "calendar_effect"
-        SEASONAL_PATTERN = "seasonal_pattern"
-
-
-    class TimeArbitrageSignal(str, Enum):
-        SHORT_TERM_BREAKOUT = "short_term_breakout"
-        MEDIUM_TERM_DIVERGENCE = "medium_term_divergence"
-        LONG_TERM_TREND_FOLLOW = "long_term_trend_follow"
-        OPENING_RANGE_FADE = "opening_range_fade"
-        TIME_BASED_REVERSAL = "time_based_reversal"
-
-
-    @dataclass
-    class TimeframeData:
-        timeframe: TimeframeType
-        timestamp: datetime
-        price: float
-        volume: int
-        momentum: float = 0.0
-        volatility: float = 0.0
-        trend_strength: float = 0.0
-        support_resistance: Dict[str, float] = field(default_factory=dict)
-
-
-    @dataclass
-    class ArbitrageOpportunity:
-        arbitrage_type: ArbitrageType
-        signal_type: TimeArbitrageSignal
-        entry_price: float
-        stop_loss_price: float
-        take_profit_price: float
-        position_size_percentage: float
-        confidence_score: float
-        expected_return: float
-        risk_reward_ratio: float
-        holding_period_minutes: int
-        expiry_seconds: int
-        reasoning: str
-        timeframe_analysis: Dict[str, Any] = field(default_factory=dict)
-        statistical_metrics: Dict[str, Any] = field(default_factory=dict)
-
-
-    @dataclass
-    class TimeArbitrageSignalData:
-        signal_type: ArbitrageType
-        confidence_score: float
-        direction: str
-        expected_return: float
-        entry_price: float
-        timeframe_divergence: float
-        statistical_significance: float
-        detection_timestamp: datetime
-        supporting_evidence: Dict[str, Any] = field(default_factory=dict)
-        risk_assessment: Dict[str, Any] = field(default_factory=dict)
-
-
-    # --------------------------------------------------------------------------------------
-    # Strategy Implementation
-    # --------------------------------------------------------------------------------------
-    class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
-        min_timeframe_divergence: float
-        max_timeframe_correlation: float
-        opening_range_percentage: float
-        momentum_threshold: float
-        mean_reversion_lookback: float
-        min_confidence_threshold: float
-        timeframe_history: Dict[str, List[TimeframeData]]
-        max_history_size: int
-        arbitrage_signals: List[TimeArbitrageSignalData]
-        pattern_recognition_window: float
-        active_opportunities: Dict[str, ArbitrageOpportunity]
-        statistical_models: Dict[str, Any]
-        correlation_matrices: Dict[str, List[float]]
-        max_active_opportunities: int
-        indicators_calculator: TechnicalIndicatorsCalculator
-        ai_client: Gemma3Client
-        confidence_tracker: AdvancedConfidenceTracker
-        time_arbitrage_stats: Dict[str, Any]
-        max_concurrent_positions: int
-        emergency_stop_loss_multiplier: float
-        profit_targets: List[float]
-        circuit_breaker_active: bool
-        circuit_breaker_reason: str
-        circuit_breaker_timestamp: Optional[datetime]
-        consecutive_failures: int
-        max_consecutive_failures: int
-        market_open_time: Optional[datetime]
-        opening_range_high: Optional[float]
-        opening_range_low: Optional[float]
-        opening_range_established: bool
-
-        def __init__(self, config: StrategyConfig, learning_engine: Any | None = None) -> None:  # type: ignore[override]
-            TimeArbitrageValidator.validate_config(config)
-            super().__init__(config, learning_engine)
-
-            # Load config values
-            self.min_timeframe_divergence = float(get_config("strategy.time.min_timeframe_divergence", 0.5))
-            self.max_timeframe_correlation = float(get_config("strategy.time.max_timeframe_correlation", 0.8))
-            self.opening_range_percentage = float(get_config("strategy.time.opening_range_percentage", 0.02))
-            self.momentum_threshold = float(get_config("strategy.time.momentum_threshold", 1.5))
-            self.mean_reversion_lookback = float(get_config("strategy.time.mean_reversion_lookback", 10))
-            self.min_confidence_threshold = float(get_config("strategy.time.min_confidence", 0.75))
-            self.max_history_size = int(get_config("strategy.time.max_history_size", 500))
-            self.pattern_recognition_window = float(get_config("strategy.time.pattern_recognition_window", 100))
-            self.max_active_opportunities = int(get_config("strategy.time.max_active_opportunities", 5))
-            self.max_concurrent_positions = int(get_config("strategy.time.max_concurrent_positions", 3))
-            self.emergency_stop_loss_multiplier = float(get_config("strategy.time.emergency_stop_multiplier", 1.8))
-            self.profit_targets = list(get_config("strategy.time.profit_targets", [2.0, 4.0, 6.0, 8.0, 10.0]))
-            self.max_consecutive_failures = int(get_config("strategy.time.max_consecutive_failures", 4))
-
-            # State containers
-            self.timeframe_history = {}
-            self.arbitrage_signals = []
-            self.active_opportunities = {}
-            self.statistical_models = {}
-            self.correlation_matrices = {}
-
-            self.indicators_calculator = TechnicalIndicatorsCalculator()
-            self.ai_client = Gemma3Client()
-            self.confidence_tracker = AdvancedConfidenceTracker()
-
-            self.time_arbitrage_stats = {
-                "total_opportunities": 0,
-                "successful_trades": 0,
-                "failed_trades": 0,
-                "average_return_per_trade": 0.0,
-                "win_rate": 0.0,
-                "average_holding_period": 0.0,
-                "max_drawdown": 0.0,
-                "total_trading_volume": 0.0,
-                "best_trade": 0.0,
-                "worst_trade": 0.0,
-                "arbitrage_accuracy": 0.0,
-                "timeframe_prediction_accuracy": 0.0,
-                "statistical_significance_rate": 0.0,
-            }
-
-            self.circuit_breaker_active = False
-            self.circuit_breaker_reason = ""
-            self.circuit_breaker_timestamp = None
-            self.consecutive_failures = 0
-
-            self.market_open_time = None
-            self.opening_range_high = None
-            self.opening_range_low = None
-            self.opening_range_established = False
-
-        async def initialize(self) -> bool:  # type: ignore[override]
-            try:
-                self.current_phase = StrategyPhase.INITIALIZING
-                await self.ai_client.connect()
-                self.current_phase = StrategyPhase.ANALYZING
-                return True
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.error("Initialization failed", error=str(exc))
-                return False
-
-        async def _update_timeframe_data(self, market_data: MarketData) -> None:
-            history = self.timeframe_history.setdefault(market_data.symbol, [])
-            tf = TimeframeData(
-                timeframe=TimeframeType.MINUTE_1,
-                timestamp=market_data.timestamp,
-                price=market_data.close,
-                volume=market_data.volume,
-            )
-            if len(history) >= 5:
-                recent = [p.price for p in history[-5:]] + [market_data.close]
-                if recent[0] != 0:
-                    tf.momentum = (recent[-1] - recent[0]) / recent[0] * 100
-            if len(history) >= 10:
-                prices = [p.price for p in history[-10:]] + [market_data.close]
-                if len(prices) > 1:
-                    rets = [
-                        (prices[i] - prices[i - 1]) / prices[i - 1]
-                        for i in range(1, len(prices))
-                        if prices[i - 1] != 0
-                    ]
-                    if len(rets) > 1:
-                        tf.volatility = statistics.stdev(rets) * math.sqrt(252)
-            history.append(tf)
-            if len(history) > self.max_history_size:
-                history.pop(0)
-
-        async def _establish_opening_range(self, market_data: MarketData) -> None:
-            try:
-                current_time = market_data.timestamp.time()
-                if current_time.hour == 9 and current_time.minute >= 15 and not self.opening_range_established:
-                    if self.market_open_time is None:
-                        self.market_open_time = market_data.timestamp
-                    if self.opening_range_high is None or market_data.high > self.opening_range_high:
-                        self.opening_range_high = market_data.high
-                    if self.opening_range_low is None or market_data.low < self.opening_range_low:
-                        self.opening_range_low = market_data.low
-                    if (
-                        self.market_open_time
-                        and (market_data.timestamp - self.market_open_time).seconds >= 900
-                    ):
-                        self.opening_range_established = True
-            except Exception as exc:  # pragma: no cover
-                logger.warning("Opening range establishment failed", error=str(exc))
-
-        async def _calculate_timeframe_indicators(self, market_data: MarketData) -> Dict[str, Any]:
-            history = self.timeframe_history.get(market_data.symbol, [])
-            if len(history) < 10:
-                return {}
-            data_points: List[Dict[str, Any]] = [
-                {"close": tf.price, "volume": tf.volume} for tf in history[-50:]
-            ]
-            result: Dict[str, Any] = {}
-            for name in ("MOMENTUM", "RSI", "MACD", "BOLLINGER_BANDS", "MOVING_AVERAGE"):
-                ind = getattr(IndicatorType, name, None)
-                if ind is None:
-                    continue
-                try:
-                    r = self.indicators_calculator.calculate_indicator(ind, data_points)  # type: ignore[arg-type]
-                    val = getattr(r, "value", None)
-                    result[name.lower()] = val if val is not None else getattr(r, "values", None)
-                except Exception as exc:  # pragma: no cover
-                    logger.warning("Indicator calc failed", indicator=name, error=str(exc))
-                    result[name.lower()] = None
-            result["multi_timeframe"] = await self._calculate_multi_timeframe_metrics(market_data.symbol)
-            return result
-
-        async def _calculate_multi_timeframe_metrics(self, symbol: str) -> Dict[str, Any]:  # noqa: D401
-            # Placeholder synthetic metrics (original logic retained)
-            current_price = 100.0
-            def pack(ma_mult: float, mom: float) -> Dict[str, Any]:
-                return {
-                    "price": current_price,
-                    "ma": current_price * ma_mult,
-                    "momentum": mom,
-                    "trend": "down" if mom < 0 else "up",
-                }
-            return {
-                "short_term": pack(0.995, -0.5),
-                "medium_term": pack(1.01, 1.2),
-                "long_term": pack(0.98, -1.8),
-            }
-
-        async def _analyze_timeframe_correlations(self, indicators: Dict[str, Any]) -> Dict[str, Any]:
-            mt = indicators.get("multi_timeframe", {})
-            correlations: Dict[str, float] = {}
-            def corr(a: float, b: float) -> float:
-                return (a * b) / (abs(a) * abs(b)) if a != 0 and b != 0 else 0.0
-            if "short_term" in mt and "medium_term" in mt:
-                correlations["short_medium"] = corr(mt["short_term"]["momentum"], mt["medium_term"]["momentum"])
-            if "medium_term" in mt and "long_term" in mt:
-                correlations["medium_long"] = corr(mt["medium_term"]["momentum"], mt["long_term"]["momentum"])
-            divergences: Dict[str, Any] = {}
-            if mt.get("short_term") and mt.get("medium_term") and mt["short_term"]["trend"] != mt["medium_term"]["trend"]:
-                divergences["short_medium"] = {
-                    "type": "divergence",
-                    "short_trend": mt["short_term"]["trend"],
-                    "medium_trend": mt["medium_term"]["trend"],
-                    "magnitude": abs(mt["short_term"]["momentum"] - mt["medium_term"]["momentum"]),
-                }
-            if mt.get("medium_term") and mt.get("long_term") and mt["medium_term"]["trend"] != mt["long_term"]["trend"]:
-                divergences["medium_long"] = {
-                    "type": "divergence",
-                    "medium_trend": mt["medium_term"]["trend"],
-                    "long_trend": mt["long_term"]["trend"],
-                    "magnitude": abs(mt["medium_term"]["momentum"] - mt["long_term"]["momentum"]),
-                }
-            avg = sum(correlations.values()) / len(correlations) if correlations else 0.0
-            return {"correlations": correlations, "divergences": divergences, "average_correlation": avg}
-
-        async def _detect_arbitrage_opportunities(
-            self,
-            market_data: MarketData,
-            indicators: Dict[str, Any],
-            correlation_analysis: Dict[str, Any],
-        ) -> List[TimeArbitrageSignalData]:
-            opportunities: List[TimeArbitrageSignalData] = []
-            divergences: Dict[str, Any] = correlation_analysis.get("divergences", {})
-            for key, data in divergences.items():
-                magnitude = float(data.get("magnitude", 0.0))
-                if magnitude >= self.min_timeframe_divergence:
-                    direction = "long" if data.get("short_trend", "up") == "up" else "short"
-                    opportunities.append(
-                        TimeArbitrageSignalData(
-                            signal_type=ArbitrageType.TIMEFRAME_DIVERGENCE,
-                            confidence_score=min(0.9, magnitude / 5.0),
-                            direction=direction,
-                            expected_return=magnitude * 0.5,
-                            entry_price=market_data.close,
-                            timeframe_divergence=magnitude,
-                            statistical_significance=magnitude / 2.0,
-                            detection_timestamp=market_data.timestamp,
-                            supporting_evidence={"divergence_type": key, **{k: data.get(k) for k in ("short_trend", "medium_trend", "long_trend")}},
-                        )
-                    )
-            self.arbitrage_signals.extend(opportunities)
-            self.arbitrage_signals = self.arbitrage_signals[-50:]
-            return opportunities
-
-        async def _get_ai_temporal_insights(
-            self,
-            market_data: MarketData,
-            indicators: Dict[str, Any],
-            correlation_analysis: Dict[str, Any],
-        ) -> Dict[str, Any]:
-            try:
-                temporal_context = {
-                    "symbol": market_data.symbol,
-                    "current_price": float(market_data.close),
-                    "timeframe_indicators": indicators,
-                    "correlation_analysis": correlation_analysis,
-                    "arbitrage_signals": len(self.arbitrage_signals),
-                    "opening_range_established": self.opening_range_established,
-                    "market_session_time": market_data.timestamp.strftime("%H:%M:%S"),
-                    "timeframe_history_length": len(self.timeframe_history.get(market_data.symbol, [])),
-                }
-                req = AnalysisRequest(
-                    analysis_type=getattr(AnalysisType, "PATTERN_RECOGNITION", AnalysisType.PATTERN_RECOGNITION),
-                    input_data={"market_data": temporal_context, "analysis_focus": "temporal_arbitrage_patterns"},
-                    confidence_threshold=0.7,
-                )
-                resp = await self.ai_client.analyze(req)
-                return {
-                    "temporal_patterns": resp.result.get("key_points", []),
-                    "market_regime": resp.result.get("market_regime", "neutral"),
-                    "overall_confidence": getattr(resp, "confidence_score", 0.5),
-                    "ai_reasoning": resp.result.get("rationale", ""),
-                }
-            except Exception as exc:  # pragma: no cover
-                logger.warning("AI insights failed", error=str(exc))
-                return {"temporal_patterns": [], "market_regime": "unknown", "overall_confidence": 0.5, "ai_reasoning": "failed"}
-
-        async def analyze_market(self, market_data: MarketData) -> MarketAnalysis:  # type: ignore[override]
-            TimeArbitrageValidator.validate_market_data(market_data)
-            start = time.time()
-            await self._update_timeframe_data(market_data)
-            await self._establish_opening_range(market_data)
-            indicators = await self._calculate_timeframe_indicators(market_data)
-            correlation = await self._analyze_timeframe_correlations(indicators)
-            await self._detect_arbitrage_opportunities(market_data, indicators, correlation)
-            ai = await self._get_ai_temporal_insights(market_data, indicators, correlation)
-            analysis = MarketAnalysis(
-                symbol=market_data.symbol,
-                analysis_type="time_arbitrage_analysis",
-                indicators=indicators,
-                ai_insights=ai,
-                sentiment_score=0.0,
-                volatility=0.0,
-                liquidity_score=1.0,
-                confidence_score=ai.get("overall_confidence", 0.5),
-                processing_time_ms=(time.time() - start) * 1000,
-            )
-            self.last_analysis[market_data.symbol] = analysis
-            self.consecutive_failures = 0
-            return analysis
-
-        def _create_degraded_analysis(self, market_data: MarketData) -> MarketAnalysis:
-            return MarketAnalysis(symbol=market_data.symbol, analysis_type="degraded")
-
-        async def generate_signals(self, analysis: MarketAnalysis) -> List[TradingSignal]:  # type: ignore[override]
-            if self.circuit_breaker_active:
-                raise TimeArbitrageError(f"Circuit breaker active: {self.circuit_breaker_reason}")
-            signals: List[TradingSignal] = []
-            if not self.arbitrage_signals:
-                return signals
-            for arb in self.arbitrage_signals[-10:]:
-                if arb.confidence_score < self.min_confidence_threshold:
-                    continue
-                opportunity = await self._create_arbitrage_opportunity(arb, analysis)
-                if opportunity and opportunity.confidence_score >= self.min_confidence_threshold:
-                    signal = await self._convert_opportunity_to_signal(opportunity, analysis)
-                    if signal:
-                        signals.append(signal)
-            return signals
-
-        async def _create_arbitrage_opportunity(
-            self, arbitrage_signal: TimeArbitrageSignalData, analysis: MarketAnalysis
-        ) -> Optional[ArbitrageOpportunity]:
-            base_size = 0.04
-            confidence_multiplier = arbitrage_signal.confidence_score
-            return_multiplier = min(2.0, arbitrage_signal.expected_return / 2.0) if arbitrage_signal.expected_return else 1.0
-            position_size = base_size * confidence_multiplier * return_multiplier
-            stop_dist = arbitrage_signal.entry_price * 0.02
-            stop_loss = (
-                arbitrage_signal.entry_price - stop_dist
-                if arbitrage_signal.direction == "long"
-                else arbitrage_signal.entry_price + stop_dist
-            )
-            profit_targets_abs = [arbitrage_signal.expected_return * pt / 100 for pt in self.profit_targets]
-            take_profit = (
-                arbitrage_signal.entry_price + profit_targets_abs[0]
-                if arbitrage_signal.direction == "long"
-                else arbitrage_signal.entry_price - profit_targets_abs[0]
-            )
-            risk = abs(arbitrage_signal.entry_price - stop_loss) or 1e-9
-            reward = abs(take_profit - arbitrage_signal.entry_price)
-            rr = reward / risk
-            holding = 30 if arbitrage_signal.signal_type == ArbitrageType.TIMEFRAME_DIVERGENCE else 20
-            return ArbitrageOpportunity(
-                arbitrage_type=arbitrage_signal.signal_type,
-                signal_type=TimeArbitrageSignal.MEDIUM_TERM_DIVERGENCE,
-                entry_price=arbitrage_signal.entry_price,
-                stop_loss_price=stop_loss,
-                take_profit_price=take_profit,
-                position_size_percentage=position_size,
-                confidence_score=arbitrage_signal.confidence_score,
-                expected_return=arbitrage_signal.expected_return,
-                risk_reward_ratio=rr,
-                holding_period_minutes=holding,
-                expiry_seconds=holding * 60,
-                reasoning="Time arbitrage detected",
-                timeframe_analysis={"divergence": arbitrage_signal.timeframe_divergence},
-                statistical_metrics={"expected_return": arbitrage_signal.expected_return},
-            )
-
-        async def _convert_opportunity_to_signal(
-            self, opportunity: ArbitrageOpportunity, analysis: MarketAnalysis
-        ) -> Optional[TradingSignal]:
-            qty = max(1, int((opportunity.position_size_percentage * 100000) / (opportunity.entry_price or 1)))
-            sig_type = SignalType.BUY if "long" in opportunity.reasoning.lower() else SignalType.SELL
-            return TradingSignal(
-                strategy_id=self.strategy_id,
-                symbol=analysis.symbol,
-                signal_type=sig_type,
-                strength=opportunity.confidence_score,
-                entry_price=opportunity.entry_price,
-                stop_loss_price=opportunity.stop_loss_price,
-                take_profit_price=opportunity.take_profit_price,
-                position_size_percentage=opportunity.position_size_percentage,
-                quantity=qty,
-                reasoning=opportunity.reasoning,
-                supporting_data={"expected_return": opportunity.expected_return},
-                expiry_minutes=opportunity.holding_period_minutes,
-            )
-
-        async def calculate_position_size(self, signal: TradingSignal, portfolio: Any) -> float:  # type: ignore[override]
-            base = signal.position_size_percentage
-            drawdown = float(getattr(portfolio, "current_drawdown", 0.0))
-            if drawdown > 0.03:
-                base *= 0.9
-            return max(0.01, min(base, self.config.max_position_size * 0.9))
-
-        async def manage_risk(self, portfolio: Any) -> List[str]:  # type: ignore[override]
-            actions = await super().manage_risk(portfolio)
-            if len(self.active_positions) > self.max_concurrent_positions:
-                actions.append("time_arbitrage_concurrent_position_limit")
-            return actions
-
-        async def health_check(self) -> Dict[str, Any]:  # type: ignore[override]
-            base = await super().health_check()
-            base.update(
-                {
-                    "timeframe_history_size": sum(len(h) for h in self.timeframe_history.values()),
-                    "arbitrage_signals": len(self.arbitrage_signals),
-                    "circuit_breaker": self.circuit_breaker_active,
-                }
-            )
-            return base
-
-        async def cleanup(self) -> None:  # type: ignore[override]
-            try:
-                await self.ai_client.disconnect()
-            finally:
-                await super().cleanup()
-
-
-    # --------------------------------------------------------------------------------------
-    # Factory
-    # --------------------------------------------------------------------------------------
-    def create_time_arbitrage_strategy(config: StrategyConfig, learning_engine: Any | None = None) -> TimeArbitrageStrategy:
-        return TimeArbitrageStrategy(config, learning_engine)
-
-
-    # --------------------------------------------------------------------------------------
-    # Example (kept minimal; excluded from type checking if desired)
-    # --------------------------------------------------------------------------------------
-    async def example_time_arbitrage_usage() -> None:  # pragma: no cover - illustrative
-        cfg = StrategyConfig(
-            name="NIRAJ Time Arbitrage Strategy",
-            description="Quantitative"
-        )
-        strat = create_time_arbitrage_strategy(cfg)
-        await strat.initialize()
-        md = MarketData(symbol="NIFTY", timestamp=datetime.utcnow(), close=100.0, open=99.0, high=101.0, low=98.5, volume=100000)  # type: ignore[arg-type]
-        analysis = await strat.analyze_market(md)
-        _signals = await strat.generate_signals(analysis)
-        await strat.cleanup()
-
-
-    if __name__ == "__main__":  # pragma: no cover
-        asyncio.run(example_time_arbitrage_usage())
 # Validation utilities
 class TimeArbitrageValidator:
     """Comprehensive validation utilities for Time arbitrage strategy"""
@@ -1667,7 +912,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             logger.warning("Failed to establish opening range", error=str(e))
 
     async def _calculate_timeframe_indicators(
-    self, market_data: Any  # type: ignore[override]
+        self, market_data: Any  # type: ignore[override]
     ) -> Dict[str, Any]:
         """Calculate indicators across multiple timeframes"""
         try:
@@ -1757,7 +1002,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             return {}
 
     async def _analyze_timeframe_correlations(
-    self, market_data: Any, indicators: Dict[str, Any]  # type: ignore[override]
+        self, market_data: Any, indicators: Dict[str, Any]  # type: ignore[override]
     ) -> Dict[str, Any]:
         """Analyze correlations between different timeframes"""
         try:
@@ -1838,7 +1083,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
 
     async def _detect_arbitrage_opportunities(
         self,
-    market_data: Any,
+        market_data: Any,
         indicators: Dict[str, Any],
         correlation_analysis: Dict[str, Any],
     ) -> List[TimeArbitrageSignalData]:
@@ -1960,7 +1205,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
 
     async def _get_ai_temporal_insights(
         self,
-    market_data: Any,
+        market_data: Any,
         indicators: Dict[str, Any],
         correlation_analysis: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -2021,7 +1266,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             }
 
     async def _calculate_temporal_market_metrics(
-    self, market_data: Any, indicators: Dict[str, Any]
+        self, market_data: Any, indicators: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Calculate comprehensive temporal market metrics"""
         try:
@@ -2202,7 +1447,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             raise SignalGenerationError(f"Failed to generate signals: {str(e)}")
 
     async def _create_arbitrage_opportunity(
-    self, arbitrage_signal: TimeArbitrageSignalData, analysis: Any  # type: ignore[override]
+        self, arbitrage_signal: TimeArbitrageSignalData, analysis: Any  # type: ignore[override]
     ) -> Optional[ArbitrageOpportunity]:
         """Create an arbitrage opportunity from arbitrage signal"""
         try:
@@ -2291,7 +1536,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             return None
 
     async def _generate_statistical_arbitrage_signals(
-    self, analysis: Any  # type: ignore[override]
+        self, analysis: Any  # type: ignore[override]
     ) -> List[TradingSignal]:
         """Generate statistical arbitrage signals"""
         try:
@@ -2314,7 +1559,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
                     strategy_id=self.strategy_id,
                     symbol=analysis.symbol,
                     signal_type=(
-                        BUY_SIGNAL_TYPE if direction == "long" else SELL_SIGNAL_TYPE
+                        SignalType.BUY if direction == "long" else SignalType.SELL  # type: ignore[possibly-unbound]
                     ),
                     strength=confidence,
                     entry_price=current_price,
@@ -2348,7 +1593,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             return []
 
     async def _convert_opportunity_to_signal(
-    self, opportunity: ArbitrageOpportunity, analysis: Any  # type: ignore[override]
+        self, opportunity: ArbitrageOpportunity, analysis: Any  # type: ignore[override]
     ) -> Optional[TradingSignal]:
         """Convert arbitrage opportunity to trading signal"""
         try:
@@ -2369,7 +1614,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             signal = TradingSignal(
                 strategy_id=self.strategy_id,
                 symbol=analysis.symbol,
-                signal_type=(BUY_SIGNAL_TYPE if signal_direction_is_long else SELL_SIGNAL_TYPE),
+                signal_type=(SignalType.BUY if signal_direction_is_long else SignalType.SELL),  # type: ignore[possibly-unbound]
                 strength=float(opportunity.confidence_score),
                 entry_price=entry_price_val,
                 stop_loss_price=stop_loss_val,
@@ -2401,7 +1646,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             return None
 
     async def _create_opportunity_from_signal(
-    self, signal: Any, analysis: Any  # type: ignore[override]
+        self, signal: Any, analysis: Any  # type: ignore[override]
     ) -> Optional[ArbitrageOpportunity]:
         """Create opportunity from trading signal"""
         try:
@@ -2439,7 +1684,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             logger.error("Failed to create opportunity from signal", error=str(e))
             return None
 
-    async def calculate_position_size(self, signal: Any, portfolio) -> float:  # type: ignore[override]
+    async def calculate_position_size(self, signal: Any, portfolio) -> int:  # type: ignore[override]
         """
         Calculate position size with time arbitrage-specific quantitative risk management
 
@@ -2448,7 +1693,7 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             portfolio: Current portfolio state
 
         Returns:
-            Position size as percentage of portfolio
+            Position size as number of shares/contracts (integer)
         """
         try:
             # Base position size from signal
@@ -2483,8 +1728,8 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             if float(getattr(portfolio, "current_drawdown", 0.0)) > 0.03:
                 portfolio_risk_multiplier = 0.9  # Slightly reduce in portfolio drawdown
 
-            # Calculate final position size
-            position_size = (
+            # Calculate final position size percentage
+            position_size_pct = (
                 base_size
                 * confidence_multiplier
                 * return_multiplier
@@ -2494,14 +1739,25 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
             )
 
             # Ensure within strategy limits
-            position_size = min(position_size, self.config.max_position_size * 0.9)
-            position_size = max(position_size, 0.01)  # Minimum 1% position
+            position_size_pct = min(position_size_pct, self.config.max_position_size * 0.9)
+            position_size_pct = max(position_size_pct, 0.01)  # Minimum 1% position
+
+            # Convert percentage to number of shares
+            portfolio_value = getattr(portfolio, "total_value", 100000.0)  # Default to 100k
+            entry_price = signal.entry_price if signal.entry_price else 1.0
+
+            position_value = portfolio_value * position_size_pct
+            num_shares = int(position_value / entry_price)
+
+            # Ensure at least 1 share
+            num_shares = max(1, num_shares)
 
             logger.debug(
                 "Position size calculated",
                 signal_id=signal.signal_id,
                 base_size=base_size,
-                final_size=position_size,
+                position_size_pct=position_size_pct,
+                num_shares=num_shares,
                 adjustments={
                     "confidence": confidence_multiplier,
                     "return": return_multiplier,
@@ -2511,11 +1767,18 @@ class TimeArbitrageStrategy(BaseStrategy):  # type: ignore[misc]
                 },
             )
 
-            return position_size
+            return num_shares
 
         except Exception as e:
             logger.error("Position size calculation failed", error=str(e))
-            return signal.position_size_percentage * 0.8  # Conservative fallback
+            # Conservative fallback: calculate minimal position
+            try:
+                portfolio_value = getattr(portfolio, "total_value", 100000.0)
+                entry_price = signal.entry_price if signal.entry_price else 1.0
+                fallback_pct = signal.position_size_percentage * 0.8
+                return max(1, int((portfolio_value * fallback_pct) / entry_price))
+            except Exception:
+                return 1  # Absolute minimum fallback
 
     async def manage_risk(self, portfolio) -> List[str]:
         """
@@ -3143,7 +2406,7 @@ async def example_time_arbitrage_usage():
         print("Time arbitrage strategy initialized successfully")
 
         # Example market data using defined MarketData class for typing
-            # Attempt to construct with rich OHLC fields; fallback to minimal required signature
+        # Attempt to construct with rich OHLC fields; fallback to minimal required signature
         try:
             market_data = MarketData(  # type: ignore[call-arg]
                 symbol="NIFTY",
@@ -3168,10 +2431,10 @@ async def example_time_arbitrage_usage():
         )
 
         # Generate signals
-    signals = await time_arbitrage.generate_signals(analysis)  # type: ignore[arg-type]
+        signals = await time_arbitrage.generate_signals(analysis)  # type: ignore[arg-type]
         print(f"Generated {len(signals)} time arbitrage signals")
 
-    for signal in signals:  # type: ignore[assignment]
+        for signal in signals:  # type: ignore[assignment]
             print(
                 f"Signal: {signal.signal_type.value} {signal.symbol} at {signal.entry_price} (strength: {signal.strength:.3f})"
             )

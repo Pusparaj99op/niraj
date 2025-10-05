@@ -19,7 +19,7 @@ import feedparser
 from pydantic import BaseModel, Field, field_validator
 
 try:
-    from ..utils.logger import get_logger, log_performance, LogContext
+    from ..utils.logger import get_logger, log_performance, LogContext  # type: ignore[assignment]
 except ImportError:
     # Fallback for standalone usage
     import logging
@@ -34,10 +34,10 @@ except ImportError:
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
         return logger
 
-    def log_performance(name: str = None):
+    def log_performance(func_name: Optional[str] = None):
         """Simple performance logging decorator fallback"""
 
         def decorator(func):
@@ -48,13 +48,13 @@ except ImportError:
     class LogContext:
         """Simple context manager fallback"""
 
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> "LogContext":
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *args: Any) -> None:
             pass
 
 
@@ -172,7 +172,10 @@ class Article(BaseModel):
 
     @field_validator("published_at", mode="before")
     @classmethod
-    def parse_published_at(cls, v):
+    def parse_published_at(cls, v: Any) -> datetime:
+        """Parse published_at from various formats"""
+        if isinstance(v, datetime):
+            return v
         if isinstance(v, str):
             # Handle various date formats
             formats = [
@@ -189,7 +192,8 @@ class Article(BaseModel):
                     continue
             # Fallback to current time if parsing fails
             return datetime.now()
-        return v
+        # For any other type, return current time
+        return datetime.now()
 
 
 class NewsFilter(BaseModel):
@@ -799,6 +803,22 @@ class NewsClient:
 
     def _standardize_rss_article(self, entry: Any, feed_name: str) -> Article:
         """Convert RSS feed entry to standardized format"""
+        # Get published date, handling both string and struct_time formats
+        published_raw = getattr(entry, "published", None)
+        if published_raw is None:
+            published_dt = datetime.now()
+        elif isinstance(published_raw, datetime):
+            published_dt = published_raw
+        elif isinstance(published_raw, str):
+            # Parse string using the same logic as the validator
+            published_dt = self._parse_date_string(published_raw)
+        else:
+            # Handle struct_time or other formats
+            try:
+                published_dt = self._parse_date_string(str(published_raw))
+            except Exception:
+                published_dt = datetime.now()
+
         return Article(
             source=feed_name,
             provider="rss",
@@ -808,7 +828,7 @@ class NewsClient:
             url=getattr(entry, "link", ""),
             image_url=None,  # RSS feeds may not have images
             author=getattr(entry, "author", None),
-            published_at=getattr(entry, "published", datetime.now().isoformat()),
+            published_at=published_dt,
             category="business",
             relevance_score=self._calculate_relevance_score(
                 {
@@ -817,6 +837,23 @@ class NewsClient:
                 }
             ),
         )
+
+    def _parse_date_string(self, date_str: str) -> datetime:
+        """Parse date string with multiple format attempts"""
+        formats = [
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%d %H:%M:%S",
+            "%a, %d %b %Y %H:%M:%S %Z",
+            "%a, %d %b %Y %H:%M:%S %z",
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        # Fallback to current time if parsing fails
+        return datetime.now()
 
     # Public API Methods
 
@@ -1013,6 +1050,10 @@ class NewsClient:
         articles = []
         for article_data in response if isinstance(response, list) else []:
             try:
+                # Type guard: ensure article_data is a dict
+                if not isinstance(article_data, dict):
+                    self.logger.warning(f"Skipping non-dict FMP article data: {type(article_data)}")
+                    continue
                 article = self._standardize_fmp_article(article_data)
                 articles.append(article)
             except Exception as e:

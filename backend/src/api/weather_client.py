@@ -17,7 +17,7 @@ import httpx
 from pydantic import BaseModel, Field, field_validator
 
 try:
-    from ..utils.logger import get_logger, log_performance, LogContext
+    from ..utils.logger import get_logger, log_performance, LogContext  # type: ignore[assignment]
 except ImportError:
     # Fallback for standalone usage
     import logging
@@ -32,10 +32,10 @@ except ImportError:
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
         return logger
 
-    def log_performance(name: str = None):
+    def log_performance(func_name: Optional[str] = None):
         """Simple performance logging decorator fallback"""
 
         def decorator(func):
@@ -46,13 +46,13 @@ except ImportError:
     class LogContext:
         """Simple context manager fallback"""
 
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> "LogContext":
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *args: Any) -> None:
             pass
 
 
@@ -609,15 +609,21 @@ class WeatherClient:
         self.stats["cache_misses"] += 1
 
         # Prepare request parameters
-        request_params = params or {}
+        request_params: Dict[str, Any] = params.copy() if params else {}
         request_params["appid"] = self.config.api_key
-        request_params.update(query.to_query_string().split("&"))
 
-        # Clean up params (convert k=v strings to dict)
-        clean_params = {}
+        # Parse query string and add to params
+        query_string = query.to_query_string()
+        for param_pair in query_string.split("&"):
+            if "=" in param_pair:
+                k, v = param_pair.split("=", 1)
+                request_params[k] = v
+
+        # Clean up params (convert k=v strings to dict if needed)
+        clean_params: Dict[str, Any] = {}
         for key, value in request_params.items():
-            if "=" in str(value):
-                k, v = str(value).split("=", 1)
+            if isinstance(value, str) and "=" in value and key not in ["appid", "q", "zip"]:
+                k, v = value.split("=", 1)
                 clean_params[k] = v
             else:
                 clean_params[key] = value
@@ -1042,7 +1048,7 @@ class WeatherClient:
 
     @log_performance("weather_multi_location")
     async def get_multi_location_weather(
-        self, locations: List[LocationQuery], data_types: List[str] = None
+        self, locations: List[LocationQuery], data_types: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
         """
         Get weather data for multiple locations

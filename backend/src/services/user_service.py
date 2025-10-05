@@ -533,7 +533,7 @@ class AdvancedUserService:
                 async with self.db_manager.get_async_session() as session:
                     user_orm = await self.db_manager.read(session, UserORM, user.user_id)
                     if user_orm:
-                        user_pin_hash = user_orm.pin_hash
+                        user_pin_hash = user_orm.pin_hash  # type: ignore[assignment]
 
                 if not user_pin_hash or not bcrypt.checkpw(
                     pin.encode("utf-8"), user_pin_hash.encode("utf-8")
@@ -1041,13 +1041,14 @@ class AdvancedUserService:
                         await self._create_audit_log(
                             session,
                             user.user_id,
-                            AuditEventType.USER_CREATED,
+                            AuditEventType.CONFIG_CHANGE,  # Using CONFIG_CHANGE for user creation
                             AuditSeverity.INFO,
                             {
                                 "username": user.username,
                                 "trading_mode": user.trading_mode.value,
                                 "operator_id": context.operator_id if context else None,
                                 "ip_address": context.ip_address if context else None,
+                                "action": "user_created",
                             },
                         )
 
@@ -1311,9 +1312,10 @@ class AdvancedUserService:
                         await self._create_audit_log(
                             session,
                             user_id,
-                            AuditEventType.USER_UPDATED,
+                            AuditEventType.CONFIG_CHANGE,  # Using CONFIG_CHANGE for user update
                             AuditSeverity.INFO,
                             {
+                                "action": "user_updated",
                                 "changes": changes,
                                 "operator_id": context.operator_id if context else None,
                                 "ip_address": context.ip_address if context else None,
@@ -1413,11 +1415,11 @@ class AdvancedUserService:
                                 "preferences": preferences,
                             },
                         )
-                        operation_type = AuditEventType.USER_DEACTIVATED
+                        operation_type = AuditEventType.CONFIG_CHANGE  # User deactivation
                     else:
                         # Hard delete
                         await self.db_manager.delete(session, user_orm)
-                        operation_type = AuditEventType.USER_DELETED
+                        operation_type = AuditEventType.CONFIG_CHANGE  # User deletion
 
                     # Create audit log entry
                     if self.config.get("enable_audit_logging", True):
@@ -1841,10 +1843,13 @@ class AdvancedUserService:
                     if not user_orm:
                         raise UserNotFoundError(user_id)
 
+                    # Get pin_hash as string
+                    pin_hash_value: Optional[str] = str(user_orm.pin_hash) if user_orm.pin_hash else None  # type: ignore[arg-type]
+
                     # Verify current PIN
-                    if not user_orm.pin_hash or not bcrypt.checkpw(
+                    if not pin_hash_value or not bcrypt.checkpw(
                         pin_change_request.old_pin.encode("utf-8"),
-                        user_orm.pin_hash.encode("utf-8"),
+                        pin_hash_value.encode("utf-8"),
                     ):
                         # Log security event
                         await self._create_audit_log(
@@ -1862,7 +1867,7 @@ class AdvancedUserService:
 
                     # Validate new PIN
                     await self._validate_new_pin(
-                        pin_change_request.new_pin, user_orm.pin_hash
+                        pin_change_request.new_pin, pin_hash_value
                     )
 
                     # Hash new PIN
@@ -1885,7 +1890,7 @@ class AdvancedUserService:
                     await self._create_audit_log(
                         session,
                         user_id,
-                        AuditEventType.SECURITY_PIN_CHANGE,
+                        AuditEventType.PIN_CHANGE,  # Using PIN_CHANGE instead of SECURITY_PIN_CHANGE
                         AuditSeverity.INFO,
                         {
                             "action": "PIN changed",
@@ -1895,7 +1900,7 @@ class AdvancedUserService:
                     )
 
                 # Clear user cache
-                await self._invalidate_user_cache(user_id, user_orm.username)
+                await self._invalidate_user_cache(user_id, str(user_orm.username))  # type: ignore[arg-type]
 
                 try:
                     self.logger.info(f"PIN changed successfully user_id={user_id}")
@@ -1936,7 +1941,7 @@ class AdvancedUserService:
         try:
             with LogContext(
                 operation="bulk_user_operation",
-                operation=operation.operation,
+                bulk_operation=operation.operation,
                 user_count=len(operation.user_ids),
             ):
                 results: BulkOperationResponse = {
@@ -2013,9 +2018,10 @@ class AdvancedUserService:
                                     await self._create_audit_log(
                                         session,
                                         user_id,
-                                        AuditEventType.USER_BULK_OPERATION,
+                                        AuditEventType.CONFIG_CHANGE,  # Using CONFIG_CHANGE for bulk operations
                                         AuditSeverity.INFO,
                                         {
+                                            "action": "bulk_user_operation",
                                             "bulk_operation": operation.operation,
                                             "reason": operation.reason,
                                             "operator_id": (
@@ -2028,9 +2034,10 @@ class AdvancedUserService:
                                 results["processed_user_ids"].append(user_id)
 
                                 # Clear cache for this user
-                                if user_orm.username:
+                                username_value = str(user_orm.username) if user_orm.username else None  # type: ignore[arg-type]
+                                if username_value:
                                     await self._invalidate_user_cache(
-                                        user_id, user_orm.username
+                                        user_id, username_value
                                     )
 
                             except Exception as e:

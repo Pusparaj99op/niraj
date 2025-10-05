@@ -22,7 +22,6 @@ from typing import Dict, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import structlog
 
@@ -78,7 +77,15 @@ class BacktestResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Enhanced error response model"""
+    """Enhanced error response model used for documentation.
+
+    NOTE: We no longer return JSONResponse directly from route handlers for
+    error paths (which confused mypy due to declared return models). Instead
+    we raise HTTPException with a structured detail payload matching this
+    schema. This keeps FastAPI behaviour the same while satisfying static
+    typing (functions now always either return the declared success model
+    type or raise an exception).
+    """
 
     error: str
     error_code: str
@@ -102,30 +109,31 @@ async def get_strategy_service() -> StrategyService:
 
 
 # Error handling utilities
-def create_error_response(
+def _build_error_detail(
+    *,
     error: str,
     error_code: str,
     message: str,
-    status_code: int,
     details: Optional[Dict[str, Any]] = None,
     path: Optional[str] = None,
-) -> JSONResponse:
-    """Create standardized error response"""
-    return JSONResponse(
-        status_code=status_code,
-        content=ErrorResponse(
-            error=error,
-            error_code=error_code,
-            message=message,
-            details=details,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            path=path,
-        ).dict(),
-    )
+) -> Dict[str, Any]:
+    """Helper to build error detail payload (kept separate for reuse)."""
+    return ErrorResponse(
+        error=error,
+        error_code=error_code,
+        message=message,
+        details=details,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        path=path,
+    ).dict()
 
 
-def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
-    """Handle strategy-related errors with appropriate HTTP status codes"""
+def handle_strategy_error(e: Exception, request_path: str) -> HTTPException:
+    """Map strategy related exceptions to HTTPException.
+
+    Returning HTTPException object allows callers to simply `raise` it while
+    keeping static return types of route handlers clean.
+    """
     logger.warning(
         "Strategy operation error",
         error_type=type(e).__name__,
@@ -149,13 +157,15 @@ def handle_strategy_error(e: Exception, request_path: str) -> JSONResponse:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         error_code = "INTERNAL_ERROR"
 
-    return create_error_response(
-        error=type(e).__name__,
-        error_code=error_code,
-        message=str(e),
+    return HTTPException(
         status_code=status_code,
-        details={"strategy_id": getattr(e, "strategy_id", None)},
-        path=request_path,
+        detail=_build_error_detail(
+            error=type(e).__name__,
+            error_code=error_code,
+            message=str(e),
+            details={"strategy_id": getattr(e, "strategy_id", None)},
+            path=request_path,
+        ),
     )
 
 
@@ -233,9 +243,9 @@ async def list_strategies(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("List strategies error", error=str(e))
-        return handle_strategy_error(e, "/strategies")
+        raise handle_strategy_error(e, "/strategies")
 
 
 @router.post(
@@ -308,9 +318,9 @@ async def create_strategy(
 
             return strategy
 
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Create strategy error", error=str(e))
-        return handle_strategy_error(e, "/strategies")
+        raise handle_strategy_error(e, "/strategies")
 
 
 @router.get(
@@ -375,9 +385,9 @@ async def get_strategy(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Get strategy error", strategy_id=strategy_id, error=str(e))
-        return handle_strategy_error(e, f"/strategies/{strategy_id}")
+        raise handle_strategy_error(e, f"/strategies/{strategy_id}")
 
 
 @router.put(
@@ -462,9 +472,9 @@ async def update_strategy(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Update strategy error", strategy_id=strategy_id, error=str(e))
-        return handle_strategy_error(e, f"/strategies/{strategy_id}")
+        raise handle_strategy_error(e, f"/strategies/{strategy_id}")
 
 
 @router.delete(
@@ -533,9 +543,9 @@ async def delete_strategy(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Delete strategy error", strategy_id=strategy_id, error=str(e))
-        return handle_strategy_error(e, f"/strategies/{strategy_id}")
+        raise handle_strategy_error(e, f"/strategies/{strategy_id}")
 
 
 @router.post(
@@ -631,9 +641,9 @@ async def run_backtest(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - defensive
         logger.error("Backtest error", strategy_id=strategy_id, error=str(e))
-        return handle_strategy_error(e, f"/strategies/{strategy_id}/backtest")
+        raise handle_strategy_error(e, f"/strategies/{strategy_id}/backtest")
 
 
 # Service initialization functions
