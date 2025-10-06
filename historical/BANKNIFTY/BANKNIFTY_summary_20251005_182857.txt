@@ -1,0 +1,18 @@
+============================================================
+BANK NIFTY HISTORICAL DATA SUMMARY
+============================================================
+
+Download Date: 2025-10-05 18:28:57
+Symbol: BANKNIFTY
+Ticker: ^NSEBANK
+Source: Yahoo Finance
+
+Total Records: 4152
+Date Range: 2007-09-17 to 2025-10-03
+Data Span: 18.0 years
+
+Files Generated:
+  - BANKNIFTY_historical_20251005_182857.csv (CSV format)
+  - BANKNIFTY_historical_20251005_182857.json (JSON format)
+
+============================================================

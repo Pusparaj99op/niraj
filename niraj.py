@@ -64,18 +64,24 @@ See SYSTEM_MONITORING_FEATURES.md for detailed documentation.
 """
 
 import argparse
+import asyncio
+import contextlib
 import json
 import os
+import platform
+import select
+import shlex
 import signal
 import subprocess
 import sys
+import textwrap
 import time
 import threading
 import datetime
 import webbrowser
 import shutil
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Protocol, runtime_checkable, Mapping
+from typing import List, Optional, Dict, Any, Protocol, runtime_checkable, Mapping, Tuple
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -143,8 +149,104 @@ except ImportError:  # pragma: no cover
 
     COLORAMA_AVAILABLE = False
 
+try:
+    import termios
+    import tty
+except ImportError:  # pragma: no cover
+    termios = None  # type: ignore[assignment]
+    tty = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - Windows fallback
+    import msvcrt  # type: ignore
+except ImportError:  # pragma: no cover
+    msvcrt = None  # type: ignore[assignment]
+
 # Project root
 PROJECT_ROOT = Path(__file__).parent.absolute()
+
+STATUS_EMOJI_MAP = {
+    "green": "🟢",
+    "yellow": "🟡",
+    "red": "🔴",
+    "purple": "🟣",
+}
+
+if COLORAMA_AVAILABLE:
+    STATUS_COLOR_MAP = {
+        "green": Fore.GREEN,
+        "yellow": Fore.YELLOW,
+        "red": Fore.RED,
+        "purple": Fore.MAGENTA,
+    }
+else:  # pragma: no cover
+    STATUS_COLOR_MAP = {
+        "green": "",
+        "yellow": "",
+        "red": "",
+        "purple": "",
+    }
+
+STATUS_LEGEND_ITEMS = (
+    ("green", "Working"),
+    ("yellow", "Pending"),
+    ("red", "Issue"),
+    ("purple", "Undetected"),
+)
+
+
+def _format_status_chip(color_key: str, label: str) -> str:
+    emoji = STATUS_EMOJI_MAP.get(color_key, "⬜")
+    if COLORAMA_AVAILABLE:
+        color = STATUS_COLOR_MAP.get(color_key, "")
+        return f"{color}{emoji} {label}{Style.RESET_ALL}"
+    return f"{emoji} {label}"
+
+
+def print_status_legend(prefix: str = "Legend:") -> None:
+    chips = "  ".join(_format_status_chip(color, label) for color, label in STATUS_LEGEND_ITEMS)
+    print(f"{prefix} {chips}\n")
+
+
+@contextlib.contextmanager
+def _terminal_cbreak() -> Any:
+    """Switch stdin to cbreak mode for single-character reads."""
+    if termios is None or tty is None:
+        yield False
+        return
+    if not sys.stdin.isatty():
+        yield False
+        return
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        yield True
+    finally:  # pragma: no cover - best effort restore
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def _read_single_key(timeout: float) -> Optional[str]:
+    """Read one character without blocking longer than timeout seconds."""
+    timeout = max(timeout, 0.0)
+    if msvcrt:  # pragma: no cover - Windows
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if msvcrt.kbhit():  # type: ignore[attr-defined]
+                char = msvcrt.getwch()  # type: ignore[attr-defined]
+                return char
+            time.sleep(0.05)
+        return None
+
+    if termios and sys.stdin.isatty():
+        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+        if rlist:
+            return sys.stdin.read(1)
+        return None
+
+    # Fallback: blocking sleep to keep timing consistent
+    time.sleep(timeout)
+    return None
 
 
 @dataclass
@@ -159,11 +261,17 @@ class ServiceConfig:
     cwd: Path
     env: Dict[str, str]
     health_check_url: Optional[str] = None
+    health_check_command: Optional[str] = None
     health_check_timeout: int = 30
+    health_check_interval: float = 10.0
     startup_time: int = 5
     color: str = getattr(Fore, "BLUE", "")
     start_time: Optional[float] = field(default=None, init=False)
     restart_count: int = field(default=0, init=False)
+    last_health_status: Optional[str] = field(default=None, init=False)
+    last_health_checked_at: Optional[float] = field(default=None, init=False)
+    last_health_message: Optional[str] = field(default=None, init=False)
+    last_health_color: str = field(default="purple", init=False)
 
 
 @runtime_checkable
@@ -440,6 +548,19 @@ class NirajRunner:
                     startup_time_val = int(startup_time_val)  # type: ignore[arg-type]
                 except (ValueError, TypeError):
                     startup_time_val = 5
+            health_check_timeout_val = service_data.get("health_check_timeout", 30)
+            try:
+                health_check_timeout_val = int(health_check_timeout_val)  # type: ignore[arg-type]
+            except (ValueError, TypeError):
+                health_check_timeout_val = 30
+            health_check_interval_val = service_data.get("health_check_interval", 10.0)
+            try:
+                health_check_interval_val = float(health_check_interval_val)  # type: ignore[arg-type]
+            except (ValueError, TypeError):
+                health_check_interval_val = 10.0
+            health_check_cmd = service_data.get("health_check")
+            if health_check_cmd is not None and not isinstance(health_check_cmd, str):
+                health_check_cmd = str(health_check_cmd)
             color_key = service_data.get("color", "blue")
             if not isinstance(color_key, str):
                 color_key = str(color_key)
@@ -449,6 +570,9 @@ class NirajRunner:
                 cwd=PROJECT_ROOT / cwd_val,
                 env=env_clean,
                 health_check_url=service_data.get("health_check_url"),
+                health_check_command=health_check_cmd,
+                health_check_timeout=health_check_timeout_val,
+                health_check_interval=health_check_interval_val,
                 startup_time=startup_time_val,
                 color=color_map.get(color_key, getattr(Fore, "BLUE", "")),
             )
@@ -513,19 +637,29 @@ class NirajRunner:
         self.log("✅ Prerequisites check completed", "success")
         return True
 
-    def _is_tool_available(self, tool: str) -> bool:
-        """Check if a tool is available in PATH"""
+    def _check_tool_availability(self, tool: str) -> Tuple[bool, str]:
+        """Inspect whether a CLI tool is callable, returning availability and detail."""
+        resolved_path = shutil.which(tool)
+        if not resolved_path:
+            return False, "Not found in PATH"
+
         try:
             subprocess.run(
-                [tool, "--version"], capture_output=True, check=True, timeout=5
+                [tool, "--version"], capture_output=True, timeout=5, check=True
             )
-            return True
-        except (
-            subprocess.CalledProcessError,
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
-        ):
-            return False
+            return True, resolved_path
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode().strip() if exc.stderr else "exit status != 0"
+            return True, f"{resolved_path} (version check failed: {stderr})"
+        except subprocess.TimeoutExpired:
+            return True, f"{resolved_path} (--version timeout)"
+        except Exception as exc:  # pragma: no cover - unexpected execution environment
+            return True, f"{resolved_path} (diagnostic error: {exc})"
+
+    def _is_tool_available(self, tool: str) -> bool:
+        """Check if a tool is available in PATH"""
+        available, _ = self._check_tool_availability(tool)
+        return available
 
     def _is_ollama_running(self) -> bool:
         """Check if ollama is already running"""
@@ -713,31 +847,109 @@ class NirajRunner:
             return False
 
     def _check_service_health(self, service: ServiceConfig) -> bool:
-        """Check if a service is healthy"""
-        if not service.health_check_url:
-            return True  # No health check configured
+        """Check if a service is healthy."""
+        result = self._evaluate_service_health(service.name, service)
+        if not result:
+            return True
+        return result.get("color", "green") != "red"
+
+    def _evaluate_service_health(
+        self, _service_name: str, service: ServiceConfig
+    ) -> Optional[Dict[str, str]]:
+        """Return cached or freshly collected health data for a service."""
+        if not (service.health_check_url or service.health_check_command):
+            return None
+
+        now = time.time()
+        if (
+            service.last_health_checked_at is not None
+            and now - service.last_health_checked_at < service.health_check_interval
+            and service.last_health_status
+        ):
+            age = int(now - service.last_health_checked_at)
+            detail = service.last_health_message or ""
+            if age >= 1:
+                detail = f"{detail} ({age}s ago)" if detail else f"Checked {age}s ago"
+            return {
+                "status": service.last_health_status,
+                "detail": detail,
+                "color": service.last_health_color,
+            }
+
+        status = "Checking"
+        detail = "Health check pending"
+        color = "yellow"
+        success = False
 
         try:
-            import requests
+            if service.health_check_url:
+                start_time = time.time()
+                try:
+                    import requests
 
-            response = requests.get(service.health_check_url, timeout=5)
-            return response.status_code == 200
-        except ImportError:
-            # Fallback to curl if requests not available
-            try:
+                    response = requests.get(
+                        service.health_check_url,
+                        timeout=service.health_check_timeout,
+                    )
+                    latency_ms = (time.time() - start_time) * 1000
+                    success = response.status_code == 200
+                    detail = f"HTTP {response.status_code} ({latency_ms:.0f} ms)"
+                except ImportError:
+                    result = subprocess.run(
+                        [
+                            "curl",
+                            "-s",
+                            "--max-time",
+                            str(service.health_check_timeout),
+                            service.health_check_url,
+                        ],
+                        capture_output=True,
+                        timeout=service.health_check_timeout + 2,
+                    )
+                    success = result.returncode == 0
+                    detail = f"curl exit {result.returncode}"
+                    if result.stderr:
+                        stderr = result.stderr.decode(errors="ignore").strip()
+                        if stderr:
+                            detail += f": {stderr[:60]}"
+                except Exception as exc:  # pragma: no cover - health failure path
+                    success = False
+                    detail = f"Error: {exc}"
+            elif service.health_check_command:
+                command_args = shlex.split(service.health_check_command)
                 result = subprocess.run(
-                    ["curl", "-s", "--max-time", "5", service.health_check_url],
+                    command_args,
                     capture_output=True,
-                    timeout=10,
+                    timeout=service.health_check_timeout,
+                    text=True,
                 )
-                return result.returncode == 0
-            except Exception:
-                pass
-        except Exception:
-            pass
+                success = result.returncode == 0
+                output = (result.stdout or result.stderr or "").strip()
+                detail = output[:80] if output else f"exit {result.returncode}"
+        except subprocess.TimeoutExpired:
+            success = False
+            detail = "Timeout"
+        except Exception as exc:  # pragma: no cover - defensive path
+            success = False
+            detail = f"Error: {exc}"
 
-        # If health check fails, assume service is healthy (for now)
-        return True
+        if success:
+            status = "Healthy"
+            color = "green"
+        else:
+            status = "Degraded"
+            color = "red"
+
+        service.last_health_status = status
+        service.last_health_message = detail
+        service.last_health_color = color
+        service.last_health_checked_at = now
+
+        return {
+            "status": status,
+            "detail": detail,
+            "color": color,
+        }
 
     def stop_service(self, service_name: str) -> None:
         """Stop a specific service"""
@@ -1452,6 +1664,160 @@ class NirajRunner:
 
         return diagnostics
 
+    def get_component_status_snapshot(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Collect status information for services, critical files, and tools."""
+        snapshot: Dict[str, List[Dict[str, Any]]] = {
+            "services": [],
+            "files": [],
+            "tools": []
+        }
+
+        now = time.time()
+
+        # Service status information
+        for service_key, service in self.services.items():
+            display_name = service.name or service_key
+            process = self.processes.get(service_key)
+            status = "Not Detected"
+            detail = "Service not started"
+            color_key = "purple"
+
+            try:
+                if process and process.poll() is None:
+                    base_detail = f"Uptime: {self.get_uptime(service_key)}"
+                    status = "Running"
+                    color_key = "green"
+                    detail = base_detail
+                    health_info = self._evaluate_service_health(service_key, service)
+                    if health_info:
+                        status = health_info.get("status", status)
+                        color_key = health_info.get("color", color_key)
+                        health_detail = health_info.get("detail", "")
+                        if health_detail:
+                            detail = f"{base_detail} | {health_detail}"
+                elif process and process.poll() is not None:
+                    exit_code = process.poll()
+                    status = "Stopped"
+                    color_key = "red"
+                    detail = f"Exited with code {exit_code}"
+                elif service.start_time:
+                    elapsed = now - service.start_time
+                    if elapsed < service.startup_time + 2:
+                        status = "Starting"
+                        color_key = "yellow"
+                        detail = f"Initializing ({int(elapsed)}s)"
+                    else:
+                        status = "Inactive"
+                        color_key = "red"
+                        detail = "Process not running"
+            except Exception as exc:  # pragma: no cover
+                status = "Error"
+                color_key = "red"
+                detail = f"Status check failed: {exc}"
+
+            snapshot["services"].append({
+                "name": display_name,
+                "status": status,
+                "detail": detail,
+                "color": color_key
+            })
+
+        # Critical files and directories
+        runner_config = PROJECT_ROOT / (self.config_file or "niraj-runner.json")
+        critical_paths: List[Tuple[str, Path, str]] = [
+            ("Runner Config", runner_config, "file"),
+            ("Database", PROJECT_ROOT / "data" / "niraj.db", "file"),
+            ("Logs Directory", PROJECT_ROOT / "logs", "dir"),
+            ("RAG JSON", PROJECT_ROOT / "historical" / "rag_json", "dir"),
+            ("Backend", PROJECT_ROOT / "backend", "dir"),
+            ("Frontend", PROJECT_ROOT / "frontend", "dir")
+        ]
+
+        for label, path, path_type in critical_paths:
+            color_key = "purple"
+            status = "Unknown"
+            detail = "Status unavailable"
+
+            try:
+                if path.exists():
+                    if path_type == "file":
+                        file_size = path.stat().st_size
+                        if file_size > 0:
+                            color_key = "green"
+                            status = "Available"
+                            detail = f"Size: {file_size / (1024 * 1024):.2f} MB"
+                        else:
+                            color_key = "yellow"
+                            status = "Empty"
+                            detail = "File exists but is empty"
+                    else:
+                        try:
+                            entries = sorted(p.name for p in path.iterdir())
+                        except PermissionError:
+                            entries = []
+                            color_key = "red"
+                            status = "Permission Denied"
+                            detail = str(path)
+                        else:
+                            if entries:
+                                color_key = "green"
+                                status = "Available"
+                                preview = ", ".join(entries[:5])
+                                if len(entries) > 5:
+                                    preview += f", … (+{len(entries) - 5} more)"
+                                detail = f"{len(entries)} items: {preview}"
+                            else:
+                                color_key = "yellow"
+                                status = "Empty"
+                                detail = "Directory has no files"
+                else:
+                    color_key = "red"
+                    status = "Missing"
+                    detail = str(path)
+            except PermissionError:
+                color_key = "red"
+                status = "Permission Denied"
+                detail = str(path)
+            except Exception as exc:  # pragma: no cover
+                color_key = "purple"
+                status = "Unknown"
+                detail = f"Check failed: {exc}"
+
+            snapshot["files"].append({
+                "name": label,
+                "status": status,
+                "detail": detail,
+                "color": color_key
+            })
+
+        # External tool availability
+        tool_checks = {
+            "Ollama CLI": "ollama",
+            "Redis Server": "redis-server",
+            "Poetry": "poetry",
+            "npm": "npm",
+            "NVIDIA SMI": "nvidia-smi"
+        }
+
+        for label, command in tool_checks.items():
+            available, detail = self._check_tool_availability(command)
+            color_key = "green" if available else "purple"
+            status = "Available" if available else "Undetected"
+
+            lowered_detail = detail.lower()
+            if available and ("failed" in lowered_detail or "timeout" in lowered_detail):
+                color_key = "yellow"
+                status = "Degraded"
+
+            snapshot["tools"].append({
+                "name": label,
+                "status": status,
+                "detail": detail,
+                "color": color_key
+            })
+
+        return snapshot
+
     def backup_configuration(self, backup_path: Optional[Path] = None) -> bool:
         """Backup current configuration"""
         if backup_path is None:
@@ -1589,7 +1955,7 @@ class MenuInterface:
             running_services = len([p for p in self.runner.processes.values() if p.poll() is None])
             total_services = len(self.runner.services)
             status_color = Fore.GREEN if running_services > 0 else Fore.YELLOW
-            
+
             print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                            📋 MAIN MENU                                {Style.RESET_ALL}{Fore.CYAN}    ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║{Fore.WHITE}  Services: {status_color}{running_services}/{total_services} Running{Style.RESET_ALL}{' ' * (61 - len(f'{running_services}/{total_services} Running'))}{Fore.CYAN}║{Style.RESET_ALL}")
@@ -1609,12 +1975,19 @@ class MenuInterface:
             print(f"{Fore.CYAN}║  {Fore.GREEN}13.{Fore.WHITE} 📊 Paper Trading Dashboard{Fore.CYAN}    {Fore.RED}15.{Fore.WHITE} 🎮 GPU & System Monitor{Fore.CYAN}        ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║  {Fore.RED}14.{Fore.WHITE} 🔴 Real Trading (LIVE){Fore.CYAN}          {Fore.GREEN}16.{Fore.WHITE} ⌨️  Keyboard Shortcuts{Fore.CYAN}          ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.CYAN}{Style.BRIGHT}🌀 GPU CONTROL{Style.RESET_ALL}{Fore.CYAN}{' ' * 61}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}17.{Fore.WHITE} 🌀 GPU Fan Control{Fore.CYAN}{' ' * 55}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.MAGENTA}{Style.BRIGHT}📈 HISTORICAL DATA & AI TRAINING{Style.RESET_ALL}{Fore.CYAN}{' ' * 43}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}18.{Fore.WHITE} 💾 Download Bank Stocks Data{Fore.CYAN}  {Fore.GREEN}19.{Fore.WHITE} 🤖 RAG Training (Gemma3){Fore.CYAN}      ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║  {Fore.GREEN}20.{Fore.WHITE} 🤖 Basic Training (Gemma3){Fore.CYAN}{' ' * 34}{Fore.GREEN}21.{Fore.WHITE} 🧭 Status Board{Fore.CYAN} ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║                                                                               ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║  {Fore.RED}0.{Fore.WHITE} ❌ Exit System{Fore.CYAN}{' ' * 60}║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}╚═══════════════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
         else:
             running_services = len([p for p in self.runner.processes.values() if p.poll() is None])
             total_services = len(self.runner.services)
-            
+
             print("\n" + "=" * 80)
             print("                              MAIN MENU")
             print(f"  Services: {running_services}/{total_services} Running")
@@ -1630,6 +2003,11 @@ class MenuInterface:
             print("\n💹 TRADING MODES")
             print("  13. 📊 Paper Trading Dashboard    15. 🎮 GPU & System Monitor")
             print("  14. 🔴 Real Trading (LIVE)        16. ⌨️  Keyboard Shortcuts")
+            print("\n🌀 GPU CONTROL")
+            print("  17. 🌀 GPU Fan Control")
+            print("\n📈 HISTORICAL DATA & AI TRAINING")
+            print("  18. 💾 Download Bank Stocks Data  19. 🤖 RAG Training (Gemma3)")
+            print("  20. 🤖 Basic Training (Gemma3)     21. 🧭 Status Board")
             print("\n  0. ❌ Exit System")
             print("=" * 80 + "\n")
 
@@ -2249,6 +2627,47 @@ class MenuInterface:
         print("  0. ⬅️  Back to Main Menu")
         print()
 
+    def display_fan_control_menu(self, status: Optional[Dict[str, Any]] = None):
+        """Display GPU fan control menu with live status"""
+        print("\n🌀 GPU Fan Control (NVIDIA):")
+
+        if status:
+            if status.get("available"):
+                status_text = "🟢 Manual control available"
+            elif status.get("oem_locked"):
+                status_text = "🔒 OEM lock detected"
+            elif status.get("nvidia_settings"):
+                status_text = "⚠️ NVIDIA tools present but unable to control fans"
+            else:
+                status_text = "⚠️ NVIDIA tooling missing"
+
+            if COLORAMA_AVAILABLE:
+                color = Fore.GREEN if status.get("available") else Fore.RED if status.get("oem_locked") else Fore.YELLOW
+                print(f"  {color}{status_text}{Style.RESET_ALL}")
+            else:
+                print(f"  {status_text}")
+
+            if status.get("message"):
+                print(f"  Info: {status['message']}")
+            if status.get("requires_display"):
+                print("  Hint: Export DISPLAY (e.g. :0) or run inside your desktop session.")
+        else:
+            print("  Status: ℹ️  Unable to determine fan control status")
+
+        print(f"  {Fore.RED if COLORAMA_AVAILABLE else ''}M. 🚀 MAX SPEED NOW! (100%){Style.RESET_ALL if COLORAMA_AVAILABLE else ''}")
+        print(f"  {Fore.YELLOW if COLORAMA_AVAILABLE else ''}F. 🔥 START CONTINUOUS MAX SPEED (Fix Mode){Style.RESET_ALL if COLORAMA_AVAILABLE else ''}")
+        print()
+        print("  1. 🔧 Set Fan Speed (One-time)")
+        print("  2. 🔄 Start Continuous Fan Control (Fix Mode)")
+        print("  3. 🛑 Stop Fan Controller")
+        print("  4. 📊 Show Fan Controller Status")
+        print("  5. 🌡️  Monitor GPU Temperature")
+        print("  6. ℹ️  Fan Control Information")
+        print("  7. 🔄 Reset to Automatic Control")
+        print("  8. 🔓 Unlock Fan Control (Requires sudo)")
+        print("  0. ⬅️  Back to Main Menu")
+        print()
+
     def handle_api_testing(self):
         """Handle API testing menu"""
         while True:
@@ -2306,6 +2725,1366 @@ class MenuInterface:
 
             if choice != "0":
                 self.safe_input()
+
+    def handle_fan_control(self):
+        """Handle GPU fan control menu"""
+        # Store the fan controller as instance variable if not exists
+        if not hasattr(self, 'fan_controller'):
+            self.fan_controller: Optional[FanSpeedController] = None
+
+        unlock_prompted = False
+
+        while True:
+            status = check_fan_control_available()
+            self._last_fan_status = status
+
+            if status.get("oem_locked") and not unlock_prompted:
+                print("\n🔒 OEM fan lock detected. Manual control is currently disabled.")
+                print("   Use the unlock option to enable Coolbits (requires sudo).")
+                response = input("   Attempt automatic unlock now? (y/n): ").strip().lower()
+                if response == 'y':
+                    self.unlock_fan_control(auto_initiated=True)
+                    unlock_prompted = True
+                    # Re-check status after unlocking attempt
+                    updated_status = check_fan_control_available()
+                    self._last_fan_status = updated_status
+                    continue
+                unlock_prompted = True
+
+            self.display_fan_control_menu(status)
+            choice = self.get_user_input()
+
+            if choice == "0":
+                break
+            elif choice.upper() == "M":
+                self.set_max_speed_now()
+            elif choice.upper() == "F":
+                self.start_continuous_max_speed()
+            elif choice == "1":
+                self.set_fan_speed_once()
+            elif choice == "2":
+                self.start_continuous_fan_control()
+            elif choice == "3":
+                self.stop_fan_controller()
+            elif choice == "4":
+                self.show_fan_controller_status()
+            elif choice == "5":
+                self.monitor_gpu_temperature()
+            elif choice == "6":
+                self.show_fan_control_info()
+            elif choice == "7":
+                self.reset_to_automatic_control()
+            elif choice == "8":
+                self.unlock_fan_control()
+            else:
+                print("❌ Invalid choice. Please try again.")
+
+            if choice != "0":
+                self.safe_input()
+
+    def set_max_speed_now(self):
+        """Immediately set GPU fans to maximum speed (100%) - one-time"""
+        print("\n🚀 MAX SPEED NOW!")
+        print("=" * 70)
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.YELLOW}⚡ Setting all GPU fans to MAXIMUM speed (100%)...{Style.RESET_ALL}")
+        else:
+            print("⚡ Setting all GPU fans to MAXIMUM speed (100%)...")
+
+        print()
+
+        # Check if fan control is available
+        info = check_fan_control_available()
+
+        if not info["available"]:
+            print(f"❌ {info['message']}")
+            print("\n💡 To install NVIDIA tools:")
+            print("   sudo apt update")
+            print("   sudo apt install nvidia-utils nvidia-settings")
+            return
+
+        if not info["can_control"]:
+            print("⚠️  Fan control available but may not work on this system")
+            print(info["message"])
+            print()
+
+        # Set to max speed
+        if set_fan_speed(100):
+            if COLORAMA_AVAILABLE:
+                print(f"{Fore.GREEN}✅ SUCCESS! GPU fans set to 100% (MAX SPEED){Style.RESET_ALL}")
+            else:
+                print("✅ SUCCESS! GPU fans set to 100% (MAX SPEED)")
+
+            print()
+            print(f"📊 GPU Count: {info['gpu_count']}")
+            print("🌀 Fan Speed: 100% (Maximum)")
+            print()
+            print("⚠️  IMPORTANT NOTES:")
+            print("   • This is a ONE-TIME setting")
+            print("   • May revert to auto after driver updates or reboot")
+            print("   • Monitor temperatures to ensure adequate cooling")
+            print("   • For continuous control, use option 'F'")
+            print()
+            print("💡 TIP: Use 'F' option for continuous max speed (fix mode)")
+        else:
+            print("❌ Failed to set fan speed to maximum")
+            print("\n🔧 Troubleshooting:")
+            print("   1. Check if nvidia-settings is installed:")
+            print("      which nvidia-settings")
+            print("   2. Try running with:")
+            print("      nvidia-settings -a '[gpu:0]/GPUFanControlState=1'")
+            print("   3. Some laptops have locked fan control in BIOS")
+
+    def start_continuous_max_speed(self):
+        """Start continuous maximum fan speed controller"""
+        print("\n🔥 START CONTINUOUS MAX SPEED (Fix Mode)")
+        print("=" * 70)
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.RED}{Style.BRIGHT}⚡ This will CONTINUOUSLY maintain fans at 100% speed{Style.RESET_ALL}")
+        else:
+            print("⚡ This will CONTINUOUSLY maintain fans at 100% speed")
+
+        print()
+        print("📋 What this does:")
+        print("   • Sets all GPU fans to 100% maximum speed")
+        print("   • Keeps checking every 5 seconds")
+        print("   • Automatically reapplies if driver resets it")
+        print("   • Runs in background until you stop it")
+        print()
+
+        if self.fan_controller and self.fan_controller.running:
+            current_speed = self.fan_controller.target_percent
+            print(f"⚠️  Fan controller already running at {current_speed}%")
+            confirm = input("Stop current controller and start max speed? (y/n): ").strip().lower()
+            if confirm != 'y':
+                print("❌ Operation cancelled")
+                return
+            print("🛑 Stopping current fan controller...")
+            self.fan_controller.stop()
+            self.fan_controller = None
+            time.sleep(1)
+
+        # Check availability
+        info = check_fan_control_available()
+        if not info["available"]:
+            print(f"❌ {info['message']}")
+            return
+
+        print("🌀 Starting continuous max speed controller...")
+        print()
+
+        # Create and start controller at 100%
+        self.fan_controller = FanSpeedController(target_percent=100, check_interval=5.0)
+
+        if self.fan_controller.start():
+            if COLORAMA_AVAILABLE:
+                print(f"{Fore.GREEN}{Style.BRIGHT}✅ SUCCESS! Continuous max speed controller started!{Style.RESET_ALL}")
+            else:
+                print("✅ SUCCESS! Continuous max speed controller started!")
+
+            print()
+            print("📊 Controller Status:")
+            print("   • Target Speed: 100% (Maximum)")
+            print("   • Check Interval: 5.0 seconds")
+            print(f"   • GPU Count: {info['gpu_count']}")
+            print("   • Status: ACTIVE")
+            print()
+            print("⚠️  IMPORTANT:")
+            print("   • Controller runs in background")
+            print("   • Will maintain 100% speed continuously")
+            print("   • Use option '3' to stop when done")
+            print("   • Monitor GPU temperatures regularly")
+            print()
+            print("💡 Use option '4' to check controller status")
+            print("💡 Use option '5' to monitor GPU temperature")
+        else:
+            print("❌ Failed to start continuous max speed controller")
+            if COLORAMA_AVAILABLE:
+                print(f"{Fore.YELLOW}⚠️  This may not work on all systems{Style.RESET_ALL}")
+            self.fan_controller = None
+
+    def set_fan_speed_once(self):
+        """Set GPU fan speed once (one-time)"""
+        print("\n🔧 Set Fan Speed (One-time)")
+        print("=" * 70)
+        print("Available fan speeds:")
+        print("  10%  - Minimal noise, light workload")
+        print("  30%  - Quiet operation")
+        print("  50%  - Balanced (recommended)")
+        print("  70%  - Active cooling")
+        print("  100% - Maximum cooling")
+        print()
+
+        try:
+            speed_input = input("Enter fan speed (10/30/50/70/100): ").strip()
+            if not speed_input:
+                print("❌ Operation cancelled")
+                return
+
+            if speed_input not in ["10", "30", "50", "70", "100"]:
+                print("❌ Invalid fan speed. Please choose 10, 30, 50, 70, or 100.")
+                return
+
+            target_speed = int(speed_input)
+
+            print(f"\n🌀 Setting fan speed to {target_speed}%...")
+            if set_fan_speed(target_speed):
+                print(f"✅ Fan speed set to {target_speed}% (one-time)")
+                print("⚠️  Note: This setting may revert after driver updates.")
+                print("💡 Tip: Use option 2 for continuous fan control.")
+            else:
+                print("❌ Failed to set fan speed")
+                print("   Make sure nvidia-settings is installed and you have permission.")
+                print("   Command: sudo apt install nvidia-settings")
+
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Operation cancelled")
+        except ValueError:
+            print("❌ Invalid input")
+
+    def start_continuous_fan_control(self):
+        """Start continuous fan speed controller"""
+        print("\n🔄 Start Continuous Fan Control (Fix Mode)")
+        print("=" * 70)
+        print("This mode continuously maintains your set fan speed.")
+        print()
+
+        if self.fan_controller and self.fan_controller.running:
+            print("⚠️  Fan controller is already running!")
+            stats = self.fan_controller.get_stats()
+            print(f"   Current target: {stats['target_percent']}%")
+            print(f"   Check interval: {stats['check_interval']}s")
+            return
+
+        print("Available fan speeds:")
+        print("  10%  - Minimal noise, light workload")
+        print("  30%  - Quiet operation")
+        print("  50%  - Balanced (recommended)")
+        print("  70%  - Active cooling")
+        print("  100% - Maximum cooling")
+        print()
+
+        try:
+            speed_input = input("Enter fan speed (10/30/50/70/100): ").strip()
+            if not speed_input:
+                print("❌ Operation cancelled")
+                return
+
+            if speed_input not in ["10", "30", "50", "70", "100"]:
+                print("❌ Invalid fan speed. Please choose 10, 30, 50, 70, or 100.")
+                return
+
+            target_speed = int(speed_input)
+
+            # Ask for check interval
+            interval_input = input("Enter check interval in seconds (default: 5.0): ").strip()
+            check_interval = 5.0
+            if interval_input:
+                try:
+                    check_interval = float(interval_input)
+                    if check_interval < 2.0:
+                        print("⚠️  Minimum interval is 2.0 seconds. Using 2.0.")
+                        check_interval = 2.0
+                    elif check_interval > 60.0:
+                        print("⚠️  Maximum interval is 60.0 seconds. Using 60.0.")
+                        check_interval = 60.0
+                except ValueError:
+                    print("⚠️  Invalid interval. Using default 5.0 seconds.")
+                    check_interval = 5.0
+
+            print("\n🌀 Starting continuous fan controller...")
+            print(f"   Target speed: {target_speed}%")
+            print(f"   Check interval: {check_interval}s")
+
+            self.fan_controller = FanSpeedController(target_speed, check_interval)
+            if self.fan_controller.start():
+                print("✅ Fan controller started successfully!")
+                print(f"   Fan speed will be maintained at {target_speed}%")
+                print(f"   Checking every {check_interval} seconds")
+                print()
+                print("💡 Tips:")
+                print("   - Monitor GPU temperature with option 5")
+                print("   - Check controller status with option 4")
+                print("   - Stop controller with option 3")
+            else:
+                print("❌ Failed to start fan controller")
+                print("   Make sure nvidia-settings is installed and you have permission.")
+                print("   Command: sudo apt install nvidia-settings")
+                self.fan_controller = None
+
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Operation cancelled")
+        except ValueError:
+            print("❌ Invalid input")
+
+    def stop_fan_controller(self):
+        """Stop the fan controller"""
+        print("\n🛑 Stop Fan Controller")
+        print("=" * 70)
+
+        if not self.fan_controller or not self.fan_controller.running:
+            print("ℹ️  Fan controller is not running.")
+            return
+
+        print("Stopping fan controller...")
+        stats = self.fan_controller.get_stats()
+        print(f"   Was maintaining: {stats['target_percent']}%")
+        print(f"   Total sets: {stats['set_count']}")
+        print(f"   Errors: {stats['error_count']}")
+
+        self.fan_controller.stop()
+        print("✅ Fan controller stopped")
+        print("✅ GPU fan control restored to automatic mode")
+
+    def show_fan_controller_status(self):
+        """Show fan controller status and statistics"""
+        print("\n📊 Fan Controller Status")
+        print("=" * 70)
+
+        if not self.fan_controller:
+            print("ℹ️  Fan controller has never been started.")
+            return
+
+        if not self.fan_controller.running:
+            print("⚠️  Fan controller is currently stopped.")
+            return
+
+        stats = self.fan_controller.get_stats()
+        print(f"Status: {'🟢 Running' if stats['running'] else '🔴 Stopped'}")
+        print(f"Target Speed: {stats['target_percent']}%")
+        print(f"Check Interval: {stats['check_interval']} seconds")
+        print(f"Total Sets: {stats['set_count']}")
+        print(f"Errors: {stats['error_count']}")
+        print(f"Success Rate: {(stats['set_count'] / max(stats['set_count'] + stats['error_count'], 1) * 100):.1f}%")
+        print(f"Time Since Last Set: {stats['time_since_last_set']:.1f}s")
+
+        # Show current GPU info
+        print("\n📊 Current GPU Status:")
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,fan.speed,temperature.gpu", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    parts = line.split(',')
+                    if len(parts) >= 3:
+                        gpu_name = parts[0].strip()
+                        fan_speed = parts[1].strip()
+                        temp = parts[2].strip()
+                        print(f"  GPU: {gpu_name}")
+                        print(f"  Fan Speed: {fan_speed}")
+                        print(f"  Temperature: {temp}°C")
+            else:
+                print("  ⚠️  Could not read GPU status")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            print("  ⚠️  nvidia-smi not available")
+
+    def monitor_gpu_temperature(self):
+        """Monitor GPU temperature in real-time"""
+        print("\n🌡️  GPU Temperature Monitor")
+        print("=" * 70)
+        print("Monitoring GPU temperature... (Press Ctrl+C to stop)")
+        print()
+
+        try:
+            while True:
+                result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=name,fan.speed,temperature.gpu,utilization.gpu",
+                     "--format=csv,noheader"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    print("\r" + " " * 100 + "\r", end='')  # Clear line
+
+                    for i, line in enumerate(lines):
+                        parts = line.split(',')
+                        if len(parts) >= 4:
+                            # parts[0] is gpu_name (not used in display)
+                            fan_speed = parts[1].strip()
+                            temp = parts[2].strip()
+                            util = parts[3].strip()
+
+                            temp_val = int(temp.split()[0]) if temp.split() else 0
+                            temp_color = ""
+                            if COLORAMA_AVAILABLE:
+                                if temp_val < 60:
+                                    temp_color = Fore.GREEN
+                                elif temp_val < 75:
+                                    temp_color = Fore.YELLOW
+                                else:
+                                    temp_color = Fore.RED
+
+                            status = f"GPU{i}: {temp_color}{temp}°C{Style.RESET_ALL if COLORAMA_AVAILABLE else ''} | Fan: {fan_speed} | Load: {util}"
+                            print(status, end='  ' if i < len(lines) - 1 else '\r')
+
+                    time.sleep(1)
+                else:
+                    print("\r❌ Could not read GPU status. Is nvidia-smi installed?")
+                    break
+
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            print("\n❌ nvidia-smi not available. Please install NVIDIA drivers.")
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n✅ Monitoring stopped")
+
+    def show_fan_control_info(self):
+        """Show fan control information and tips"""
+        print("\nℹ️  GPU Fan Control Information")
+        print("=" * 70)
+        print()
+        print("🔧 One-time Mode (Option 1):")
+        print("   • Sets fan speed once")
+        print("   • May revert after driver updates")
+        print("   • Good for quick adjustments")
+        print()
+        print("🔄 Continuous Fix Mode (Option 2):")
+        print("   • Maintains fan speed continuously")
+        print("   • Recovers from driver resets automatically")
+        print("   • Background thread checks every N seconds")
+        print("   • Recommended for long sessions")
+        print()
+        print("📊 Fan Speed Guide:")
+        print("   • 10-30%: Quiet, suitable for light tasks")
+        print("   • 50%:    Balanced, good for most workloads")
+        print("   • 70%:    Active cooling, heavy workloads")
+        print("   • 100%:   Maximum cooling, intensive tasks")
+        print()
+        print("⚠️  Important Notes:")
+        print("   • Always monitor GPU temperature")
+        print("   • Keep temperature below 80°C for longevity")
+        print("   • Laptop fan control may be BIOS-locked")
+        print("   • Requires nvidia-settings and X Server")
+        print()
+        print("📚 Documentation:")
+        print("   • FAN_CONTROL_GUIDE.md - Complete guide")
+        print("   • FAN_CONTROL_QUICK_REF.md - Quick reference")
+        print("   • FAN_CONTROL_INDEX.md - All documentation")
+
+    def reset_to_automatic_control(self):
+        """Reset GPU fan to automatic control"""
+        print("\n🔄 Reset to Automatic Control")
+        print("=" * 70)
+
+        # Stop controller if running
+        if self.fan_controller and self.fan_controller.running:
+            print("Stopping fan controller first...")
+            self.fan_controller.stop()
+            print("✅ Controller stopped")
+
+        print("\nResetting GPU fan to automatic control...")
+        try:
+            nvset = shutil.which('nvidia-settings')
+            if not nvset:
+                print("❌ nvidia-settings not found")
+                return
+
+            result = subprocess.run(
+                [nvset, '-a', '[gpu:0]/GPUFanControlState=0'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2
+            )
+
+            if result.returncode == 0:
+                print("✅ GPU fan control reset to automatic mode")
+            else:
+                print("⚠️  Could not reset fan control (may already be automatic)")
+
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            print("❌ Failed to reset fan control")
+
+    def unlock_fan_control(self, auto_initiated: bool = False) -> Optional[Dict[str, Any]]:
+        """Attempt to unlock NVIDIA fan control using elevated commands."""
+        print("\n🔓 Unlock GPU Fan Control")
+        print("=" * 70)
+
+        current_status = check_fan_control_available()
+        if current_status.get("available"):
+            print("ℹ️  Manual fan control already appears to be enabled.")
+            if not auto_initiated:
+                print("   Run the unlock routine only if the fans still refuse manual speeds.")
+
+        if not current_status.get("nvidia_smi"):
+            message = current_status.get("message") or "nvidia-smi is missing or failed to communicate with the driver."
+            print(f"❌ {message}")
+            print("   Install proprietary NVIDIA drivers (sudo ubuntu-drivers autoinstall) and reboot before retrying.")
+            return None
+
+        if current_status.get("gpu_count", 0) == 0:
+            message = current_status.get("message") or "nvidia-smi did not report any NVIDIA GPUs."
+            print(f"❌ {message}")
+            print("   The unlock routine requires a supported NVIDIA GPU. Verify the hardware and drivers, then reboot.")
+            return None
+
+        if platform.system().lower() != "linux":
+            print("❌ Unlock routine is supported only on Linux with the NVIDIA driver.")
+            return None
+
+        if not shutil.which('sudo'):
+            print("❌ 'sudo' command not found. Install sudo or rerun with elevated privileges.")
+            return None
+
+        prompt = "Proceed with automatic unlock using sudo commands? (y/n): " if auto_initiated else "Run unlock routine now? (y/n): "
+        confirmation = input(prompt).strip().lower()
+        if confirmation != 'y':
+            print("Operation cancelled.")
+            return None
+
+        print("\n⚙️  Executing unlock steps... You'll be prompted for sudo password if required.")
+        print("   This will enable Coolbits, persistence mode, and force manual fan control.")
+        print()
+
+        result = attempt_unlock_fan_control()
+        self._last_fan_unlock_result = result
+
+        if not result["steps"]:
+            for error in result["errors"]:
+                print(f"❌ {error}")
+            return result
+
+        for step in result["steps"]:
+            icon = "✅" if step.get("returncode") == 0 else "❌"
+            print(f"  {icon} {step['name']} (exit {step['returncode']})")
+            if step.get("stderr"):
+                print(f"     stderr: {step['stderr']}")
+            elif step.get("stdout"):
+                print(f"     stdout: {step['stdout']}")
+
+        if result["errors"]:
+            print()
+            for error in result["errors"]:
+                print(f"⚠️  {error}")
+
+        if result.get("requires_reboot"):
+            print("\n🔁 A display-manager restart or full reboot may be required for Coolbits changes to apply.")
+
+        post_status = result.get("post_check") or {}
+        if result["success"]:
+            print("\n🎉 Unlock routine completed.")
+            if not post_status.get("available"):
+                print("   Manual control still reports unavailable; reboot and try option 17 again.")
+        else:
+            print("\n❌ Unlock routine encountered errors. Manual fan control may remain locked.")
+
+        if post_status.get("message"):
+            print(f"   Status: {post_status['message']}")
+
+        return result
+
+    def handle_historical_data_download(self):
+        """Handle downloading historical data for all bank stocks"""
+        print("\n💾 DOWNLOAD BANK STOCKS HISTORICAL DATA")
+        print("=" * 70)
+        print("\nThis will download historical data for 20 major bank stocks:")
+        print("  • Daily data: Maximum available history (10+ years)")
+        print("  • 15-min data: Last 60 days")
+        print("\nData will be organized in folders: historical/SYMBOL/daily/ and /15min/")
+        print("\nEstimated time: 2-3 minutes")
+        print("=" * 70)
+
+        confirm = input("\n▶️  Proceed with download? (yes/no): ").strip().lower()
+
+        if confirm in ['yes', 'y']:
+            print("\n🚀 Starting download...")
+            result = subprocess.run(
+                ["python", "download_all_banks_historical.py"],
+                cwd=str(PROJECT_ROOT)
+            )
+
+            if result.returncode == 0:
+                print("\n✅ Download completed successfully!")
+                print("📁 Data saved in: ./historical/")
+            else:
+                print("\n❌ Download failed. Check errors above.")
+        else:
+            print("\n⚠️  Download cancelled.")
+
+    def handle_historical_data_update(self):
+        """Handle updating existing historical data"""
+        print("\n🔄 UPDATE HISTORICAL DATA")
+        print("=" * 70)
+
+        # Check if historical data exists
+        historical_path = PROJECT_ROOT / "historical"
+        if not historical_path.exists() or not any(historical_path.iterdir()):
+            print("\n⚠️  No historical data found!")
+            print("Please download data first using option 18.")
+            return
+
+        print("\nThis will update existing historical data with latest information:")
+        print("  • Updates daily data with new trading days")
+        print("  • Refreshes 15-min data with latest 60 days")
+        print("  • Preserves existing data, adds only new records")
+        print("\n📊 Existing data will be merged intelligently")
+        print("=" * 70)
+
+        confirm = input("\n▶️  Proceed with update? (yes/no): ").strip().lower()
+
+        if confirm in ['yes', 'y']:
+            print("\n🔄 Starting update...")
+            result = subprocess.run(
+                ["python", "download_all_banks_historical.py", "--update"],
+                cwd=str(PROJECT_ROOT)
+            )
+
+            if result.returncode == 0:
+                print("\n✅ Update completed successfully!")
+                print("📁 Updated data in: ./historical/")
+            else:
+                print("\n❌ Update failed. Check errors above.")
+        else:
+            print("\n⚠️  Update cancelled.")
+
+    def handle_basic_training(self):
+        """Handle basic Ollama training using all_banks_rag_combined.json with real-time monitoring"""
+        try:
+            import asyncio
+            import json
+        except ImportError as e:
+            print(f"\n❌ Failed to import required modules: {e}")
+            return
+
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}{Style.BRIGHT}🤖 BASIC TRAINING WITH RAG DATA (GPU ONLY){Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+        else:
+            print("\n" + "=" * 80)
+            print("🤖 BASIC TRAINING WITH RAG DATA (GPU ONLY)")
+            print("=" * 80 + "\n")
+
+        # Check if Ollama is installed
+        try:
+            ollama_check = subprocess.run(
+                ["ollama", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if ollama_check.returncode != 0:
+                print("❌ Ollama is not installed or not in PATH")
+                print("Please install Ollama: https://ollama.ai/download")
+                return
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("❌ Ollama is not installed or not in PATH")
+            print("Please install Ollama: https://ollama.ai/download")
+            return
+
+        # Check GPU availability (GPU ONLY)
+        print("🔍 GPU Check (GPU ONLY MODE):")
+        print("-" * 80)
+
+        try:
+            gpu_check = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if gpu_check.returncode == 0:
+                gpu_info = gpu_check.stdout.strip().split(',')
+                print(f"✅ GPU: {gpu_info[0].strip()}")
+                print(f"   Memory: {gpu_info[1].strip()}")
+                print(f"   Driver: {gpu_info[2].strip()}")
+                print("   ✅ GPU acceleration available")
+            else:
+                print("❌ No NVIDIA GPU detected - GPU ONLY mode requires NVIDIA GPU")
+                return
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("❌ No NVIDIA GPU detected - GPU ONLY mode requires NVIDIA GPU")
+            return
+
+        # Check Ollama model
+        print("\n🤖 Checking Gemma3 model...")
+        try:
+            model_check = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if "gemma3" in model_check.stdout:
+                print("✅ Gemma3 model found")
+            else:
+                print("⚠️  Gemma3 model not found")
+                print("Would you like to pull the model? (This may take several minutes)")
+                pull = input("Pull gemma3:4b-it-q4_K_M model? (yes/no): ").strip().lower()
+                if pull in ['yes', 'y']:
+                    print("📥 Pulling model... (this may take 5-10 minutes)")
+                    subprocess.run(["ollama", "pull", "gemma3:4b-it-q4_K_M"])
+                else:
+                    print("❌ Training requires Gemma3 model. Cancelled.")
+                    return
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("❌ Could not verify Ollama model")
+
+        # Check RAG JSON file
+        rag_file = PROJECT_ROOT / "historical" / "rag_json" / "all_banks_rag_combined.json"
+        if not rag_file.exists():
+            print(f"\n❌ RAG JSON file not found: {rag_file}")
+            return
+
+        print(f"\n📁 RAG JSON File: {rag_file}")
+
+        # Load and count entries
+        try:
+            with open(rag_file, 'r') as f:
+                data = json.load(f)
+                entries = data.get('data', [])
+                print(f"📊 Found {len(entries)} training entries")
+        except Exception as e:
+            print(f"❌ Failed to load RAG JSON file: {e}")
+            return
+
+        if len(entries) == 0:
+            print("❌ No training entries found in RAG JSON file")
+            return
+
+        print("-" * 80)
+        print("Training Information:")
+        print("-" * 80)
+        print("  • Model: gemma3:4b-it-q4_K_M (GPU ONLY)")
+        print(f"  • Data Source: {rag_file.name}")
+        print(f"  • Training Entries: {len(entries)}")
+        print("  • Method: Direct data ingestion")
+        print("  • Duration: 10 seconds (test mode)")
+        print("\n⚠️  This will:")
+        print("  • Load bank stock data from RAG JSON")
+        print("  • Send data entries to Ollama for training")
+        print("  • Monitor GPU, CPU, Memory usage in real-time")
+        print("  • Display live progress and system stats")
+        print("  • Stop after 10 seconds for testing")
+        print("\n⏱️  Test Duration: 10 seconds")
+        print("-" * 80)
+
+        confirm = input("\n▶️  Start 10-second GPU training test? (yes/no): ").strip().lower()
+
+        if confirm not in ['yes', 'y']:
+            print("\n⚠️  Training cancelled.")
+            return
+
+        # Start training
+        print("\n🚀 Starting 10-second GPU training test...\n")
+
+        async def run_gpu_training_test():
+            """Run GPU training test with real-time monitoring"""
+            try:
+                print("🎯 Loading training data from all_banks_rag_combined.json...\n")
+
+                # Progress tracking
+                total_entries = len(entries)
+                completed = 0
+                start_time = time.time()
+                end_time = start_time + 10  # 10 seconds test
+
+                # Real-time monitoring variables
+                last_stats_time = 0
+
+                def get_system_stats():
+                    """Get current system stats"""
+                    try:
+                        # CPU
+                        cpu_percent = psutil.cpu_percent(interval=None)
+
+                        # Memory
+                        mem = psutil.virtual_memory()
+                        mem_percent = mem.percent
+                        mem_used = mem.used / (1024**3)
+                        mem_total = mem.total / (1024**3)
+
+                        # GPU
+                        gpu_stats = {"name": "N/A", "util": 0, "mem": 0, "temp": 0, "fan": 0}
+                        try:
+                            smi = shutil.which('nvidia-smi')
+                            if smi:
+                                result = subprocess.run(
+                                    [smi, '--query-gpu=name,utilization.gpu,utilization.memory,temperature.gpu,fan.speed',
+                                     '--format=csv,noheader,nounits'],
+                                    capture_output=True, text=True, timeout=1
+                                )
+                                if result.returncode == 0 and result.stdout.strip():
+                                    line = result.stdout.strip()
+                                    parts = [p.strip() for p in line.split(',')]
+                                    if len(parts) >= 5:
+                                        gpu_stats["name"] = parts[0][:15]
+                                        gpu_stats["util"] = float(parts[1]) if parts[1] != '[Not Supported]' else 0
+                                        gpu_stats["mem"] = float(parts[2]) if parts[2] != '[Not Supported]' else 0
+                                        gpu_stats["temp"] = float(parts[3]) if parts[3] != '[Not Supported]' else 0
+                                        try:
+                                            gpu_stats["fan"] = float(parts[4]) if parts[4] != '[Not Supported]' else 0
+                                        except (ValueError, IndexError):
+                                            gpu_stats["fan"] = 0
+                        except Exception:
+                            pass
+
+                        return {
+                            "cpu": cpu_percent,
+                            "mem_percent": mem_percent,
+                            "mem_used": mem_used,
+                            "mem_total": mem_total,
+                            "gpu": gpu_stats,
+                            "timestamp": time.time()
+                        }
+                    except Exception:
+                        return None
+
+                def print_real_time_dashboard(stats, completed, total_entries, elapsed):
+                    """Print real-time dashboard"""
+                    if not stats:
+                        return
+
+                    # Clear screen
+                    os.system('clear' if os.name != 'nt' else 'cls')
+
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}{Style.BRIGHT}🤖 GPU TRAINING TEST - REAL-TIME MONITORING{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+                    else:
+                        print("=" * 80)
+                        print("🤖 GPU TRAINING TEST - REAL-TIME MONITORING")
+                        print("=" * 80 + "\n")
+
+                    # Progress
+                    progress = (completed / total_entries) * 100
+                    bar_length = 50
+                    filled = int(bar_length * progress / 100)
+                    bar = '█' * filled + '░' * (bar_length - filled)
+
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.GREEN}Progress: [{bar}] {progress:.1f}% ({completed}/{total_entries}){Style.RESET_ALL}")
+                    else:
+                        print(f"Progress: [{bar}] {progress:.1f}% ({completed}/{total_entries})")
+
+                    print(f"Elapsed Time: {elapsed:.1f}s / 10.0s")
+                    print()
+
+                    # System Stats
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}{Style.BRIGHT}┌─ SYSTEM RESOURCES ────────────────────────────────────────┐{Style.RESET_ALL}")
+
+                        # CPU
+                        cpu_color = Fore.GREEN if stats["cpu"] < 50 else Fore.YELLOW if stats["cpu"] < 75 else Fore.RED
+                        print(f"{Fore.WHITE}│ 🔥 CPU: {cpu_color}{stats['cpu']:5.1f}%{Style.RESET_ALL} ({psutil.cpu_count()} cores){Style.RESET_ALL}")
+
+                        # Memory
+                        mem_color = Fore.GREEN if stats["mem_percent"] < 50 else Fore.YELLOW if stats["mem_percent"] < 75 else Fore.RED
+                        print(f"{Fore.WHITE}│ 💾 RAM: {mem_color}{stats['mem_percent']:5.1f}%{Style.RESET_ALL} ({stats['mem_used']:.1f}/{stats['mem_total']:.1f} GB){Style.RESET_ALL}")
+
+                        # GPU
+                        gpu = stats["gpu"]
+                        if gpu["name"] != "N/A":
+                            gpu_util_color = Fore.GREEN if gpu["util"] < 50 else Fore.YELLOW if gpu["util"] < 75 else Fore.RED
+                            gpu_mem_color = Fore.GREEN if gpu["mem"] < 50 else Fore.YELLOW if gpu["mem"] < 75 else Fore.RED
+                            gpu_temp_color = Fore.GREEN if gpu["temp"] < 60 else Fore.YELLOW if gpu["temp"] < 75 else Fore.RED
+
+                            print(f"{Fore.WHITE}│ 🎮 GPU: {Fore.CYAN}{gpu['name']}{Style.RESET_ALL}")
+                            print(f"{Fore.WHITE}│    └─ Load: {gpu_util_color}{gpu['util']:5.0f}%{Style.RESET_ALL} | Mem: {gpu_mem_color}{gpu['mem']:5.0f}%{Style.RESET_ALL} | Temp: {gpu_temp_color}{gpu['temp']:3.0f}°C{Style.RESET_ALL} | Fan: {gpu['fan']:3.0f}%")
+
+                        print(f"{Fore.CYAN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+                    else:
+                        print("┌─ SYSTEM RESOURCES ────────────────────────────────────────┐")
+                        print(f"│ CPU: {stats['cpu']:5.1f}% ({psutil.cpu_count()} cores)")
+                        print(f"│ RAM: {stats['mem_percent']:5.1f}% ({stats['mem_used']:.1f}/{stats['mem_total']:.1f} GB)")
+
+                        gpu = stats["gpu"]
+                        if gpu["name"] != "N/A":
+                            print(f"│ GPU: {gpu['name']}")
+                            print(f"│    └─ Load: {gpu['util']:5.0f}% | Mem: {gpu['mem']:5.0f}% | Temp: {gpu['temp']:3.0f}°C | Fan: {gpu['fan']:3.0f}%")
+
+                        print("└────────────────────────────────────────────────────────────┘\n")
+
+                    print("Training bank stock data entries...")
+                    print("Press Ctrl+C to stop early")
+                    print("=" * 80)
+
+                # Training loop
+                print("🎯 Starting GPU training with bank data...\n")
+
+                for i, entry in enumerate(entries):
+                    current_time = time.time()
+
+                    # Check if 10 seconds elapsed
+                    if current_time >= end_time:
+                        break
+
+                    # Get real-time stats every 1 second
+                    if current_time - last_stats_time >= 1.0:
+                        stats = get_system_stats()
+                        if stats:
+                            elapsed = current_time - start_time
+                            print_real_time_dashboard(stats, completed, total_entries, elapsed)
+                        last_stats_time = current_time
+
+                    # Create training prompt from entry
+                    symbol = entry.get('symbol', 'UNKNOWN')
+                    bank_name = entry.get('bank_info', {}).get('name', 'Unknown Bank')
+                    sector = entry.get('bank_info', {}).get('sector', 'Unknown')
+
+                    # Use daily or 15min data
+                    daily_data = entry.get('daily_data', [])
+                    min15_data = entry.get('15min_data', [])
+
+                    if daily_data:
+                        # Use first daily data entry
+                        data_entry = daily_data[0]
+                        timestamp = data_entry.get('timestamp', 'N/A')
+                        ohlcv = data_entry.get('ohlcv', {})
+
+                        prompt = f"Learn about {bank_name} ({symbol}) stock data: Date {timestamp}, Open: {ohlcv.get('open', 0)}, High: {ohlcv.get('high', 0)}, Low: {ohlcv.get('low', 0)}, Close: {ohlcv.get('close', 0)}, Volume: {ohlcv.get('volume', 0)}. This is a {sector} sector bank."
+                    elif min15_data:
+                        # Use first 15min data entry
+                        data_entry = min15_data[0]
+                        timestamp = data_entry.get('timestamp', 'N/A')
+                        ohlcv = data_entry.get('ohlcv', {})
+
+                        prompt = f"Learn about {bank_name} ({symbol}) 15-minute data: Time {timestamp}, Open: {ohlcv.get('open', 0)}, High: {ohlcv.get('high', 0)}, Low: {ohlcv.get('low', 0)}, Close: {ohlcv.get('close', 0)}, Volume: {ohlcv.get('volume', 0)}. This is a {sector} sector bank."
+                    else:
+                        prompt = f"Learn about {bank_name} ({symbol}), a {sector} sector bank."
+
+                    # Send to Ollama (GPU only)
+                    success = await self._send_prompt_to_ollama(prompt, "gemma3:4b-it-q4_K_M")
+
+                    if success:
+                        completed += 1
+
+                    # Small delay between prompts
+                    await asyncio.sleep(0.1)
+
+                # Final results
+                elapsed_time = time.time() - start_time
+                success_rate = (completed / total_entries * 100) if total_entries > 0 else 0
+                processing_rate = completed / elapsed_time if elapsed_time > 0 else 0.0
+
+                # Final dashboard
+                final_stats = get_system_stats()
+                if final_stats:
+                    print_real_time_dashboard(final_stats, completed, total_entries, elapsed_time)
+
+                print(f"\n\n{'=' * 80}")
+                print("📊 GPU TRAINING TEST COMPLETE")
+                print(f"{'=' * 80}")
+                print(f"✅ Entries processed: {completed}")
+                print(f"📈 Processing rate: {processing_rate:.1f} entries/sec")
+                print(f"⏱️  Total time: {elapsed_time:.1f} seconds")
+                print("🎯 Target: 10 seconds (test mode)")
+                print(f"🎯 Success rate: {success_rate:.1f}%")
+                print(f"\n🤖 Model 'gemma3:4b-it-q4_K_M' trained with {completed} bank data entries!")
+                print("💡 GPU acceleration confirmed working!")
+
+                return {
+                    "success": True,
+                    "entries_processed": completed,
+                    "total_time": elapsed_time,
+                    "processing_rate": processing_rate,
+                    "success_rate": success_rate,
+                    "gpu_confirmed": True
+                }
+
+            except Exception as e:
+                print(f"\n❌ GPU training test failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
+
+        # Run training test
+        try:
+            result = asyncio.run(run_gpu_training_test())
+
+            if result.get('success'):
+                print("\n🎉 GPU training test completed successfully!")
+                print(f"   • Processed {result.get('entries_processed', 0)} entries")
+                print(f"   • Rate: {result.get('processing_rate', 0):.1f} entries/sec")
+                print("   • GPU acceleration: ✅ Working")
+            else:
+                print(f"\n❌ GPU training test failed: {result.get('error', 'Unknown error')}")
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Training test interrupted by user")
+        except Exception as e:
+            print(f"\n❌ Training test error: {e}")
+
+    async def _send_prompt_to_ollama(self, prompt: str, model_name: str) -> bool:
+        """Send a single prompt to Ollama for training"""
+        try:
+            # Use Ollama CLI to send prompt
+            process = await asyncio.create_subprocess_exec(
+                "ollama", "run", model_name,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            # Send prompt and get response
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=prompt.encode()),
+                timeout=30.0
+            )
+
+            return process.returncode == 0
+
+        except asyncio.TimeoutError:
+            return False
+        except Exception:
+            return False
+
+    def handle_rag_training(self):
+        """Handle RAG training with Ollama Gemma3 model"""
+        try:
+            # Import here to avoid import errors if module is not available
+            from rag_training_orchestrator import RAGTrainingOrchestrator
+            import asyncio
+        except ImportError as e:
+            print(f"\n❌ Failed to import RAG training module: {e}")
+            print("Please ensure rag_training_orchestrator.py is available.")
+            return
+
+        if COLORAMA_AVAILABLE:
+            print(f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}{Style.BRIGHT}🤖 RAG TRAINING WITH OLLAMA GEMMA3{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+        else:
+            print("\n" + "=" * 80)
+            print("🤖 RAG TRAINING WITH OLLAMA GEMMA3")
+            print("=" * 80 + "\n")
+
+        # Check if Ollama is installed
+        try:
+            ollama_check = subprocess.run(
+                ["ollama", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if ollama_check.returncode != 0:
+                print("❌ Ollama is not installed or not in PATH")
+                print("Please install Ollama: https://ollama.ai/download")
+                return
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("❌ Ollama is not installed or not in PATH")
+            print("Please install Ollama: https://ollama.ai/download")
+            return
+
+        # Check GPU availability
+        print("🔍 System Check:")
+        print("-" * 80)
+
+        try:
+            gpu_check = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if gpu_check.returncode == 0:
+                gpu_info = gpu_check.stdout.strip().split(',')
+                print(f"✅ GPU: {gpu_info[0].strip()}")
+                print(f"   Memory: {gpu_info[1].strip()}")
+                print(f"   Driver: {gpu_info[2].strip()}")
+            else:
+                print("⚠️  No NVIDIA GPU detected (CPU training will be slower)")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("⚠️  No NVIDIA GPU detected (CPU training will be slower)")
+
+        # Check Ollama model
+        print("\n🤖 Checking Gemma3 model...")
+        try:
+            model_check = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if "gemma3" in model_check.stdout:
+                print("✅ Gemma3 model found")
+            else:
+                print("⚠️  Gemma3 model not found")
+                print("Would you like to pull the model? (This may take several minutes)")
+                pull = input("Pull gemma3:4b-it-q4_K_M model? (yes/no): ").strip().lower()
+                if pull in ['yes', 'y']:
+                    print("📥 Pulling model... (this may take 5-10 minutes)")
+                    subprocess.run(["ollama", "pull", "gemma3:4b-it-q4_K_M"])
+                else:
+                    print("❌ Training requires Gemma3 model. Cancelled.")
+                    return
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print("❌ Could not verify Ollama model")
+
+        # Check RAG JSON directory
+        rag_json_dir = PROJECT_ROOT / "historical" / "rag_json"
+        if not rag_json_dir.exists():
+            print(f"\n❌ RAG JSON directory not found: {rag_json_dir}")
+            print("Please ensure RAG JSON files are available in historical/rag_json/")
+            return
+
+        print(f"\n📁 RAG JSON Directory: {rag_json_dir}")
+
+        # Count JSON files
+        json_files = list(rag_json_dir.glob("*_rag.json"))
+        print(f"📊 Found {len(json_files)} RAG JSON files")
+
+        if len(json_files) == 0:
+            print("❌ No RAG JSON files found in directory")
+            return
+
+        print("-" * 80)
+        print("Training Information:")
+        print("-" * 80)
+        print("  • Model: gemma3:4b-it-q4_K_M")
+        print(f"  • Files to process: {len(json_files)}")
+        print(f"  • Location: {rag_json_dir}")
+        print("  • Method: Retrieval-Augmented Generation (RAG)")
+        print("\n⚠️  This process will:")
+        print("  • Load each JSON file and extract trading data")
+        print("  • Send data to Ollama for knowledge ingestion")
+        print("  • Monitor system resources (CPU, GPU, Memory)")
+        print("  • Display real-time progress and statistics")
+        print("\n⏱️  Estimated time: 10-30 minutes depending on data size")
+        print("-" * 80)
+
+        confirm = input("\n▶️  Start RAG training? (yes/no): ").strip().lower()
+
+        if confirm not in ['yes', 'y']:
+            print("\n⚠️  Training cancelled.")
+            return
+
+        # Create orchestrator
+        print("\n🚀 Initializing RAG Training Orchestrator...")
+        orchestrator = RAGTrainingOrchestrator(
+            rag_json_dir=str(rag_json_dir),
+            model_name="gemma3:4b-it-q4_K_M"
+        )
+
+        # Start training in async context
+        print("🎯 Starting training...\n")
+
+        async def run_training_with_dashboard():
+            """Run training with real-time dashboard"""
+            # Start training task
+            training_task = asyncio.create_task(orchestrator.start_training())
+
+            # Dashboard update loop
+            dashboard_active = True
+
+            def clear_screen():
+                os.system('clear' if os.name != 'nt' else 'cls')
+
+            while dashboard_active:
+                try:
+                    # Get current status
+                    status = orchestrator.get_current_status()
+
+                    # Clear screen and display dashboard
+                    clear_screen()
+
+                    # Header
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}{Style.BRIGHT}🤖 RAG TRAINING DASHBOARD - GEMMA3 MODEL{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+                    else:
+                        print("=" * 80)
+                        print("🤖 RAG TRAINING DASHBOARD - GEMMA3 MODEL")
+                        print("=" * 80 + "\n")
+
+                    # Progress section
+                    progress = status['progress']
+                    print("📊 PROGRESS:")
+                    print("-" * 80)
+                    print(f"  Total Files:      {progress['total_files']}")
+                    print(f"  Completed:        {progress['completed']} ✅")
+                    print(f"  In Progress:      {progress['in_progress']} ⏳")
+                    print(f"  Pending:          {progress['pending']} ⏸️")
+                    print(f"  Failed:           {progress['failed']} ❌")
+                    print(f"  Skipped:          {progress['skipped']} ⏭️")
+                    print(f"  Overall:          {progress['overall_percent']:.1f}%")
+                    print(f"  Entries Ingested: {progress['entries_ingested']}")
+
+                    # Progress bar
+                    bar_length = 50
+                    filled = int(bar_length * progress['overall_percent'] / 100)
+                    bar = '█' * filled + '░' * (bar_length - filled)
+                    if COLORAMA_AVAILABLE:
+                        print(f"\n  [{Fore.GREEN}{bar}{Style.RESET_ALL}] {progress['overall_percent']:.1f}%\n")
+                    else:
+                        print(f"\n  [{bar}] {progress['overall_percent']:.1f}%\n")
+
+                    # Time
+                    elapsed = progress['elapsed_time_seconds']
+                    hours = int(elapsed // 3600)
+                    minutes = int((elapsed % 3600) // 60)
+                    seconds = int(elapsed % 60)
+                    print(f"  Elapsed Time:     {hours:02d}:{minutes:02d}:{seconds:02d}")
+
+                    # System stats
+                    system = status['system']
+                    print("\n💻 SYSTEM RESOURCES:")
+                    print("-" * 80)
+                    print(f"  CPU Usage:        {system['cpu_percent']:.1f}% ", end='')
+                    if system['cpu_temp']:
+                        print(f"(Temp: {system['cpu_temp']:.1f}°C)")
+                    else:
+                        print()
+
+                    print(f"  Memory:           {system['memory_percent']:.1f}% "
+                          f"({system['memory_used_gb']:.2f}/{system['memory_total_gb']:.2f} GB)")
+                    print(f"  Disk Usage:       {system['disk_percent']:.1f}% "
+                          f"({system['disk_used_gb']:.2f}/{system['disk_total_gb']:.2f} GB)")
+
+                    # GPU stats (always show block)
+                    gpu = system['gpu']
+                    print(f"\n🎮 GPU: {gpu['name']}")
+
+                    if not gpu.get('available'):
+                        print("  Status:           ⚠️  No NVIDIA GPU metrics detected")
+                        print("  Tip:              Install proprietary NVIDIA drivers and ensure 'nvidia-smi' works.")
+                        print("                   sudo ubuntu-drivers autoinstall")
+                        print("                   sudo reboot")
+                        print("                   nvidia-smi")
+                        if gpu.get('note'):
+                            print(f"  Note:             {gpu['note']}")
+                    else:
+                        memory_total = gpu.get('memory_total_mb') or 0.0
+                        memory_used = gpu.get('memory_used_mb') or 0.0
+                        if memory_total > 0:
+                            print(f"  Memory:           {gpu.get('memory_percent', 0.0):.1f}% "
+                                  f"({memory_used:.0f}/{memory_total:.0f} MB)")
+                        else:
+                            print("  Memory:           N/A")
+
+                        temperature = gpu.get('temperature')
+                        if temperature is not None:
+                            temp_color = ""
+                            if COLORAMA_AVAILABLE:
+                                if temperature > 80:
+                                    temp_color = Fore.RED
+                                elif temperature > 70:
+                                    temp_color = Fore.YELLOW
+                                else:
+                                    temp_color = Fore.GREEN
+                            print(
+                                f"  Temperature:      {temp_color}{temperature:.0f}°C"
+                                f"{Style.RESET_ALL if COLORAMA_AVAILABLE else ''}"
+                            )
+                        else:
+                            print("  Temperature:      N/A (sensor not exposed)")
+
+                        fan_speed = gpu.get('fan_speed')
+                        if fan_speed is not None:
+                            print(f"  Fan Speed:        {fan_speed}%")
+                        else:
+                            print("  Fan Speed:        N/A (OEM locked)")
+
+                        utilization = gpu.get('utilization')
+                        if utilization is not None:
+                            print(f"  Utilization:      {utilization:.1f}%")
+                        else:
+                            print("  Utilization:      N/A")
+
+                        if gpu.get('note'):
+                            print(f"  Note:             {gpu['note']}")
+
+                    # File status
+                    print("\n📁 FILES:")
+                    print("-" * 80)
+
+                    # Show recent files (last 10)
+                    files = status['files']
+                    display_files = files[-10:] if len(files) > 10 else files
+
+                    for file_info in display_files:
+                        status_emoji = {
+                            'pending': '⏸️',
+                            'in_progress': '⏳',
+                            'completed': '✅',
+                            'failed': '❌',
+                            'skipped': '⏭️'
+                        }.get(file_info['status'], '❓')
+
+                        filename_short = file_info['filename'][:40]
+                        if file_info['status'] == 'completed':
+                            print(f"  {status_emoji} {filename_short:40} | "
+                                  f"{file_info['ingested']:4d}/{file_info['entries']:4d} | "
+                                  f"{file_info['success_rate']:5.1f}% | "
+                                  f"{file_info['processing_time']:6.1f}s")
+                        elif file_info['status'] == 'in_progress':
+                            print(f"  {status_emoji} {filename_short:40} | Processing...")
+                        else:
+                            print(f"  {status_emoji} {filename_short:40}")
+
+                    if len(files) > 10:
+                        print(f"\n  ... and {len(files) - 10} more files")
+
+                    print("\n" + "=" * 80)
+                    print("Press Ctrl+C to stop training")
+                    print("=" * 80)
+
+                    # Check if training is complete
+                    if training_task.done():
+                        dashboard_active = False
+                        break
+
+                    # Update every 2 seconds
+                    await asyncio.sleep(2)
+
+                except KeyboardInterrupt:
+                    print("\n\n⚠️  Stopping training...")
+                    orchestrator.stop_training()
+                    dashboard_active = False
+                    break
+
+            # Get training result
+            result = await training_task
+            return result
+
+        # Run training
+        try:
+            result = asyncio.run(run_training_with_dashboard())
+
+            # Display final results
+            if COLORAMA_AVAILABLE:
+                print(f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}{Style.BRIGHT}📊 TRAINING COMPLETE{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+            else:
+                print("\n" + "=" * 80)
+                print("📊 TRAINING COMPLETE")
+                print("=" * 80 + "\n")
+
+            if result.get('success'):
+                stats = result.get('statistics', {})
+                print("✅ Training completed successfully!\n")
+                print(f"  Files Processed:      {stats.get('completed_files', 0)}")
+                print(f"  Files Failed:         {stats.get('failed_files', 0)}")
+                print(f"  Files Skipped:        {stats.get('skipped_files', 0)}")
+                print(f"  Entries Ingested:     {stats.get('total_entries_ingested', 0)}")
+                print(f"  Overall Progress:     {stats.get('overall_progress_percent', 0):.1f}%")
+                print(f"  Total Time:           {stats.get('elapsed_time', 'N/A')}")
+                print(f"\n🤖 Model '{stats.get('model_name', 'gemma3')}' has been trained with bank data!")
+            else:
+                error = result.get('error', 'Unknown error')
+                print(f"❌ Training failed: {error}")
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Training interrupted by user")
+            orchestrator.stop_training()
+        except Exception as e:
+            print(f"\n❌ Training error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def test_all_endpoints(self):
         """Test all API endpoints"""
@@ -2585,6 +4364,19 @@ class MenuInterface:
             elif choice == "16":
                 self.show_keyboard_shortcuts()
                 self.safe_input()
+            elif choice == "17":
+                self.handle_fan_control()
+            elif choice == "18":
+                self.handle_historical_data_download()
+                self.safe_input()
+            elif choice == "19":
+                self.handle_rag_training()
+                self.safe_input()
+            elif choice == "20":
+                self.handle_basic_training()
+                self.safe_input()
+            elif choice == "21":
+                self.show_component_status_board()
             elif choice.lower() == "help":
                 self.show_keyboard_shortcuts()
                 self.safe_input()
@@ -2594,13 +4386,107 @@ class MenuInterface:
                 os.system('clear' if os.name != 'nt' else 'cls')
             else:
                 if COLORAMA_AVAILABLE:
-                    print(f"{Fore.RED}❌ Invalid choice. Please enter 0-16, 'help', 'status', or 'clear'.{Style.RESET_ALL}")
+                    print(f"{Fore.RED}❌ Invalid choice. Please enter 0-21, 'help', 'status', or 'clear'.{Style.RESET_ALL}")
                 else:
-                    print("❌ Invalid choice. Please enter 0-16, 'help', 'status', or 'clear'.")
+                    print("❌ Invalid choice. Please enter 0-21, 'help', 'status', or 'clear'.")
 
         # Cleanup
         self.runner.stop_monitoring()
         self.runner.stop_all()
+
+    def show_component_status_board(self):
+        """Display a color-coded component status overview."""
+        refresh_interval = 2.0
+        paused = False
+
+        try:
+            with _terminal_cbreak() as interactive:
+                while True:
+                    os.system('clear' if os.name != 'nt' else 'cls')
+
+                    if COLORAMA_AVAILABLE:
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}{Style.BRIGHT}🧭 COMPONENT STATUS BOARD{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n")
+                    else:
+                        print("=" * 80)
+                        print("🧭 COMPONENT STATUS BOARD")
+                        print("=" * 80 + "\n")
+
+                    print_status_legend()
+
+                    snapshot = self.runner.get_component_status_snapshot()
+
+                    self._render_status_section("Services", snapshot.get("services", []))
+                    self._render_status_section("Critical Files", snapshot.get("files", []))
+                    self._render_status_section("External Tools", snapshot.get("tools", []))
+
+                    if interactive:
+                        status_line = "Controls: [Q]uit  [P]ause/Resume  [R]efresh"
+                        if paused:
+                            status_line += "  —  ⏸️  Paused"
+                        print(status_line)
+
+                        if paused:
+                            exit_requested = False
+                            while paused and not exit_requested:
+                                key = _read_single_key(0.1)
+                                if not key:
+                                    continue
+                                key = key.lower()
+                                if key in {"q", "x"}:
+                                    exit_requested = True
+                                elif key in {"p", "r"}:
+                                    paused = False
+                            if exit_requested:
+                                break
+                            continue
+
+                        key = _read_single_key(refresh_interval)
+                        if not key:
+                            continue
+
+                        key = key.lower()
+                        if key in {"q", "x"}:
+                            break
+                        if key == "p":
+                            paused = True
+                        # Any other key (including 'r') triggers immediate refresh
+                        continue
+
+                    # Non-interactive fallback
+                    prompt = "Press Enter to refresh or type 'q' to exit: "
+                    user_input = input(prompt).strip().lower()
+                    if user_input in {"q", "quit", "exit"}:
+                        break
+        except KeyboardInterrupt:
+            print("\nStatus board closed.")
+
+    def _render_status_section(self, title: str, items: List[Dict[str, Any]]) -> None:
+        """Helper to render a status section."""
+        if not items:
+            return
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{Style.BRIGHT}{title.upper()}{Style.RESET_ALL}")
+        else:
+            print(title.upper())
+
+        for item in items:
+            color_key = item.get("color", "purple")
+            emoji = STATUS_EMOJI_MAP.get(color_key, "⬜")
+            color = STATUS_COLOR_MAP.get(color_key, "")
+            reset = Style.RESET_ALL if COLORAMA_AVAILABLE else ""
+            name = item.get("name", "Unknown")
+            status = item.get("status", "Unknown")
+            detail = item.get("detail", "")
+
+            if COLORAMA_AVAILABLE:
+                print(f"  {color}{emoji} {name:<28} {status:<18}{reset} {detail}")
+            else:
+                print(f"  {emoji} {name:<28} {status:<18} {detail}")
+
+        print()
 
     def handle_trading_dashboard(self, paper_mode: bool = True):
         """Handle trading dashboard launch"""
@@ -2663,7 +4549,7 @@ class MenuInterface:
             print(f"{Fore.CYAN}║{Fore.YELLOW}{Style.BRIGHT}                 ⌨️  KEYBOARD SHORTCUTS & TIPS{Style.RESET_ALL}{Fore.CYAN}                   ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}╠═══════════════════════════════════════════════════════════════════════╣{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║  {Fore.GREEN}Navigation:{Style.RESET_ALL}{Fore.CYAN}{' ' * 59}║{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 0-16 to select menu options{Fore.CYAN}{' ' * 36}║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 0-20 to select menu options{Fore.CYAN}{' ' * 36}║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'help' for this guide{Fore.CYAN}{' ' * 42}║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'status' for quick status check{Fore.CYAN}{' ' * 32}║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║    {Fore.WHITE}• Type 'clear' to clear screen{Fore.CYAN}{' ' * 40}║{Style.RESET_ALL}")
@@ -2682,7 +4568,7 @@ class MenuInterface:
             print("\n⌨️  Keyboard Shortcuts & Tips")
             print("=" * 70)
             print("  Navigation:")
-            print("    • Type 0-16 to select menu options")
+            print("    • Type 0-20 to select menu options")
             print("    • Type 'help' for this guide")
             print("    • Type 'status' for quick status check")
             print("    • Type 'clear' to clear screen")
@@ -2700,7 +4586,7 @@ class MenuInterface:
     def show_enhanced_status(self):
         """Show enhanced status with system info"""
         self.runner.show_status()
-        
+
         # Show additional system info
         if COLORAMA_AVAILABLE:
             print(f"\n{Fore.CYAN}╔═══════════════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
@@ -2710,19 +4596,19 @@ class MenuInterface:
             print("\n" + "=" * 70)
             print("                      � SYSTEM INFORMATION")
             print("=" * 70)
-        
+
         # Try to show system stats
         try:
             if PSUTIL_AVAILABLE:
                 cpu = psutil.cpu_percent(interval=1)
                 mem = psutil.virtual_memory()
                 disk = shutil.disk_usage(PROJECT_ROOT)
-                
+
                 if COLORAMA_AVAILABLE:
                     cpu_color = Fore.GREEN if cpu < 50 else Fore.YELLOW if cpu < 75 else Fore.RED
                     mem_color = Fore.GREEN if mem.percent < 50 else Fore.YELLOW if mem.percent < 75 else Fore.RED
                     disk_color = Fore.GREEN if disk.used / disk.total < 0.5 else Fore.YELLOW if disk.used / disk.total < 0.75 else Fore.RED
-                    
+
                     print(f"  🔥 CPU Usage: {cpu_color}{cpu:.1f}%{Style.RESET_ALL}")
                     print(f"  💾 Memory: {mem_color}{mem.percent:.1f}%{Style.RESET_ALL} ({mem.used/(1024**3):.1f}G / {mem.total/(1024**3):.1f}G)")
                     print(f"  💿 Disk: {disk_color}{disk.used/disk.total*100:.1f}%{Style.RESET_ALL} ({disk.used/(1024**3):.1f}G / {disk.total/(1024**3):.1f}G)")
@@ -2732,7 +4618,7 @@ class MenuInterface:
                     print(f"  Disk: {disk.used/disk.total*100:.1f}% ({disk.used/(1024**3):.1f}G / {disk.total/(1024**3):.1f}G)")
         except Exception:
             print("  ℹ️  System stats unavailable (install psutil)")
-        
+
         print()
         self.safe_input()
 
@@ -2765,9 +4651,9 @@ class MenuInterface:
             print("  8. 💾 Backup Configuration")
             print("  0. ⬅️  Back to Main Menu")
             print("=" * 70 + "\n")
-        
+
         choice = self.get_user_input()
-        
+
         if choice == "0":
             return
         elif choice == "1":
@@ -2800,33 +4686,33 @@ class MenuInterface:
             print("\n" + "=" * 70)
             print("                   🎮 GPU & SYSTEM MONITOR")
             print("=" * 70)
-        
+
         if not PSUTIL_AVAILABLE:
             print("\n⚠️  psutil not installed. Install it with: pip install psutil")
             self.safe_input()
             return
-        
+
         print("\n📊 Collecting system statistics... (5 seconds)\n")
-        
+
         for i in range(5):
             # CPU
             cpu = psutil.cpu_percent(interval=1)
             cpu_color = Fore.GREEN if cpu < 50 else Fore.YELLOW if cpu < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
             reset = Style.RESET_ALL if COLORAMA_AVAILABLE else ""
-            
+
             # Memory
             mem = psutil.virtual_memory()
             mem_color = Fore.GREEN if mem.percent < 50 else Fore.YELLOW if mem.percent < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
-            
+
             # Disk
             disk = shutil.disk_usage(PROJECT_ROOT)
             disk_pct = disk.used / disk.total * 100
             disk_color = Fore.GREEN if disk_pct < 50 else Fore.YELLOW if disk_pct < 75 else Fore.RED if COLORAMA_AVAILABLE else ""
-            
+
             print(f"\r🔥 CPU: {cpu_color}{cpu:5.1f}%{reset}  💾 RAM: {mem_color}{mem.percent:5.1f}%{reset}  💿 Disk: {disk_color}{disk_pct:5.1f}%{reset}", end='', flush=True)
-        
+
         print("\n")
-        
+
         # Try GPU info
         try:
             smi = shutil.which('nvidia-smi')
@@ -2851,7 +4737,7 @@ class MenuInterface:
                 print("🎮 GPU: nvidia-smi not found (NVIDIA GPUs only)")
         except Exception as e:
             print(f"🎮 GPU: Unable to query ({str(e)})")
-        
+
         print()
         self.safe_input()
 
@@ -2888,9 +4774,9 @@ class MenuInterface:
                 print("    13. Backend        14. Frontend        15. All")
                 print("\n  0. ⬅️  Back to Main Menu")
                 print("=" * 70 + "\n")
-            
+
             choice = self.get_user_input()
-            
+
             if choice == "0":
                 break
             elif choice == "1":
@@ -3247,6 +5133,10 @@ class TradingDashboard:
 
         # Chart pattern
         self._print_chart_pattern()
+
+        # Component status summary
+        self._print_component_status_summary()
+
         # System stats (hardware telemetry)
         self._print_system_stats()
 
@@ -3450,6 +5340,49 @@ class TradingDashboard:
                 print("│     DOWNTREND - Resistance at previous high")
             else:
                 print("│     CONSOLIDATION - Range bound")
+            print("└────────────────────────────────────────────────────────────┘\n")
+
+    def _print_component_status_summary(self) -> None:
+        """Print a compact summary of component statuses inside the dashboard."""
+        snapshot = self.runner.get_component_status_snapshot()
+        services = snapshot.get("services", [])[:4]
+        files = snapshot.get("files", [])[:3]
+
+        if not services and not files:
+            return
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}{Style.BRIGHT}┌─ COMPONENT STATUS ────────────────────────────────────────┐{Style.RESET_ALL}")
+        else:
+            print("┌─ COMPONENT STATUS ────────────────────────────────────────┐")
+
+        def render_items(items: List[Dict[str, Any]]) -> None:
+            for item in items:
+                color_key = item.get("color", "purple")
+                emoji = STATUS_EMOJI_MAP.get(color_key, "⬜")
+                color = STATUS_COLOR_MAP.get(color_key, "")
+                reset = Style.RESET_ALL if COLORAMA_AVAILABLE else ""
+                name = item.get("name", "Unknown")
+                status = item.get("status", "Unknown")
+                detail = item.get("detail", "")
+
+                if COLORAMA_AVAILABLE:
+                    print(f"│ {color}{emoji} {name:<24} {status:<16}{reset} {detail}")
+                else:
+                    print(f"│ {emoji} {name:<24} {status:<16} {detail}")
+
+        if services:
+            render_items(services)
+        if files:
+            if COLORAMA_AVAILABLE:
+                print(f"│ {Fore.WHITE}{Style.DIM}{'-' * 63}{Style.RESET_ALL}")
+            else:
+                print("│ " + "-" * 63)
+            render_items(files)
+
+        if COLORAMA_AVAILABLE:
+            print(f"{Fore.CYAN}└────────────────────────────────────────────────────────────┘{Style.RESET_ALL}\n")
+        else:
             print("└────────────────────────────────────────────────────────────┘\n")
 
     def _print_footer(self, width: int):
@@ -3667,21 +5600,504 @@ class TradingDashboard:
 
 
 # ---------------- Fan Control Utilities -----------------
+
+
+def _build_nvidia_env() -> Dict[str, str]:
+    """Build environment variables for NVIDIA utilities.
+
+    Ensures DISPLAY and XAUTHORITY are set so nvidia-settings can talk to the
+    active X server, which is required for toggling manual fan control.
+    """
+
+    env = os.environ.copy()
+    if not env.get("DISPLAY"):
+        env["DISPLAY"] = ":0"
+
+    if not env.get("XAUTHORITY"):
+        potential = Path.home() / ".Xauthority"
+        if potential.exists():
+            env["XAUTHORITY"] = str(potential)
+
+    return env
+
+
+class FanSpeedController:
+    """Continuous fan speed controller to maintain static fan speed.
+
+    This class creates a background thread that continuously enforces
+    the specified fan speed, preventing the GPU driver from reverting
+    to automatic fan control.
+    """
+
+    def __init__(self, target_percent: int, check_interval: float = 5.0):
+        """Initialize fan speed controller.
+
+        Args:
+            target_percent: Target fan speed percentage (0-100)
+            check_interval: How often to check and reset fan speed (seconds)
+        """
+        self.target_percent = target_percent
+        self.check_interval = check_interval
+        self.running = False
+        self.thread: Optional[threading.Thread] = None
+        self.nvset = shutil.which('nvidia-settings')
+        self.last_set_time = 0.0
+        self.set_count = 0
+        self.error_count = 0
+
+    def is_available(self) -> bool:
+        """Check if nvidia-settings is available."""
+        return self.nvset is not None
+
+    def _set_fan_speed_once(self) -> bool:
+        """Set fan speed once. Returns True if successful."""
+        if not self.nvset:
+            return False
+        try:
+            env = _build_nvidia_env()
+            # Detect all GPUs and fans
+            gpu_count = self._detect_gpu_count()
+
+            success = True
+            for gpu_idx in range(gpu_count):
+                # Enable manual fan control for this GPU
+                result1 = subprocess.run(
+                    [self.nvset, '-a', f'[gpu:{gpu_idx}]/GPUFanControlState=1'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=2,
+                    env=env,
+                    text=True
+                )
+
+                # Set fan speed for all fans on this GPU
+                # Try fan:0, fan:1, etc. Some GPUs have multiple fans
+                for fan_idx in range(4):  # Most GPUs have 1-3 fans
+                    result2 = subprocess.run(
+                        [self.nvset, '-a', f'[fan:{fan_idx}]/GPUTargetFanSpeed={self.target_percent}'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=2,
+                        env=env,
+                        text=True
+                    )
+                    # Don't fail if a fan index doesn't exist
+                    if result2.returncode == 0:
+                        success = success and True
+
+                if result1.returncode != 0:
+                    success = False
+
+            if success:
+                self.last_set_time = time.time()
+                self.set_count += 1
+            else:
+                self.error_count += 1
+            return success
+        except Exception:
+            self.error_count += 1
+            return False
+
+    def _detect_gpu_count(self) -> int:
+        """Detect number of NVIDIA GPUs in the system."""
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=count', '--format=csv,noheader'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # nvidia-smi returns the count per GPU, so count lines
+                return len(result.stdout.strip().split('\n'))
+            return 1  # Default to 1 GPU
+        except Exception:
+            return 1  # Default to 1 GPU
+
+    def _monitoring_loop(self):
+        """Background monitoring loop that continuously enforces fan speed."""
+        while self.running:
+            self._set_fan_speed_once()
+            time.sleep(self.check_interval)
+
+    def start(self) -> bool:
+        """Start the fan speed controller. Returns True if started successfully."""
+        if not self.is_available():
+            return False
+
+        if self.running:
+            return True
+
+        # Set fan speed initially
+        if not self._set_fan_speed_once():
+            return False
+
+        # Start monitoring thread
+        self.running = True
+        self.thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.thread.start()
+        return True
+
+    def stop(self):
+        """Stop the fan speed controller and restore automatic fan control."""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=2.0)
+
+        # Try to restore automatic fan control for all GPUs
+        if self.nvset:
+            try:
+                gpu_count = self._detect_gpu_count()
+                for gpu_idx in range(gpu_count):
+                    subprocess.run(
+                        [self.nvset, '-a', f'[gpu:{gpu_idx}]/GPUFanControlState=0'],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2
+                    )
+            except Exception:
+                pass
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get controller statistics."""
+        uptime = time.time() - self.last_set_time if self.last_set_time > 0 else 0
+        return {
+            "target_percent": self.target_percent,
+            "running": self.running,
+            "set_count": self.set_count,
+            "error_count": self.error_count,
+            "check_interval": self.check_interval,
+            "time_since_last_set": uptime
+        }
+
+
 def set_fan_speed(percent: int) -> bool:
-    """Attempt to set NVIDIA GPU fan speed (best effort).
+    """Attempt to set NVIDIA GPU fan speed once (legacy function).
     Returns True if command was attempted (not necessarily that hardware obeyed).
     Requires nvidia-settings and proper permissions; many laptops lock fan control.
+
+    Note: For continuous fan speed control, use FanSpeedController instead.
     """
     try:
         nvset = shutil.which('nvidia-settings')
         if not nvset:
             return False
-        # Enable manual fan control
-        subprocess.run([nvset, '-a', '[gpu:0]/GPUFanControlState=1'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run([nvset, '-a', f'[fan:0]/GPUTargetFanSpeed={percent}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        env = _build_nvidia_env()
+        # Detect GPU count
+        gpu_count = 1
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=count', '--format=csv,noheader'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                gpu_count = len(result.stdout.strip().split('\n'))
+        except Exception:
+            pass
+
+        # Set fan speed for all GPUs
+        for gpu_idx in range(gpu_count):
+            # Enable manual fan control
+            subprocess.run(
+                [nvset, '-a', f'[gpu:{gpu_idx}]/GPUFanControlState=1'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                env=env
+            )
+            # Set fan speed for all fans
+            for fan_idx in range(4):  # Most GPUs have 1-3 fans
+                subprocess.run(
+                    [nvset, '-a', f'[fan:{fan_idx}]/GPUTargetFanSpeed={percent}'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=2,
+                    env=env
+                )
         return True
     except Exception:
         return False
+
+
+def attempt_unlock_fan_control() -> Dict[str, Any]:
+    """Attempt to unlock OEM-locked NVIDIA fan control using sudo commands.
+
+    Returns diagnostic info about each step performed. On systems where the
+    commands succeed, the user may still need to restart their display manager
+    or reboot before manual fan control becomes available.
+    """
+
+    result: Dict[str, Any] = {
+        "success": False,
+        "steps": [],
+        "errors": [],
+        "requires_reboot": False,
+        "pre_check": None,
+        "post_check": None
+    }
+
+    if platform.system().lower() != "linux":
+        result["errors"].append("Fan control unlock is only supported on Linux systems.")
+        return result
+
+    if not shutil.which('sudo'):
+        result["errors"].append("sudo not found. Install sudo or run the script with elevated privileges.")
+        return result
+
+    nvset = shutil.which('nvidia-settings')
+    if not nvset:
+        result["errors"].append("nvidia-settings is required to unlock manual fan control. Install via: sudo apt install nvidia-settings")
+        return result
+
+    # Capture current status before attempting unlock
+    pre_status = check_fan_control_available()
+    result["pre_check"] = pre_status
+
+    if not pre_status.get("nvidia_smi"):
+        message = pre_status.get("message") or "nvidia-smi is missing or failed to query the GPU."
+        result["errors"].append(message)
+        result["errors"].append("Install the proprietary NVIDIA drivers (ubuntu-drivers autoinstall) and reboot before retrying.")
+        result["post_check"] = pre_status
+        return result
+
+    if pre_status.get("gpu_count", 0) == 0:
+        message = pre_status.get("message") or "nvidia-smi did not detect any NVIDIA GPUs."
+        result["errors"].append(message)
+        result["errors"].append("Unlock routine requires a detectable NVIDIA GPU. Verify the hardware connection and driver installation, then reboot.")
+        result["post_check"] = pre_status
+        return result
+
+    env_with_display = _build_nvidia_env()
+    commands: List[Dict[str, Any]] = []
+    needs_restart = False
+
+    # Enable persistence mode so fan values stick between calls
+    if shutil.which('nvidia-smi'):
+        commands.append({
+            "name": "Enable NVIDIA persistence mode",
+            "cmd": ["sudo", "nvidia-smi", "-pm", "1"],
+            "critical": False
+        })
+
+    xconfig = shutil.which('nvidia-xconfig')
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    xorg_conf = Path("/etc/X11/xorg.conf")
+
+    if xconfig:
+        if xorg_conf.exists():
+            backup_path = f"/etc/X11/xorg.conf.niraj-backup-{timestamp}"
+            commands.append({
+                "name": f"Backup existing xorg.conf to {backup_path}",
+                "cmd": ["sudo", "cp", str(xorg_conf), backup_path],
+                "critical": False
+            })
+
+        commands.append({
+            "name": "Enable Coolbits via nvidia-xconfig",
+            "cmd": [
+                "sudo",
+                xconfig,
+                "--cool-bits=4",
+                "--allow-empty-initial-configuration",
+                "--enable-all-gpus",
+                "--silent"
+            ],
+            "critical": True
+        })
+        needs_restart = True
+    else:
+        # Fallback: write xorg snippet enabling Coolbits
+        config_dir = Path("/etc/X11/xorg.conf.d")
+        config_path = config_dir / "20-nvidia-coolbits.conf"
+        snippet = textwrap.dedent(
+            """
+            Section "Device"
+                Identifier "NVIDIA Device"
+                Driver "nvidia"
+                VendorName "NVIDIA Corporation"
+                Option "Coolbits" "4"
+            EndSection
+            """
+        ).strip()
+
+        commands.append({
+            "name": "Ensure /etc/X11/xorg.conf.d exists",
+            "cmd": ["sudo", "mkdir", "-p", str(config_dir)],
+            "critical": True
+        })
+        commands.append({
+            "name": f"Write Coolbits config to {config_path}",
+            "cmd": ["sudo", "tee", str(config_path)],
+            "input": snippet + "\n",
+            "text": True,
+            "capture_output": True,
+            "critical": True
+        })
+        needs_restart = True
+
+    # Attempt to enable nvidia-persistenced if available (non-critical)
+    if shutil.which('systemctl'):
+        commands.append({
+            "name": "Enable nvidia-persistenced service",
+            "cmd": ["sudo", "systemctl", "enable", "--now", "nvidia-persistenced"],
+            "critical": False
+        })
+
+    # Try to enable manual fan control immediately using nvidia-settings
+    commands.append({
+        "name": "Force manual fan control state",
+        "cmd": ["sudo", "-E", nvset, "-a", "[gpu:0]/GPUFanControlState=1"],
+        "env": env_with_display,
+        "critical": False
+    })
+    commands.append({
+        "name": "Set default fan speed to 50%",
+        "cmd": ["sudo", "-E", nvset, "-a", "[fan:0]/GPUTargetFanSpeed=50"],
+        "env": env_with_display,
+        "critical": False
+    })
+
+    overall_success = True
+    for step in commands:
+        cmd = step["cmd"]
+        env = step.get("env")
+        capture = step.get("capture_output", False)
+        text_mode = step.get("text", False) or capture or step.get("input") is not None
+        run_kwargs: Dict[str, Any] = {
+            "env": env if env is not None else None,
+            "check": False,
+        }
+        if capture:
+            run_kwargs.update({"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "text": True})
+        elif text_mode:
+            run_kwargs.update({"text": True})
+
+        if step.get("input") is not None:
+            run_kwargs["input"] = step["input"]
+
+        try:
+            completed = subprocess.run(cmd, **run_kwargs)
+            step_info = {
+                "name": step["name"],
+                "command": " ".join(cmd),
+                "returncode": completed.returncode
+            }
+            if capture:
+                step_info["stdout"] = (completed.stdout or "").strip()
+                step_info["stderr"] = (completed.stderr or "").strip()
+
+            result["steps"].append(step_info)
+
+            if completed.returncode != 0:
+                message = f"Step '{step['name']}' failed (exit {completed.returncode})."
+                result["errors"].append(message)
+                if step.get("critical", True):
+                    overall_success = False
+        except FileNotFoundError as exc:
+            result["errors"].append(f"Command not found: {exc}")
+            if step.get("critical", True):
+                overall_success = False
+        except Exception as exc:  # pragma: no cover - defensive
+            result["errors"].append(f"Unexpected error while running '{step['name']}': {exc}")
+            if step.get("critical", True):
+                overall_success = False
+
+    result["success"] = overall_success
+    result["requires_reboot"] = needs_restart
+    result["post_check"] = check_fan_control_available()
+
+    return result
+
+
+def check_fan_control_available() -> Dict[str, Any]:
+    """Check if fan control is available and provide diagnostic information."""
+    info: Dict[str, Any] = {
+        "available": False,
+        "nvidia_smi": False,
+        "nvidia_settings": False,
+        "gpu_count": 0,
+        "can_control": False,
+        "message": "",
+        "oem_locked": False,
+        "requires_display": False,
+        "nvidia_smi_error": None
+    }
+
+    # Check for nvidia-smi
+    if shutil.which('nvidia-smi'):
+        info["nvidia_smi"] = True
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=count', '--format=csv,noheader'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+                text=True
+            )
+            if result.returncode == 0:
+                info["gpu_count"] = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+                if info["gpu_count"] == 0:
+                    info["message"] = "nvidia-smi did not report any NVIDIA GPUs. Install the proprietary driver and reboot."
+            else:
+                info["nvidia_smi_error"] = (result.stderr or result.stdout or "nvidia-smi failed to query GPUs.").strip()
+                info["message"] = info["nvidia_smi_error"]
+                info["nvidia_smi"] = False
+        except Exception as exc:
+            info["nvidia_smi_error"] = str(exc)
+            info["message"] = f"nvidia-smi error: {exc}"
+            info["nvidia_smi"] = False
+
+    # Check for nvidia-settings
+    nvset = shutil.which('nvidia-settings')
+    if nvset:
+        info["nvidia_settings"] = True
+
+        # Try to query fan control state
+        try:
+            env = _build_nvidia_env()
+            result = subprocess.run(
+                [nvset, '-q', '[gpu:0]/GPUFanControlState'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+                text=True,
+                env=env
+            )
+            if result.returncode == 0:
+                output_lower = (result.stdout or "").lower()
+                if "not supported" in output_lower or "not available" in output_lower:
+                    info["oem_locked"] = True
+                    info["message"] = "Fan control attribute present but locked by OEM firmware."
+                else:
+                    info["can_control"] = True
+                    info["available"] = True
+                    info["message"] = f"Fan control available for {max(info['gpu_count'], 1)} GPU(s)"
+            else:
+                combined = (result.stderr or result.stdout or "").lower()
+                if "coolbits" in combined or "not supported" in combined or "cannot set" in combined:
+                    info["oem_locked"] = True
+                    info["message"] = "Fan control locked (Coolbits disabled or OEM restriction)."
+                elif "display" in combined or "xopen" in combined:
+                    info["requires_display"] = True
+                    info["message"] = "nvidia-settings cannot connect to the X server. Run inside graphical session or export DISPLAY."
+                elif "permission" in combined or "authorization" in combined:
+                    info["message"] = "Insufficient permissions for nvidia-settings. Try unlock option (requires sudo)."
+                else:
+                    info["message"] = (result.stderr or result.stdout or "nvidia-settings found but cannot control fans.").strip()
+        except Exception as e:
+            info["message"] = f"nvidia-settings found but error querying: {str(e)}"
+
+    if not info["nvidia_smi"] and not info["nvidia_settings"]:
+        info["message"] = "No NVIDIA tools found. Install: sudo apt install nvidia-utils nvidia-settings"
+    elif not info["nvidia_settings"]:
+        info["message"] = "nvidia-settings not found. Install: sudo apt install nvidia-settings"
+
+    return info
 
 
 def main():
@@ -3700,10 +6116,15 @@ Examples:
   python niraj.py --dashboard-only --paper-trading            # Dashboard only (needs backend)
 
   # GPU Fan Control (NVIDIA only, requires nvidia-settings)
-  python niraj.py --terminal-mode --fan-speed max             # Maximum cooling
-  python niraj.py --terminal-mode --fan-speed 70              # Balanced (70%)
-  python niraj.py --terminal-mode --fan-speed 30              # Quiet mode (30%)
+  python niraj.py --terminal-mode --fan-speed max             # Maximum cooling (one-time)
+  python niraj.py --terminal-mode --fan-speed 70              # Balanced (70%, one-time)
+  python niraj.py --terminal-mode --fan-speed 30              # Quiet mode (30%, one-time)
   python niraj.py --real-trading --fan-speed 50               # Real trading with 50% fan
+
+  # GPU Fan Control with Continuous Fixing (maintains static speed)
+  python niraj.py --terminal-mode --fan-speed 70 --fix-fan-speed              # Keep at 70%
+  python niraj.py --real-trading --fan-speed max --fix-fan-speed              # Keep at 100%
+  python niraj.py --paper-trading --fan-speed 50 --fix-fan-speed --fan-check-interval 3.0  # Check every 3s
 
   # Service Management
   python niraj.py --enable-api --enable-frontend              # Start API and frontend
@@ -3739,6 +6160,14 @@ Fan Control Notes:
   • Many laptops lock fan control via BIOS
   • Monitor temperatures when using manual fan speeds
   • Default auto mode if not specified
+
+Fan Static Speed Fixing Mode (--fix-fan-speed):
+  • Continuously enforces the set fan speed (every 5 seconds by default)
+  • Prevents GPU driver from reverting to automatic fan control
+  • Useful for maintaining consistent cooling during long trading sessions
+  • Automatically restores automatic control on exit
+  • Use --fan-check-interval to adjust checking frequency (default: 5.0s)
+  • Example: --fan-speed 70 --fix-fan-speed --fan-check-interval 3.0
 
 For detailed documentation, see:
   • SYSTEM_MONITORING_FEATURES.md - System stats & GPU control
@@ -3815,6 +6244,19 @@ For detailed documentation, see:
     )
 
     parser.add_argument(
+        "--fix-fan-speed",
+        action="store_true",
+        help="Enable continuous fan speed fixing mode (maintains static fan speed)",
+    )
+
+    parser.add_argument(
+        "--fan-check-interval",
+        type=float,
+        default=5.0,
+        help="Interval in seconds to check and reset fan speed in fix mode (default: 5.0)",
+    )
+
+    parser.add_argument(
         "command",
         nargs="?",
         choices=["status", "stop", "install", "menu"],
@@ -3827,13 +6269,53 @@ For detailed documentation, see:
     runner = NirajRunner(mode=args.mode, config_file=args.config)
 
     # Optional fan speed control (best effort)
+    fan_controller: Optional[FanSpeedController] = None
     if args.fan_speed:
+        # Check fan control availability first
+        fan_info = check_fan_control_available()
+
         percent_map = {"max": 100, "100": 100, "70": 70, "50": 50, "30": 30, "10": 10}
         target = percent_map.get(args.fan_speed, 100)
-        if set_fan_speed(target):
-            runner.log(f"🌀 Set GPU fan speed to {target}% (manual mode)", "success")
+
+        if not fan_info["available"]:
+            runner.log("⚠️  GPU Fan Control Status:", "warning")
+            runner.log(f"   {fan_info['message']}", "warning")
+            if not fan_info["nvidia_smi"]:
+                runner.log("   📦 Install nvidia drivers: sudo apt install nvidia-driver-xxx", "info")
+            if not fan_info["nvidia_settings"]:
+                runner.log("   📦 Install nvidia-settings: sudo apt install nvidia-settings", "info")
+            runner.log("   ℹ️  Note: Many laptops lock fan control in BIOS", "info")
         else:
-            runner.log("GPU fan control unavailable (needs NVIDIA + nvidia-settings + permissions)", "warning")
+            if args.fix_fan_speed:
+                # Use continuous fan speed controller
+                fan_controller = FanSpeedController(
+                    target_percent=target,
+                    check_interval=args.fan_check_interval
+                )
+                if fan_controller.start():
+                    runner.log(
+                        f"🌀 Started continuous fan speed controller at {target}% "
+                        f"(checking every {args.fan_check_interval}s)",
+                        "success"
+                    )
+                    runner.log(f"   Controlling {fan_info['gpu_count']} GPU(s)", "info")
+                else:
+                    runner.log(
+                        "GPU fan control failed to start. Check permissions and X server.",
+                        "error"
+                    )
+                    fan_controller = None
+            else:
+                # One-time fan speed setting (legacy mode)
+                if set_fan_speed(target):
+                    runner.log(f"🌀 Set GPU fan speed to {target}% (manual mode, one-time)", "success")
+                    runner.log(f"   Applied to {fan_info['gpu_count']} GPU(s)", "info")
+                    runner.log("💡 Tip: Use --fix-fan-speed to maintain this speed continuously", "info")
+                else:
+                    runner.log(
+                        "GPU fan control command sent but may not have taken effect",
+                        "warning"
+                    )
 
     # Handle trading dashboard modes
     if args.dashboard_only or args.terminal_mode:
@@ -3859,6 +6341,9 @@ For detailed documentation, see:
                     time.sleep(1)
             except KeyboardInterrupt:
                 dashboard.stop()
+                if fan_controller:
+                    fan_controller.stop()
+                    runner.log("🌀 Stopped fan speed controller, restored automatic control", "info")
                 runner.log("Dashboard stopped", "info")
             return
 
@@ -3879,6 +6364,9 @@ For detailed documentation, see:
         def signal_handler(signum, frame):
             runner.log("Shutting down...", "warning")
             dashboard.stop()
+            if fan_controller:
+                fan_controller.stop()
+                runner.log("🌀 Stopped fan speed controller, restored automatic control", "info")
             runner.stop_all()
             sys.exit(0)
 
@@ -3891,6 +6379,9 @@ For detailed documentation, see:
                 time.sleep(1)
         except KeyboardInterrupt:
             dashboard.stop()
+            if fan_controller:
+                fan_controller.stop()
+                runner.log("🌀 Stopped fan speed controller, restored automatic control", "info")
             runner.stop_all()
 
         return
@@ -3904,7 +6395,12 @@ For detailed documentation, see:
     # If no arguments provided or menu requested, start interactive mode
     if not has_services and not has_command or args.menu or args.command == "menu":
         menu = MenuInterface(runner)
-        menu.run()
+        try:
+            menu.run()
+        finally:
+            if fan_controller:
+                fan_controller.stop()
+                runner.log("🌀 Stopped fan speed controller, restored automatic control", "info")
         return
 
     # Handle commands

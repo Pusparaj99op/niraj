@@ -1,0 +1,49 @@
+
+======================================================================
+BANK STOCKS HISTORICAL DATA SUMMARY
+======================================================================
+
+Downloaded Date: 2025-10-05 19:37:20
+Total Banks: 20
+
+Data Timeframes:
+  • Daily: Maximum available history
+  • 15-Min: Last 60 days (Yahoo Finance limitation)
+
+Download Statistics:
+  Daily Data Success:    20/20
+  15-Min Data Success:   20/20
+  Total Success:         40
+  Total Failed:          0
+
+Bank List:
+  • SBI             - State Bank of India
+  • PNB             - Punjab National Bank
+  • BANKBARODA      - Bank of Baroda
+  • CANBK           - Canara Bank
+  • UNIONBANK       - Union Bank of India
+  • INDIANB         - Indian Bank
+  • IOB             - Indian Overseas Bank
+  • CENTRALBK       - Central Bank of India
+  • MAHABANK        - Bank of Maharashtra
+  • HDFCBANK        - HDFC Bank
+  • ICICIBANK       - ICICI Bank
+  • AXISBANK        - Axis Bank
+  • KOTAKBANK       - Kotak Mahindra Bank
+  • INDUSINDBK      - IndusInd Bank
+  • FEDERALBNK      - Federal Bank
+  • BANDHANBNK      - Bandhan Bank
+  • IDFCFIRSTB      - IDFC First Bank
+  • RBLBANK         - RBL Bank
+  • YESBANK         - Yes Bank
+  • AUBANK          - AU Small Finance Bank
+
+======================================================================
+Folder Structure:
+  historical/
+    ├── SYMBOL/
+    │   ├── daily/
+    │   │   └── SYMBOL_daily.csv
+    │   └── 15min/
+    │       └── SYMBOL_15min.csv
+======================================================================

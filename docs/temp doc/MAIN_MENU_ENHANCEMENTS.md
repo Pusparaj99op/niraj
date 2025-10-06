@@ -17,7 +17,7 @@ Increased from 11 to **16 total options**, organized into:
 
 #### **📊 Monitoring & Status** (Options 1-3)
 - `1.` View Services - Service status overview
-- `2.` View Logs - Real-time log monitoring  
+- `2.` View Logs - Real-time log monitoring
 - `3.` Enhanced Status - **NEW**: Comprehensive status with system info (CPU, RAM, Disk)
 
 #### **⚡ Quick Actions** (Options 4-8)
@@ -231,13 +231,13 @@ Choose [0-16] or type 'help': 13
 **Solution**: Install psutil: `pip install psutil`
 
 ### Issue: GPU info not showing
-**Solution**: 
+**Solution**:
 - Ensure you have an NVIDIA GPU
 - Install NVIDIA drivers
 - Verify `nvidia-smi` command works
 
 ### Issue: Menu layout broken
-**Solution**: 
+**Solution**:
 - Ensure terminal is at least 80 characters wide
 - Try maximizing terminal window
 - Use `clear` command to refresh

@@ -714,6 +714,26 @@ The NIRAJ dashboard provides real-time monitoring of:
 - Trade execution statistics
 - Risk management alerts
 
+### GPU Fan Control (Option 17)
+
+Manual NVIDIA GPU fan control is available directly from the interactive menu (`python niraj.py` → option **17. 🌀 GPU Fan Control**).
+
+**Menu shortcuts:**
+
+- `M` – Set all detected fans to maximum speed instantly.
+- `F` – Start continuous max-speed enforcement (fix mode).
+- `1/2/3/4/5/6/7` – One-time speeds, continuous controller, stop, status, temperature monitor, info, reset.
+- `8` – **Unlock Fan Control (Requires sudo)** – configures Coolbits, persistence mode, and forces manual control.
+
+The unlock helper automates the typical OEM-unlock steps:
+
+1. Enables NVIDIA persistence mode (`sudo nvidia-smi -pm 1`).
+2. Configures Coolbits via `nvidia-xconfig` (or creates `/etc/X11/xorg.conf.d/20-nvidia-coolbits.conf`).
+3. Attempts to enable manual fan control with `nvidia-settings` (display-aware, uses your existing X session).
+4. Suggests a reboot/display-manager restart when configuration changes require it.
+
+> 💡 **Tip:** Run option `8` if menu actions report an OEM lock or `Coolbits` error. You'll be prompted for your sudo password within the helper. After reboot, revisit option 17 to set the desired manual speed.
+
 ---
 
 ## 🧪 Testing
