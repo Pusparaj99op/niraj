@@ -247,6 +247,15 @@ const PortfolioSummaryCard: React.FC = () => {
   const { data: portfolio, isLoading, error } = usePortfolio();
   const [showDetails, setShowDetails] = useState(false);
 
+  type DisplaySummary = {
+    totalValue: number;
+    totalPnL: number;
+    totalPnLPercent: number;
+    dayPnL: number;
+    dayPnLPercent: number;
+    positionsCount: number;
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
@@ -273,8 +282,62 @@ const PortfolioSummaryCard: React.FC = () => {
 
   if (!portfolio) return null;
 
-  const pnlInfo = formatPnL(portfolio.summary.total_pnl, portfolio.summary.total_pnl_percentage);
-  const dayPnLInfo = formatPnL(portfolio.summary.day_pnl, portfolio.summary.day_pnl_percentage);
+  const computePercentage = (value: number, base: number) => {
+    if (!base || Math.abs(base) < 1e-6) {
+      return 0;
+    }
+    return (value / base) * 100;
+  };
+
+  const mapAggregateSummary = (summary: typeof portfolio.summary): DisplaySummary => ({
+    totalValue: summary.total_market_value,
+    totalPnL: summary.total_pnl,
+    totalPnLPercent: computePercentage(summary.total_pnl, summary.total_margin_used),
+    dayPnL: summary.daily_pnl,
+    dayPnLPercent: computePercentage(summary.daily_pnl, summary.total_margin_used),
+    positionsCount: summary.total_positions,
+  });
+
+  const aggregatePositions = (positions: typeof portfolio.positions): DisplaySummary => {
+    const aggregates = positions.reduce(
+      (acc, position) => {
+        const notional = Math.abs(position.quantity * position.average_price);
+        const margin = position.margin_used ?? notional;
+
+        return {
+          totalValue: acc.totalValue + (position.market_value ?? notional),
+          totalPnL: acc.totalPnL + (position.total_pnl ?? position.unrealized_pnl ?? 0),
+          dayPnL: acc.dayPnL + (position.daily_pnl ?? 0),
+          totalMargin: acc.totalMargin + (margin > 0 ? margin : notional),
+        };
+      },
+      { totalValue: 0, totalPnL: 0, dayPnL: 0, totalMargin: 0 }
+    );
+
+    const { totalValue, totalPnL, dayPnL, totalMargin } = aggregates;
+    return {
+      totalValue,
+      totalPnL,
+      totalPnLPercent: totalMargin > 0 ? (totalPnL / totalMargin) * 100 : 0,
+      dayPnL,
+      dayPnLPercent: totalMargin > 0 ? (dayPnL / totalMargin) * 100 : 0,
+      positionsCount: positions.length,
+    };
+  };
+
+  const overallSummary = mapAggregateSummary(portfolio.summary);
+  const paperPositions = portfolio.positions.filter((position) => position.is_paper_position);
+  const livePositions = portfolio.positions.filter((position) => !position.is_paper_position);
+  const paperSummary = aggregatePositions(paperPositions);
+  const liveSummary = aggregatePositions(livePositions);
+
+  const accountSummaries: Array<{ label: string; summary: DisplaySummary }> = [
+    { label: 'Paper Trading', summary: paperSummary },
+    { label: 'Live Trading', summary: liveSummary },
+  ];
+
+  const pnlInfo = formatPnL(overallSummary.totalPnL, overallSummary.totalPnLPercent);
+  const dayPnLInfo = formatPnL(overallSummary.dayPnL, overallSummary.dayPnLPercent);
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -291,7 +354,7 @@ const PortfolioSummaryCard: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div>
           <p className="text-2xl font-bold text-gray-900">
-            {formatCurrency(portfolio.summary.total_value)}
+            {formatCurrency(overallSummary.totalValue)}
           </p>
           <p className="text-xs text-gray-500">Total Value</p>
         </div>
@@ -312,10 +375,37 @@ const PortfolioSummaryCard: React.FC = () => {
 
         <div>
           <p className="text-2xl font-bold text-gray-900">
-            {portfolio.summary.positions_count}
+            {overallSummary.positionsCount}
           </p>
           <p className="text-xs text-gray-500">Positions</p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {accountSummaries.map(({ label, summary }) => {
+          const accountPnL = formatPnL(summary.totalPnL, summary.totalPnLPercent);
+          const accountDayPnL = formatPnL(summary.dayPnL, summary.dayPnLPercent);
+
+          return (
+            <div key={label} className="p-4 rounded-lg bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-gray-600">{label}</p>
+                <span className="text-xs text-gray-500">{summary.positionsCount} positions</span>
+              </div>
+              <p className="text-xl font-semibold text-gray-900">{formatCurrency(summary.totalValue)}</p>
+              <div className="flex items-center justify-between text-xs mt-2">
+                <span className={`${accountPnL.color} font-medium`}>
+                  Total {accountPnL.value}
+                  {accountPnL.percentage}
+                </span>
+                <span className={`${accountDayPnL.color} font-medium`}>
+                  Day {accountDayPnL.value}
+                  {accountDayPnL.percentage}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Portfolio Positions Details */}
@@ -324,13 +414,23 @@ const PortfolioSummaryCard: React.FC = () => {
           <h4 className="text-sm font-medium text-gray-900 mb-3">Position Details</h4>
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {portfolio.positions.map((position) => {
-              const positionPnL = formatPnL(position.unrealized_pnl, position.unrealized_pnl_percentage);
+              const notional = Math.abs(position.quantity * position.average_price);
+              const margin = position.margin_used ?? notional;
+              const pnlPercent = margin > 0 ? (position.unrealized_pnl / margin) * 100 : 0;
+              const positionPnL = formatPnL(position.unrealized_pnl, pnlPercent);
+              const accountBadgeStyles = position.is_paper_position
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-red-100 text-red-700';
+
               return (
                 <div key={position.portfolio_id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{position.symbol}</p>
                     <p className="text-xs text-gray-500">
-                      {formatCompactNumber(position.quantity)} @ {formatCurrency(position.average_price)}
+                      {formatCompactNumber(Math.abs(position.quantity))} @ {formatCurrency(position.average_price)}
+                      <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${accountBadgeStyles}`}>
+                        {position.is_paper_position ? 'Paper' : 'Live'}
+                      </span>
                     </p>
                   </div>
                   <div className="text-right">

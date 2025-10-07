@@ -8,7 +8,7 @@ import asyncio
 import os
 from datetime import datetime
 
-from ...src.api.weather_client import (
+from src.api.weather_client import (
     WeatherClient,
     WeatherConfig,
     LocationQuery,

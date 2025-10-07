@@ -204,7 +204,10 @@ export interface PortfolioUpdateMessage extends BaseMessage {
   data: {
     user_id: string;
     total_value: number;
+    total_market_value?: number;
     total_pnl: number;
+    total_margin_used?: number;
+    daily_pnl?: number;
     positions: Array<{
       symbol: string;
       quantity: number;

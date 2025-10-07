@@ -80,7 +80,12 @@ const WebSocketTestComponent: React.FC = () => {
   // Log portfolio updates
   useEffect(() => {
     if (portfolioData) {
-      addLog(`Portfolio updated: $${portfolioData.total_value.toFixed(2)} total value`);
+      const totalValue = Number(
+        (portfolioData as Record<string, unknown>).total_market_value ??
+        (portfolioData as Record<string, unknown>).total_value ??
+        0
+      );
+      addLog(`Portfolio updated: ₹${totalValue.toFixed(2)} total value`);
     }
   }, [portfolioData]);
 

@@ -27,7 +27,14 @@ interface LegacyWebSocketEvents {
 
   // Portfolio events
   portfolio_update: (data: Record<string, unknown>) => void;
-  portfolio_summary_update: (data: { total_value: number; total_pnl: number; total_pnl_percentage: number }) => void;
+  portfolio_summary_update: (data: {
+    total_market_value: number;
+    total_pnl: number;
+    total_pnl_percentage: number;
+    total_margin_used?: number;
+    daily_pnl?: number;
+    total_value?: number;
+  }) => void;
 
   // Trade events
   trade_executed: (data: Record<string, unknown>) => void;
@@ -95,11 +102,20 @@ class LegacyWebSocketWrapper {
       },
 
       onPortfolioUpdate: (data) => {
+        const totalMarketValue = data.total_market_value ?? data.total_value ?? 0;
+        const totalPnL = data.total_pnl ?? 0;
+        const totalMarginUsed = data.total_margin_used ?? data.margin_used ?? totalMarketValue;
+        const dailyPnL = data.daily_pnl ?? 0;
+        const pnlPercent = totalMarginUsed > 0 ? (totalPnL / totalMarginUsed) * 100 : 0;
+
         this.emit('portfolio_update', this.transformPortfolioUpdate(data));
         this.emit('portfolio_summary_update', {
-          total_value: data.total_value,
-          total_pnl: data.total_pnl,
-          total_pnl_percentage: (data.total_pnl / data.total_value) * 100
+          total_market_value: totalMarketValue,
+          total_value: totalMarketValue,
+          total_pnl: totalPnL,
+          total_pnl_percentage: pnlPercent,
+          total_margin_used: totalMarginUsed,
+          daily_pnl: dailyPnL,
         });
       },
 
@@ -137,9 +153,13 @@ class LegacyWebSocketWrapper {
   private transformPortfolioUpdate(data: PortfolioUpdateMessage['data']): Record<string, unknown> {
     return {
       portfolio_id: 'main', // Legacy field
-      total_value: data.total_value,
+      total_market_value: data.total_market_value ?? data.total_value,
+      total_value: data.total_market_value ?? data.total_value,
       total_pnl: data.total_pnl,
-      positions: data.positions
+      total_margin_used: data.total_margin_used ?? data.margin_used,
+      daily_pnl: data.daily_pnl ?? 0,
+      positions: data.positions,
+      timestamp: data.timestamp,
     };
   }
 

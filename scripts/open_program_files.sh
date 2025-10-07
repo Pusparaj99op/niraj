@@ -120,7 +120,9 @@ main() {
         -not -path "*/.pytest_cache/*" \
         -not -path "*/.mypy_cache/*" \
         -not -path "*/.git/*" \
+        -not -path "*/.temp/*" \
         -not -path "*/migrations/*" \
+        -not -path "*/historical/*" \
         -not -name "*.lock" \
         | sort)
 

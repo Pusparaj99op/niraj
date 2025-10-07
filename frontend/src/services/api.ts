@@ -61,28 +61,58 @@ export interface SystemStatus {
 // Portfolio Types
 export interface PortfolioPosition {
   portfolio_id: string;
+  user_id: string;
   symbol: string;
   quantity: number;
   average_price: number;
   current_price: number;
   market_value: number;
   unrealized_pnl: number;
-  unrealized_pnl_percentage: number;
+  realized_pnl: number;
+  total_pnl: number;
+  position_risk: number;
+  margin_used: number;
+  first_entry: string;
   last_updated: string;
+  associated_strategies: string[];
+  is_paper_position: boolean;
+  position_type: 'LONG' | 'SHORT' | 'FLAT';
+  position_status: string;
+  stop_loss_level?: number | null;
+  take_profit_level?: number | null;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+  daily_pnl: number;
+  max_profit: number;
+  max_loss: number;
+  days_held: number;
+  notes?: string | null;
+  created_at: string;
 }
 
-export interface PortfolioSummary {
-  total_value: number;
+export interface PortfolioAggregateSummary {
+  total_positions: number;
+  total_market_value: number;
+  total_unrealized_pnl: number;
+  total_realized_pnl: number;
   total_pnl: number;
-  total_pnl_percentage: number;
-  day_pnl: number;
-  day_pnl_percentage: number;
-  positions_count: number;
+  total_margin_used: number;
+  total_position_risk: number;
+  long_positions: number;
+  short_positions: number;
+  winning_positions: number;
+  losing_positions: number;
+  risk_distribution: Record<string, number>;
+  sector_allocation: Record<string, number>;
+  strategy_allocation: Record<string, number>;
+  daily_pnl: number;
+  max_drawdown: number;
+  sharpe_ratio?: number;
+  win_rate?: number;
 }
 
 export interface PortfolioResponse {
   positions: PortfolioPosition[];
-  summary: PortfolioSummary;
+  summary: PortfolioAggregateSummary;
   total_positions: number;
   last_updated: string;
 }

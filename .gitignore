@@ -34,6 +34,7 @@ pip-delete-this-directory.txt
 htmlcov/
 .tox/
 .nox/
+all_banks_rag_combined.json
 .coverage
 .coverage.*
 .cache

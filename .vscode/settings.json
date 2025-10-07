@@ -364,5 +364,5 @@
     "iex": false
   },
   "files.autoSave": "afterDelay",
-  "python.analysis.typeCheckingMode": "standard"
+  "python.analysis.typeCheckingMode": "strict"
 }

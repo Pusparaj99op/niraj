@@ -12,13 +12,29 @@ import asyncio
 import hashlib
 import sqlite3
 import structlog
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from types import TracebackType
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+    TypedDict,
+    Type,
+    Union,
+    cast,
+)
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ..core.config import get_config
 from .gemma3_integration import (
@@ -30,6 +46,73 @@ from .gemma3_integration import (
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
+
+
+FloatArray = NDArray[np.float64]
+
+
+def _empty_str_list() -> List[str]:
+    return []
+
+
+def _empty_metadata_dict() -> Dict[str, Any]:
+    return {}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _load_str_list(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(parsed, list):
+        elements = cast(List[Any], parsed)
+        items: List[str] = []
+        for element in elements:
+            if isinstance(element, str):
+                items.append(element)
+        return items
+    return []
+
+
+def _load_metadata(value: Optional[str]) -> Dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(parsed, dict):
+        return cast(Dict[str, Any], parsed)
+    return {}
+
+
+def _load_float_list(value: str) -> List[float]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    result: List[float] = []
+    if isinstance(parsed, list):
+        elements = cast(List[Any], parsed)
+        for element in elements:
+            try:
+                result.append(float(element))
+            except (TypeError, ValueError):
+                continue
+    return result
+
+
+class EmbeddingModel(Protocol):
+    def encode(self, texts: Sequence[str]) -> FloatArray:
+        """Generate embeddings for the provided texts."""
+
+        ...
 
 
 class KnowledgeType(str, Enum):
@@ -60,6 +143,12 @@ class RetrievalMode(str, Enum):
     HYBRID_SEARCH = "hybrid_search"  # Combination of semantic and keyword
     TEMPORAL_SEARCH = "temporal_search"  # Time-based retrieval
     CONTEXTUAL_SEARCH = "contextual_search"  # Context-aware retrieval
+
+
+class VectorSearchFilters(TypedDict, total=False):
+    knowledge_types: List[KnowledgeType]
+    symbols: List[str]
+    time_range: Tuple[datetime, datetime]
 
 
 class RagProcessorError(Exception):
@@ -108,11 +197,11 @@ class KnowledgeItem:
     title: Optional[str] = None
     summary: Optional[str] = None
     source: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    symbols: List[str] = field(default_factory=list)
-    sectors: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=_utc_now)
+    symbols: List[str] = field(default_factory=_empty_str_list)
+    sectors: List[str] = field(default_factory=_empty_str_list)
+    tags: List[str] = field(default_factory=_empty_str_list)
+    metadata: Dict[str, Any] = field(default_factory=_empty_metadata_dict)
     confidence_score: float = 1.0
     relevance_score: float = 0.0
     embedding: Optional[List[float]] = None
@@ -191,7 +280,7 @@ class RetrievalResult:
     query: RetrievalQuery
     total_found: int
     retrieval_time_ms: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=_empty_metadata_dict)
 
 
 class VectorDatabase:
@@ -333,81 +422,76 @@ class VectorDatabase:
         self,
         query_embedding: List[float],
         top_k: int = 10,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[VectorSearchFilters] = None,
     ) -> List[Tuple[KnowledgeItem, float]]:
         """Perform similarity search"""
         if not self.connection:
             raise VectorDatabaseError("Database connection is not available.")
         try:
-            # Build base query
-            query = """
-                SELECT k.id, k.content, k.knowledge_type, k.title, k.summary, k.source,
-                       k.timestamp, k.symbols, k.sectors, k.tags, k.metadata,
-                       k.confidence_score, e.embedding
-                FROM knowledge_items k
-                JOIN embeddings e ON k.id = e.item_id
-            """
+            query = (
+                "SELECT k.id, k.content, k.knowledge_type, k.title, k.summary, k.source, "
+                "k.timestamp, k.symbols, k.sectors, k.tags, k.metadata, "
+                "k.confidence_score, e.embedding FROM knowledge_items k "
+                "JOIN embeddings e ON k.id = e.item_id"
+            )
 
-            params = []
-            conditions = []
+            params: List[Any] = []
+            conditions: List[str] = []
 
-            # Apply filters
             if filters:
-                if "knowledge_types" in filters and filters["knowledge_types"]:
-                    placeholders = ",".join(["?" for _ in filters["knowledge_types"]])
+                knowledge_types = filters.get("knowledge_types")
+                if knowledge_types:
+                    placeholders = ",".join("?" for _ in knowledge_types)
                     conditions.append(f"k.knowledge_type IN ({placeholders})")
-                    params.extend([kt.value for kt in filters["knowledge_types"]])
+                    params.extend([kt.value for kt in knowledge_types])
 
-                if "symbols" in filters and filters["symbols"]:
-                    # Search for symbols in the JSON array
-                    symbol_conditions = []
-                    for symbol in filters["symbols"]:
-                        symbol_conditions.append("k.symbols LIKE ?")
-                        params.append(f'%"{symbol}"%')
+                symbols = filters.get("symbols")
+                if symbols:
+                    symbol_conditions = ["k.symbols LIKE ?" for _ in symbols]
+                    params.extend([f'%"{symbol}"%' for symbol in symbols])
                     if symbol_conditions:
                         conditions.append(f"({' OR '.join(symbol_conditions)})")
 
-                if "time_range" in filters and filters["time_range"]:
-                    start_time, end_time = filters["time_range"]
+                time_range = filters.get("time_range")
+                if time_range:
+                    start_time, end_time = time_range
                     conditions.append("k.timestamp >= ? AND k.timestamp <= ?")
                     params.extend([start_time.isoformat(), end_time.isoformat()])
 
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
 
-            # Execute query
-            cursor = self.connection.execute(query, tuple(params))
-            rows = cursor.fetchall()
+            params_tuple: Tuple[Any, ...] = tuple(params)
+            cursor = self.connection.execute(query, params_tuple)
+            rows = cast(List[Tuple[Any, ...]], cursor.fetchall())
 
-            # Calculate similarities
-            results = []
+            results: List[Tuple[KnowledgeItem, float]] = []
             for row in rows:
-                stored_embedding = json.loads(row[12])  # embedding column
+                embedding_json = str(row[12])
+                stored_embedding = _load_float_list(embedding_json)
                 similarity = self._calculate_cosine_similarity(
                     query_embedding, stored_embedding
                 )
 
-                # Create KnowledgeItem
+                timestamp_str = str(row[6])
                 item = KnowledgeItem(
-                    id=row[0],
-                    content=row[1],
-                    knowledge_type=KnowledgeType(row[2]),
-                    title=row[3],
-                    summary=row[4],
-                    source=row[5],
-                    timestamp=datetime.fromisoformat(row[6]),
-                    symbols=json.loads(row[7]) if row[7] else [],
-                    sectors=json.loads(row[8]) if row[8] else [],
-                    tags=json.loads(row[9]) if row[9] else [],
-                    metadata=json.loads(row[10]) if row[10] else {},
-                    confidence_score=row[11],
+                    id=str(row[0]),
+                    content=str(row[1]),
+                    knowledge_type=KnowledgeType(str(row[2])),
+                    title=str(row[3]) if row[3] is not None else None,
+                    summary=str(row[4]) if row[4] is not None else None,
+                    source=str(row[5]) if row[5] is not None else None,
+                    timestamp=datetime.fromisoformat(timestamp_str),
+                    symbols=_load_str_list(cast(Optional[str], row[7])),
+                    sectors=_load_str_list(cast(Optional[str], row[8])),
+                    tags=_load_str_list(cast(Optional[str], row[9])),
+                    metadata=_load_metadata(cast(Optional[str], row[10])),
+                    confidence_score=float(row[11]),
                 )
                 item.relevance_score = similarity
-
                 results.append((item, similarity))
 
-            # Sort by similarity and return top k
-            results.sort(key=lambda x: x[1], reverse=True)
+            results.sort(key=lambda pair: pair[1], reverse=True)
             return results[:top_k]
 
         except Exception as e:
@@ -503,12 +587,17 @@ class RAGProcessor:
             max_context_length=self.max_context_length,
         )
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "RAGProcessor":
         """Async context manager entry"""
         await self.initialize()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Async context manager exit"""
         await self.cleanup()
 
@@ -580,7 +669,7 @@ class RAGProcessor:
         start_time = time.time()
         successful_count = 0
         failed_count = 0
-        errors = []
+        errors: List[str] = []
 
         try:
             logger.info("Starting knowledge ingestion", item_count=len(items))
@@ -608,7 +697,7 @@ class RAGProcessor:
             self.total_ingestions += len(items)
             self.successful_ingestions += successful_count
 
-            result = {
+            result: Dict[str, Union[int, float, List[str]]] = {
                 "total_items": len(items),
                 "successful": successful_count,
                 "failed": failed_count,
@@ -663,7 +752,7 @@ class RAGProcessor:
         """Prepare text for embedding generation"""
         try:
             # Combine relevant text fields for better embeddings
-            text_parts = []
+            text_parts: List[str] = []
 
             if item.title:
                 text_parts.append(f"Title: {item.title}")
@@ -770,38 +859,40 @@ class RAGProcessor:
 
             # Generate query embedding
             loop = asyncio.get_event_loop()
-            query_embedding = await loop.run_in_executor(
+            embedding_result = await loop.run_in_executor(
                 self.executor, self.embedding_model.encode, [query.query_text]
             )
+            embedding_array = cast(FloatArray, np.asarray(embedding_result, dtype=float))
+            if embedding_array.size == 0:
+                raise RetrievalError("Failed to generate query embedding.")
+            query_vector = embedding_array[0].astype(float).tolist()
 
             # Prepare filters
-            filters = {}
+            filters: VectorSearchFilters = {}
             if query.knowledge_types:
-                filters["knowledge_types"] = query.knowledge_types
+                filters["knowledge_types"] = list(query.knowledge_types)
             if query.symbols:
-                filters["symbols"] = query.symbols
+                filters["symbols"] = list(query.symbols)
             if query.time_range:
                 filters["time_range"] = query.time_range
 
             # Perform similarity search
             search_results = self.vector_db.similarity_search(
-                query_embedding[0].tolist(),
+                query_vector,
                 top_k=query.max_results * 2,  # Get more results for filtering
                 filters=filters,
             )
 
             # Filter by minimum relevance score
-            filtered_results = [
+            filtered_results: List[Tuple[KnowledgeItem, float]] = [
                 (item, score)
                 for item, score in search_results
                 if score >= query.min_relevance_score
             ]
 
             # Sort and limit results
-            filtered_results.sort(key=lambda x: x[1], reverse=True)
-            final_items = [
-                item for item, score in filtered_results[: query.max_results]
-            ]
+            filtered_results.sort(key=lambda result_pair: result_pair[1], reverse=True)
+            final_items = [item for item, _ in filtered_results[: query.max_results]]
 
             processing_time = (time.time() - start_time) * 1000
 
@@ -814,20 +905,7 @@ class RAGProcessor:
                 query=query,
                 total_found=len(search_results),
                 retrieval_time_ms=processing_time,
-                metadata={
-                    "filtered_count": len(filtered_results),
-                    "avg_relevance_score": (
-                        np.mean([score for _, score in filtered_results])
-                        if filtered_results
-                        else 0.0
-                    ),
-                    "max_relevance_score": max(
-                        [score for _, score in filtered_results], default=0.0
-                    ),
-                    "min_relevance_score": min(
-                        [score for _, score in filtered_results], default=0.0
-                    ),
-                },
+                metadata=self._build_retrieval_metadata(filtered_results),
             )
 
             logger.info(
@@ -856,6 +934,25 @@ class RAGProcessor:
                 self.average_retrieval_time = total_time / self.total_retrievals
         except Exception:
             pass  # Don't fail the operation for metrics update
+
+    def _build_retrieval_metadata(
+        self, results: Sequence[Tuple[KnowledgeItem, float]]
+    ) -> Dict[str, Union[int, float]]:
+        scores = [float(score) for _, score in results]
+        if not scores:
+            return {
+                "filtered_count": 0,
+                "avg_relevance_score": 0.0,
+                "max_relevance_score": 0.0,
+                "min_relevance_score": 0.0,
+            }
+
+        return {
+            "filtered_count": len(scores),
+            "avg_relevance_score": float(np.mean(scores)),
+            "max_relevance_score": float(max(scores)),
+            "min_relevance_score": float(min(scores)),
+        }
 
     async def augment_analysis(
         self, analysis_request: AnalysisRequest, max_context_items: Optional[int] = None
@@ -931,15 +1028,22 @@ class RAGProcessor:
         """Create retrieval query from analysis request"""
         try:
             # Extract query text from input data
-            query_parts = []
+            input_data = analysis_request.input_data
+            query_parts: List[str] = []
 
-            if isinstance(analysis_request.input_data, dict):
-                # Extract relevant text from various fields
-                for key, value in analysis_request.input_data.items():
-                    if isinstance(value, str) and len(value) > 0:
-                        query_parts.append(f"{key}: {value}")
-                    elif key in ["symbol", "symbols"] and value:
-                        query_parts.append(f"symbols: {value}")
+            # Extract relevant text from various fields
+            for key, value in input_data.items():
+                if isinstance(value, str) and value:
+                    query_parts.append(f"{key}: {value}")
+                elif key in {"symbol", "symbols"} and value is not None:
+                    if isinstance(value, Iterable) and not isinstance(
+                        value, (str, bytes)
+                    ):
+                        symbols_iter = cast(Iterable[Any], value)
+                    else:
+                        symbols_iter = [value]
+                    symbol_values = [str(item).upper() for item in symbols_iter]
+                    query_parts.append(f"symbols: {', '.join(symbol_values)}")
 
             query_text = (
                 " ".join(query_parts)
@@ -953,19 +1057,24 @@ class RAGProcessor:
             )
 
             # Extract symbols if available
-            symbols = []
-            if "symbol" in analysis_request.input_data:
-                symbols.append(str(analysis_request.input_data["symbol"]).upper())
-            if "symbols" in analysis_request.input_data:
-                if isinstance(analysis_request.input_data["symbols"], list):
-                    symbols.extend(
-                        [str(s).upper() for s in analysis_request.input_data["symbols"]]
-                    )
+            symbols: List[str] = []
+            symbol_value = input_data.get("symbol")
+            if symbol_value is not None:
+                symbols.append(str(symbol_value).upper())
+
+            symbols_value = input_data.get("symbols")
+            if symbols_value is not None:
+                if isinstance(symbols_value, Iterable) and not isinstance(
+                    symbols_value, (str, bytes)
+                ):
+                    for symbol in cast(Iterable[Any], symbols_value):
+                        symbols.append(str(symbol).upper())
                 else:
-                    symbols.append(str(analysis_request.input_data["symbols"]).upper())
+                    symbols.append(str(symbols_value).upper())
 
             # Set time range for recent information
-            time_range = (datetime.utcnow() - timedelta(days=30), datetime.utcnow())
+            end_time = _utc_now()
+            time_range = (end_time - timedelta(days=30), end_time)
 
             return RetrievalQuery(
                 query_text=query_text,
@@ -1036,14 +1145,13 @@ class RAGProcessor:
     ) -> Dict[str, Any]:
         """Build context from retrieved knowledge items"""
         try:
-            context = {
-                "relevant_information": [],
-                "sources": [],
-                "symbols_mentioned": set(),
-                "sectors_mentioned": set(),
-                "knowledge_types": set(),
-                "time_range": {"earliest": None, "latest": None},
-            }
+            relevant_information: List[Dict[str, Any]] = []
+            sources: List[str] = []
+            symbols_mentioned: Set[str] = set()
+            sectors_mentioned: Set[str] = set()
+            knowledge_types: Set[str] = set()
+            earliest_timestamp: Optional[datetime] = None
+            latest_timestamp: Optional[datetime] = None
 
             total_content_length = 0
             max_content_per_item = (
@@ -1062,46 +1170,49 @@ class RAGProcessor:
                 if total_content_length + len(content) > self.max_context_length:
                     break
 
-                info = {
+                info: Dict[str, Any] = {
                     "content": content,
                     "type": item.knowledge_type.value,
                     "title": item.title,
                     "source": item.source,
                     "timestamp": item.timestamp.isoformat(),
                     "relevance_score": round(item.relevance_score, 3),
-                    "symbols": item.symbols,
-                    "sectors": item.sectors,
+                    "symbols": list(item.symbols),
+                    "sectors": list(item.sectors),
                 }
 
-                context["relevant_information"].append(info)
+                relevant_information.append(info)
                 total_content_length += len(content)
 
                 # Aggregate metadata
                 if item.source:
-                    context["sources"].append(item.source)
-                context["symbols_mentioned"].update(item.symbols)
-                context["sectors_mentioned"].update(item.sectors)
-                context["knowledge_types"].add(item.knowledge_type.value)
+                    sources.append(item.source)
+                symbols_mentioned.update(item.symbols)
+                sectors_mentioned.update(item.sectors)
+                knowledge_types.add(item.knowledge_type.value)
 
-                # Track time range
-                if context["time_range"][
-                    "earliest"
-                ] is None or item.timestamp < datetime.fromisoformat(
-                    context["time_range"]["earliest"]
-                ):
-                    context["time_range"]["earliest"] = item.timestamp.isoformat()
-                if context["time_range"][
-                    "latest"
-                ] is None or item.timestamp > datetime.fromisoformat(
-                    context["time_range"]["latest"]
-                ):
-                    context["time_range"]["latest"] = item.timestamp.isoformat()
+                item_timestamp = item.timestamp
+                if earliest_timestamp is None or item_timestamp < earliest_timestamp:
+                    earliest_timestamp = item_timestamp
+                if latest_timestamp is None or item_timestamp > latest_timestamp:
+                    latest_timestamp = item_timestamp
 
-            # Convert sets to lists for JSON serialization
-            context["sources"] = list(set(context["sources"]))
-            context["symbols_mentioned"] = list(context["symbols_mentioned"])
-            context["sectors_mentioned"] = list(context["sectors_mentioned"])
-            context["knowledge_types"] = list(context["knowledge_types"])
+            # Prepare final context
+            context: Dict[str, Any] = {
+                "relevant_information": relevant_information,
+                "sources": list(dict.fromkeys(sources)),
+                "symbols_mentioned": sorted(symbols_mentioned),
+                "sectors_mentioned": sorted(sectors_mentioned),
+                "knowledge_types": sorted(knowledge_types),
+                "time_range": {
+                    "earliest": earliest_timestamp.isoformat()
+                    if earliest_timestamp
+                    else None,
+                    "latest": latest_timestamp.isoformat()
+                    if latest_timestamp
+                    else None,
+                },
+            }
 
             return context
 
@@ -1134,12 +1245,11 @@ class RAGProcessor:
             response = await self.gemma3_client.analyze(enhanced_request)
 
             # Add RAG metadata to response
-            if response.metadata is not None:
-                response.metadata["rag_enhanced"] = True
-                ctx = enhanced_request.context or {}
-                km = ctx.get("knowledge_metadata") if isinstance(ctx, dict) else None
-                if isinstance(km, dict):
-                    response.metadata.update(km)
+            response.metadata["rag_enhanced"] = True
+            ctx = enhanced_request.context or {}
+            km = ctx.get("knowledge_metadata")
+            if isinstance(km, dict):
+                response.metadata.update(cast(Dict[str, Any], km))
 
             return response
 
@@ -1198,26 +1308,25 @@ class RAGProcessor:
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on RAG processor"""
         try:
-            health = {
+            components: Dict[str, Dict[str, Any]] = {}
+            health: Dict[str, Any] = {
                 "status": "healthy",
-                "components": {},
-                "timestamp": datetime.utcnow().isoformat(),
+                "components": components,
+                "timestamp": _utc_now().isoformat(),
             }
 
             # Check vector database
             try:
                 if self.vector_db:
                     item_count = self.vector_db.get_item_count()
-                    health["components"]["vector_database"] = {
+                    components["vector_database"] = {
                         "status": "healthy",
                         "item_count": item_count,
                     }
                 else:
-                    health["components"]["vector_database"] = {
-                        "status": "not_initialized"
-                    }
+                    components["vector_database"] = {"status": "not_initialized"}
             except Exception as e:
-                health["components"]["vector_database"] = {
+                components["vector_database"] = {
                     "status": "unhealthy",
                     "error": str(e),
                 }
@@ -1229,17 +1338,15 @@ class RAGProcessor:
                     test_embedding = await asyncio.get_event_loop().run_in_executor(
                         self.executor, self.embedding_model.encode, ["test"]
                     )
-                    health["components"]["embedding_model"] = {
+                    components["embedding_model"] = {
                         "status": "healthy",
                         "model_name": self.model_name,
                         "embedding_dimension": len(test_embedding[0]),
                     }
                 else:
-                    health["components"]["embedding_model"] = {
-                        "status": "not_initialized"
-                    }
+                    components["embedding_model"] = {"status": "not_initialized"}
             except Exception as e:
-                health["components"]["embedding_model"] = {
+                components["embedding_model"] = {
                     "status": "unhealthy",
                     "error": str(e),
                 }
@@ -1247,13 +1354,13 @@ class RAGProcessor:
             # Check Gemma3 client
             if self.gemma3_client:
                 gemma3_health = await self.gemma3_client.health_check()
-                health["components"]["gemma3_client"] = gemma3_health
+                components["gemma3_client"] = gemma3_health
             else:
-                health["components"]["gemma3_client"] = {"status": "not_configured"}
+                components["gemma3_client"] = {"status": "not_configured"}
 
             # Determine overall status
-            component_statuses = [
-                comp.get("status") for comp in health["components"].values()
+            component_statuses: List[str] = [
+                str(comp.get("status", "unknown")) for comp in components.values()
             ]
             if any(status == "unhealthy" for status in component_statuses):
                 health["status"] = "unhealthy"
@@ -1272,7 +1379,7 @@ class RAGProcessor:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": _utc_now().isoformat(),
             }
 
 

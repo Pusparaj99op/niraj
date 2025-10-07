@@ -110,7 +110,11 @@ class PortfolioService:
     - Portfolio aggregation and reporting
     """
 
-    def __init__(self, db_manager: DatabaseManager, cache_manager: CacheManager):
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        cache_manager: Optional[CacheManager] = None,
+    ):
         self.db_manager = db_manager
         self.cache_manager = cache_manager
 
@@ -118,6 +122,34 @@ class PortfolioService:
         self._portfolio_cache_prefix = "portfolio:"
         self._user_portfolio_cache_prefix = "user_portfolio:"
         self._portfolio_summary_cache_prefix = "portfolio_summary:"
+
+    async def _cache_get(self, key: str, default: Any = None) -> Any:
+        """Safely retrieve a value from cache, tolerating missing cache manager."""
+        if self.cache_manager is None:
+            return default
+        try:
+            return await self.cache_manager.get(key, default=default)
+        except Exception as e:  # pragma: no cover - defensive logging
+            logger.warning("Cache get failed", key=key, error=str(e))
+            return default
+
+    async def _cache_set(self, key: str, value: Any, ttl: int = 300) -> None:
+        """Safely set a value in cache if available."""
+        if self.cache_manager is None:
+            return
+        try:
+            await self.cache_manager.set(key, value, ttl=ttl)
+        except Exception as e:  # pragma: no cover - defensive logging
+            logger.warning("Cache set failed", key=key, error=str(e))
+
+    async def _cache_delete(self, key: str) -> None:
+        """Safely delete a cached value if cache manager exists."""
+        if self.cache_manager is None:
+            return
+        try:
+            await self.cache_manager.delete(key)
+        except Exception as e:  # pragma: no cover - defensive logging
+            logger.warning("Cache delete failed", key=key, error=str(e))
 
     async def get_user_portfolio(
         self, user_id: str, include_inactive: bool = False
@@ -138,7 +170,7 @@ class PortfolioService:
         try:
             # Check cache first
             cache_key = f"{self._user_portfolio_cache_prefix}{user_id}:{include_inactive}"
-            cached_any = await self.cache_manager.get(cache_key)
+            cached_any = await self._cache_get(cache_key)
             if isinstance(cached_any, tuple) and len(cached_any) == 2:
                 poss, summ = cached_any
                 if isinstance(poss, list):
@@ -185,9 +217,7 @@ class PortfolioService:
 
                 # Cache result
                 result_data = (portfolio_responses, summary_response)
-                await self.cache_manager.set(
-                    cache_key, result_data, ttl=300  # 5 minutes
-                )
+                await self._cache_set(cache_key, result_data, ttl=300)  # 5 minutes
 
                 logger.info(
                     "Portfolio retrieved successfully",
@@ -220,7 +250,7 @@ class PortfolioService:
         try:
             # Check cache first
             cache_key = f"{self._portfolio_cache_prefix}{portfolio_id}"
-            cached_result = await self.cache_manager.get(cache_key)
+            cached_result = await self._cache_get(cache_key)
             if cached_result:
                 logger.debug(
                     "Portfolio position retrieved from cache", portfolio_id=portfolio_id
@@ -242,9 +272,7 @@ class PortfolioService:
                 portfolio_response = PortfolioResponse.from_orm(portfolio)
 
                 # Cache result
-                await self.cache_manager.set(
-                    cache_key, portfolio_response, ttl=300  # 5 minutes
-                )
+                await self._cache_set(cache_key, portfolio_response, ttl=300)
 
                 logger.info("Portfolio position retrieved", portfolio_id=portfolio_id)
                 return portfolio_response
@@ -598,7 +626,7 @@ class PortfolioService:
             cache_key = (
                 f"{self._portfolio_summary_cache_prefix}{user_id}:{include_inactive}"
             )
-            cached_result = await self.cache_manager.get(cache_key)
+            cached_result = await self._cache_get(cache_key)
             if cached_result:
                 logger.debug("Portfolio summary retrieved from cache", user_id=user_id)
                 return cached_result
@@ -609,7 +637,7 @@ class PortfolioService:
             )
 
             # Cache summary
-            await self.cache_manager.set(cache_key, summary, ttl=300)  # 5 minutes
+            await self._cache_set(cache_key, summary, ttl=300)
 
             return summary
 
@@ -787,7 +815,7 @@ class PortfolioService:
     async def _invalidate_portfolio_cache(self, portfolio_id: str) -> None:
         """Invalidate portfolio-specific cache"""
         cache_key = f"{self._portfolio_cache_prefix}{portfolio_id}"
-        await self.cache_manager.delete(cache_key)
+        await self._cache_delete(cache_key)
 
     async def _invalidate_user_portfolio_cache(self, user_id: str) -> None:
         """Invalidate user portfolio cache for all variants"""
@@ -798,7 +826,7 @@ class PortfolioService:
             f"{self._portfolio_summary_cache_prefix}{user_id}:False",
         ]
         for key in cache_keys:
-            await self.cache_manager.delete(key)
+            await self._cache_delete(key)
 
 
 # Export all classes and functions

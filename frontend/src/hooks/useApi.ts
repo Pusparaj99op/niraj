@@ -6,7 +6,7 @@ import {
 import type {
   PortfolioResponse,
   PortfolioPosition,
-  PortfolioSummary,
+  PortfolioAggregateSummary,
   TradesResponse,
   AIPredictionsResponse,
   Strategy,
@@ -64,7 +64,7 @@ export const usePortfolio = () => {
       });
     };
 
-    const handlePortfolioSummaryUpdate = (data: Partial<PortfolioSummary>) => {
+    const handlePortfolioSummaryUpdate = (data: Partial<PortfolioAggregateSummary>) => {
       queryClient.setQueryData(QUERY_KEYS.portfolio, (oldData: PortfolioResponse | undefined) => {
         if (!oldData) return oldData;
 
