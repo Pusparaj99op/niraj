@@ -3,7 +3,7 @@
 BANK STOCKS HISTORICAL DATA SUMMARY
 ======================================================================
 
-Downloaded Date: 2025-10-05 19:37:20
+Updated Date: 2025-10-06 18:17:00
 Total Banks: 20
 
 Data Timeframes:
@@ -11,10 +11,10 @@ Data Timeframes:
   • 15-Min: Last 60 days (Yahoo Finance limitation)
 
 Download Statistics:
-  Daily Data Success:    20/20
+  Daily Data Success:    19/20
   15-Min Data Success:   20/20
-  Total Success:         40
-  Total Failed:          0
+  Total Success:         39
+  Total Failed:          1
 
 Bank List:
   • SBI             - State Bank of India

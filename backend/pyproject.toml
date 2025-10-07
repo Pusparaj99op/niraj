@@ -28,6 +28,7 @@ aiosqlite = "^0.21.0"
 pyotp = "^2.9.0"
 cryptography = "^46.0.1"
 sentence-transformers = "^2.2.2"
+torch = {version = "^2.0.0", extras = ["cuda"]}
 scikit-learn = "^1.3.0"
 aiohttp = "^3.9.1"
 backoff = "^2.2.1"

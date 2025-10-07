@@ -727,6 +727,54 @@ class NirajRunner:
         except Exception as e:
             self.log(f"Failed to load env file {env_file}: {e}", "warning")
 
+    def _ensure_tool_paths(self, env: Dict[str, str]) -> None:
+        """Augment PATH and related environment entries for child processes."""
+
+        current_path = env.get("PATH") or os.environ.get("PATH") or ""
+        existing_parts = [part for part in current_path.split(os.pathsep) if part]
+
+        preferred_paths = [
+            str(Path.home() / ".local" / "bin"),
+            str(Path.home() / ".poetry" / "bin"),
+            str(Path.home() / ".pyenv" / "shims"),
+        ]
+
+        ordered_parts: List[str] = []
+        for candidate in preferred_paths:
+            if candidate and candidate not in ordered_parts:
+                ordered_parts.append(candidate)
+
+        for part in existing_parts:
+            if part not in ordered_parts:
+                ordered_parts.append(part)
+
+        env["PATH"] = os.pathsep.join(ordered_parts)
+
+        python_version_file = PROJECT_ROOT / ".python-version"
+        if (
+            "PYENV_VERSION" not in env
+            and python_version_file.exists()
+        ):
+            detected_version = python_version_file.read_text().strip()
+            if detected_version:
+                env["PYENV_VERSION"] = detected_version
+
+    def _resolve_service_command(
+        self, command: List[str], env: Mapping[str, str]
+    ) -> List[str]:
+        """Resolve the executable path for a service command when possible."""
+
+        if not command:
+            return command
+
+        resolved = list(command)
+        executable = resolved[0]
+        if not os.path.isabs(executable):
+            candidate = shutil.which(executable, path=env.get("PATH"))
+            if candidate:
+                resolved[0] = candidate
+        return resolved
+
     def start_service(self, service_name: str) -> bool:
         """Start a specific service"""
         if service_name not in self.services:
@@ -798,6 +846,9 @@ class NirajRunner:
             # Prepare environment
             env = os.environ.copy()
             env.update(service.env)
+            self._ensure_tool_paths(env)
+
+            command_to_run = self._resolve_service_command(service.command, env)
 
             # For long-running services, don't capture output to avoid blocking
             # Instead, let them output to the terminal or redirect to log files
@@ -807,7 +858,7 @@ class NirajRunner:
             with open(log_file, "a") as log_out:
                 # Start process
                 popen_obj = subprocess.Popen(
-                    service.command,
+                    command_to_run,
                     cwd=service.cwd,
                     env=env,
                     stdout=log_out,
