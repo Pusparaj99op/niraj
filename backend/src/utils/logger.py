@@ -6,13 +6,16 @@ Structured logging setup with multiple handlers and formats
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, TypeVar, ParamSpec, Coroutine
 import logging
 import logging.handlers
 from datetime import datetime
 
 import structlog
-from structlog.stdlib import LoggerFactory
+from structlog.stdlib import BoundLogger, LoggerFactory
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class ColoredFormatter(logging.Formatter):
@@ -27,7 +30,7 @@ class ColoredFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         log_color = self.COLORS.get(record.levelname, "")
         record.levelname = f"{log_color}{record.levelname}{self.RESET}"
         return super().format(record)
@@ -104,10 +107,15 @@ class NirajLogger:
 
         # Configure structlog
         if self.config.get("structured_logging", True):
+            log_level_str = self.config.get("level", "INFO")
+            log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+            if not isinstance(log_level, int):
+                log_level = logging.INFO
+
             structlog.configure(
                 processors=[
                     structlog.contextvars.merge_contextvars,
-                    structlog.processors.TimeStamper(fmt="ISO"),
+                    structlog.processors.TimeStamper(fmt="iso"),
                     structlog.processors.add_log_level,
                     structlog.processors.StackInfoRenderer(),
                     (
@@ -116,16 +124,14 @@ class NirajLogger:
                         else structlog.processors.JSONRenderer()
                     ),
                 ],
-                wrapper_class=structlog.make_filtering_bound_logger(
-                    logging.getLevelName(self.config["level"])
-                ),
+                wrapper_class=structlog.make_filtering_bound_logger(log_level),
                 logger_factory=LoggerFactory(),
                 cache_logger_on_first_use=True,
             )
 
         # Configure standard library logging
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.getLevelName(self.config["level"]))
+        root_logger.setLevel(getattr(logging, self.config["level"].upper(), logging.INFO))
 
         # Remove existing handlers
         for handler in root_logger.handlers[:]:
@@ -139,7 +145,7 @@ class NirajLogger:
             else:
                 console_formatter = logging.Formatter(self.config["format"])
             console_handler.setFormatter(console_formatter)
-            console_handler.setLevel(logging.getLevelName(self.config["level"]))
+            console_handler.setLevel(getattr(logging, self.config["level"].upper(), logging.INFO))
             root_logger.addHandler(console_handler)
 
         # File handler with rotation
@@ -149,14 +155,14 @@ class NirajLogger:
             backup_count = self.config.get("backup_count", 5)
 
             file_handler = logging.handlers.RotatingFileHandler(
-                self.config["file"],
+                str(self.config["file"]),
                 maxBytes=max_bytes,
                 backupCount=backup_count,
                 encoding="utf-8",
             )
             file_formatter = logging.Formatter(self.config["format"])
             file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(logging.getLevelName(self.config["level"]))
+            file_handler.setLevel(getattr(logging, self.config["level"].upper(), logging.INFO))
             root_logger.addHandler(file_handler)
 
         # Configure specific loggers
@@ -165,7 +171,7 @@ class NirajLogger:
             logger_level = logger_config["level"]
 
             specific_logger = logging.getLogger(logger_name)
-            specific_logger.setLevel(logging.getLevelName(logger_level))
+            specific_logger.setLevel(getattr(logging, logger_level.upper(), logging.INFO))
 
         # Configure third-party loggers
         self._configure_third_party_loggers()
@@ -230,6 +236,10 @@ class NirajLogger:
             self.configure()
         return logging.getLogger(name)
 
+    def is_configured(self) -> bool:
+        """Check if logger is configured"""
+        return self._configured
+
     def add_handler(self, handler: logging.Handler, logger_name: Optional[str] = None):
         """Add a custom handler"""
         if not self._configured:
@@ -248,7 +258,7 @@ class NirajLogger:
         target_logger = (
             logging.getLogger(logger_name) if logger_name else logging.getLogger()
         )
-        target_logger.setLevel(logging.getLevelName(level))
+        target_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 
 class TradingLogHandler(logging.Handler):
@@ -259,14 +269,14 @@ class TradingLogHandler(logging.Handler):
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         """Emit a trading log record"""
         # Use getattr with hasattr for type-safe attribute access
         if hasattr(record, "trade_data"):
             # Special handling for trade records
             timestamp = datetime.now().isoformat()
             trade_data = getattr(record, "trade_data", {})
-            trade_entry = {
+            trade_entry: Dict[str, Any] = {
                 "timestamp": timestamp,
                 "level": record.levelname,
                 "message": record.getMessage(),
@@ -287,14 +297,14 @@ class AILogHandler(logging.Handler):
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         """Emit an AI log record"""
         # Use getattr with hasattr for type-safe attribute access
         if hasattr(record, "ai_data"):
             # Special handling for AI records
             timestamp = datetime.now().isoformat()
             ai_data = getattr(record, "ai_data", {})
-            ai_entry = {
+            ai_entry: Dict[str, Any] = {
                 "timestamp": timestamp,
                 "level": record.levelname,
                 "message": record.getMessage(),
@@ -323,42 +333,44 @@ def get_logger(name: str = "niraj") -> logging.Logger:
     return logger_manager.get_logger(name)
 
 
-def get_structured_logger(name: str = "niraj"):
+def get_structured_logger(name: str = "niraj") -> BoundLogger:
     """Get a structured logger instance"""
-    if not logger_manager._configured:
+    if not logger_manager.is_configured():
         logger_manager.configure()
     return structlog.get_logger(name)
 
 
 # Convenience functions for different types of logging
-def log_trade(message: str, trade_data: Dict[str, Any], level: str = "INFO"):
+def log_trade(message: str, trade_data: Dict[str, Any], level: str = "INFO") -> None:
     """Log trading activity"""
     logger = get_logger("trading")
-    log_record = logger.makeRecord(
-        "trading", logging.getLevelName(level), "", 0, message, (), None
-    )
-    log_record.trade_data = trade_data
+    level_num = getattr(logging, level.upper(), logging.INFO)
+    if not isinstance(level_num, int):
+        level_num = logging.INFO
+    log_record = logger.makeRecord("trading", level_num, "", 0, message, (), None)
+    setattr(log_record, "trade_data", trade_data)
     logger.handle(log_record)
 
 
-def log_ai(message: str, ai_data: Dict[str, Any], level: str = "INFO"):
+def log_ai(message: str, ai_data: Dict[str, Any], level: str = "INFO") -> None:
     """Log AI activity"""
     logger = get_logger("ai")
-    log_record = logger.makeRecord(
-        "ai", logging.getLevelName(level), "", 0, message, (), None
-    )
-    log_record.ai_data = ai_data
+    level_num = getattr(logging, level.upper(), logging.INFO)
+    if not isinstance(level_num, int):
+        level_num = logging.INFO
+    log_record = logger.makeRecord("ai", level_num, "", 0, message, (), None)
+    setattr(log_record, "ai_data", ai_data)
     logger.handle(log_record)
 
 
-def log_system_event(event: str, details: Dict[str, Any], level: str = "INFO"):
+def log_system_event(event: str, details: Dict[str, Any], level: str = "INFO") -> None:
     """Log system events"""
     logger = get_structured_logger("niraj.system")
-    log_func = getattr(logger, level.lower())
+    log_func = getattr(logger, level.lower(), logger.info)
     log_func(event, **details)
 
 
-def log_error(error: Exception, context: Optional[Dict[str, Any]] = None):
+def log_error(error: Exception, context: Optional[Dict[str, Any]] = None) -> None:
     """Log errors with context"""
     logger = get_structured_logger("niraj.error")
     logger.error(
@@ -373,33 +385,35 @@ def log_error(error: Exception, context: Optional[Dict[str, Any]] = None):
 class LogContext:
     """Context manager for adding context to logs"""
 
-    def __init__(self, **context):
+    def __init__(self, **context: Any):
         self.context = context
 
-    def __enter__(self):
+    def __enter__(self) -> "LogContext":
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(**self.context)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         structlog.contextvars.clear_contextvars()
 
 
 # Performance logging decorator
-def log_performance(func_name: Optional[str] = None):
+def log_performance(
+    func_name: Optional[str] = None,
+) -> Callable[[Callable[P, R]], Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]]:
     """Decorator to log function performance"""
 
-    def decorator(func):
+    def decorator(func: Callable[P, R]) -> Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]:
         import functools
         import time
 
         @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             name = func_name or f"{func.__module__}.{func.__name__}"
             start_time = time.time()
 
             try:
-                result = await func(*args, **kwargs)
+                result: R = await func(*args, **kwargs)  # type: ignore
                 duration = time.time() - start_time
 
                 logger = get_structured_logger("niraj.performance")
@@ -425,7 +439,7 @@ def log_performance(func_name: Optional[str] = None):
                 raise
 
         @functools.wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             name = func_name or f"{func.__module__}.{func.__name__}"
             start_time = time.time()
 
@@ -466,5 +480,5 @@ def log_performance(func_name: Optional[str] = None):
 
 
 # Initialize logging on import
-if not logger_manager._configured:
+if not logger_manager.is_configured():
     configure_logging()

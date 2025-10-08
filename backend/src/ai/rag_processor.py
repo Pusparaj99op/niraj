@@ -19,6 +19,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Protocol,
     Sequence,
@@ -149,6 +150,71 @@ class VectorSearchFilters(TypedDict, total=False):
     knowledge_types: List[KnowledgeType]
     symbols: List[str]
     time_range: Tuple[datetime, datetime]
+
+
+VectorSearchFilterInput = Union[VectorSearchFilters, Mapping[str, object]]
+
+
+def _normalize_vector_filters(
+    filters: Optional[VectorSearchFilterInput],
+) -> Optional[VectorSearchFilters]:
+    """Convert loose filter mappings into a typed ``VectorSearchFilters`` instance."""
+
+    if filters is None:
+        return None
+
+    # ``TypedDict`` instances are ``dict`` at runtime, so treating them as mapping is safe.
+    filters_mapping: Mapping[str, object]
+    if isinstance(filters, dict):
+        filters_mapping = filters
+    else:
+        filters_mapping = filters
+
+    normalized: VectorSearchFilters = {}
+
+    knowledge_types_value = filters_mapping.get("knowledge_types")
+    if isinstance(knowledge_types_value, Sequence) and not isinstance(
+        knowledge_types_value, (str, bytes)
+    ):
+        collected: List[KnowledgeType] = []
+        for item in cast(Sequence[object], knowledge_types_value):
+            if isinstance(item, KnowledgeType):
+                collected.append(item)
+            elif isinstance(item, str):
+                try:
+                    collected.append(KnowledgeType(item))
+                except ValueError:
+                    continue
+        if collected:
+            normalized["knowledge_types"] = collected
+
+    symbols_value = filters_mapping.get("symbols")
+    if isinstance(symbols_value, Sequence) and not isinstance(
+        symbols_value, (str, bytes)
+    ):
+        collected_symbols: List[str] = []
+        for symbol in cast(Sequence[object], symbols_value):
+            if symbol is None:
+                continue
+            collected_symbols.append(str(symbol).strip())
+        collected_symbols = [symbol for symbol in collected_symbols if symbol]
+        if collected_symbols:
+            normalized["symbols"] = collected_symbols
+
+    time_range_value = filters_mapping.get("time_range")
+    candidate_range: Optional[Tuple[datetime, datetime]] = None
+    if isinstance(time_range_value, Sequence) and not isinstance(
+        time_range_value, (str, bytes)
+    ):
+        range_items = list(cast(Sequence[object], time_range_value))
+        if len(range_items) >= 2:
+            start, end = range_items[0], range_items[1]
+            if isinstance(start, datetime) and isinstance(end, datetime):
+                candidate_range = (start, end)
+    if candidate_range:
+        normalized["time_range"] = candidate_range
+
+    return normalized or None
 
 
 class RagProcessorError(Exception):
@@ -422,7 +488,7 @@ class VectorDatabase:
         self,
         query_embedding: List[float],
         top_k: int = 10,
-        filters: Optional[VectorSearchFilters] = None,
+        filters: Optional[VectorSearchFilterInput] = None,
     ) -> List[Tuple[KnowledgeItem, float]]:
         """Perform similarity search"""
         if not self.connection:
@@ -435,24 +501,26 @@ class VectorDatabase:
                 "JOIN embeddings e ON k.id = e.item_id"
             )
 
+            normalized_filters = _normalize_vector_filters(filters)
+
             params: List[Any] = []
             conditions: List[str] = []
 
-            if filters:
-                knowledge_types = filters.get("knowledge_types")
+            if normalized_filters:
+                knowledge_types = normalized_filters.get("knowledge_types")
                 if knowledge_types:
                     placeholders = ",".join("?" for _ in knowledge_types)
                     conditions.append(f"k.knowledge_type IN ({placeholders})")
                     params.extend([kt.value for kt in knowledge_types])
 
-                symbols = filters.get("symbols")
+                symbols = normalized_filters.get("symbols")
                 if symbols:
                     symbol_conditions = ["k.symbols LIKE ?" for _ in symbols]
                     params.extend([f'%"{symbol}"%' for symbol in symbols])
                     if symbol_conditions:
                         conditions.append(f"({' OR '.join(symbol_conditions)})")
 
-                time_range = filters.get("time_range")
+                time_range = normalized_filters.get("time_range")
                 if time_range:
                     start_time, end_time = time_range
                     conditions.append("k.timestamp >= ? AND k.timestamp <= ?")

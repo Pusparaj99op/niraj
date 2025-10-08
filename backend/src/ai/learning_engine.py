@@ -13,50 +13,36 @@ Real-time model updates and deployment
 import asyncio
 import json
 import uuid
-
-try:
-    import numpy as np
-
-    HAS_NUMPY = True
-except ImportError:
-    np = None
-    HAS_NUMPY = False
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
-from enum import Enum
-from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
+from enum import Enum
+from types import TracebackType
+from typing import Any, Optional, Tuple, Type, cast
+
+# Third-party dependencies
+import numpy as np  # type: ignore
+import numpy.typing as npt
 import structlog
+from sklearn.linear_model import LogisticRegression  # type: ignore
+from sklearn.metrics import accuracy_score  # type: ignore
+from sklearn.model_selection import cross_val_score, train_test_split  # type: ignore
+from sklearn.preprocessing import StandardScaler  # type: ignore
 
-try:
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split, cross_val_score
-    from sklearn.metrics import accuracy_score
-    from sklearn.preprocessing import StandardScaler
-
-    HAS_SKLEARN = True
-except ImportError:
-    HAS_SKLEARN = False
-    # Create stubs for sklearn functions to avoid unbound variable errors
-    LogisticRegression = None
-    train_test_split = None
-    cross_val_score = None
-    accuracy_score = None
-    StandardScaler = None
-
-
+# Local imports
 from ..core.config import get_config
 from ..core.database_manager import AdvancedDatabaseManager
-from .gemma3_integration import (
-    Gemma3Client,
-    AnalysisRequest,
-    AnalysisType as GemmaAnalysisType,
-)
-from .rag_processor import RAGProcessor
-from .confidence_tracker import AdvancedConfidenceTracker
-from ..models.ai_model import AIModel, ModelType, ModelStatus
+from ..models.ai_model import AIModel, ModelStatus, ModelType
 from ..models.ai_prediction import AIPrediction, PredictionType
+from .confidence_tracker import AdvancedConfidenceTracker
+from .gemma3_integration import AnalysisRequest
+from .gemma3_integration import AnalysisType as GemmaAnalysisType
+from .gemma3_integration import Gemma3Client
+from .rag_processor import RAGProcessor
+
+HAS_NUMPY = True
+HAS_SKLEARN = True
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -76,19 +62,23 @@ class EnhancedDatabaseManager(AdvancedDatabaseManager):
         # Implement based on actual database manager or call parent method if exists
         logger.info("Disconnecting from database")
 
-    async def execute(self, query: str, params: tuple = ()) -> Any:
+    async def execute(self, query: str, params: Tuple[Any, ...] = ()) -> Any:
         """Execute a query"""
         # Implement based on actual database manager
         logger.debug("Executing query", query=query)
         return None
 
-    async def fetch_all(self, query: str, params: tuple = ()) -> List[tuple]:
+    async def fetch_all(
+        self, query: str, params: Tuple[Any, ...] = ()
+    ) -> list[Tuple[Any, ...]]:
         """Fetch all results from a query"""
         # Implement based on actual database manager
         logger.debug("Fetching all results", query=query)
         return []
 
-    async def fetch_one(self, query: str, params: tuple = ()) -> Optional[tuple]:
+    async def fetch_one(
+        self, query: str, params: Tuple[Any, ...] = ()
+    ) -> Optional[Tuple[Any, ...]]:
         """Fetch one result from a query"""
         # Implement based on actual database manager
         logger.debug("Fetching one result", query=query)
@@ -138,7 +128,7 @@ class LearningEngineError(Exception):
         self,
         message: str,
         error_code: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[dict[str, Any]] = None,
     ):
         self.message = message
         self.error_code = error_code
@@ -171,10 +161,10 @@ class LearningSession:
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     model_id: str = ""
     learning_strategy: LearningStrategy = LearningStrategy.SUPERVISED_LEARNING
-    phases: List[LearningPhase] = field(default_factory=list)
+    phases: "list[LearningPhase]" = field(default_factory=lambda: [])
 
     # Timing
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     duration_seconds: float = 0.0
 
@@ -184,13 +174,13 @@ class LearningSession:
     test_data_size: int = 0
 
     # Performance tracking
-    initial_metrics: Dict[str, Any] = field(default_factory=dict)
-    final_metrics: Dict[str, Any] = field(default_factory=dict)
-    improvement_metrics: Dict[str, Any] = field(default_factory=dict)
+    initial_metrics: dict[str, Any] = field(default_factory=lambda: {})
+    final_metrics: dict[str, Any] = field(default_factory=lambda: {})
+    improvement_metrics: dict[str, Any] = field(default_factory=lambda: {})
 
     # Learning parameters
-    hyperparameters: Dict[str, Any] = field(default_factory=dict)
-    learning_rate_schedule: List[Dict[str, Any]] = field(default_factory=list)
+    hyperparameters: dict[str, Any] = field(default_factory=lambda: {})
+    learning_rate_schedule: list[dict[str, Any]] = field(default_factory=lambda: [])
 
     # Status and outcome
     status: str = "initialized"
@@ -199,9 +189,9 @@ class LearningSession:
 
     # Metadata
     trigger_reason: Optional[str] = None
-    market_conditions: Dict[str, Any] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    market_conditions: dict[str, Any] = field(default_factory=lambda: {})
+    tags: list[str] = field(default_factory=lambda: [])
+    metadata: dict[str, Any] = field(default_factory=lambda: {})
 
 
 @dataclass
@@ -215,16 +205,16 @@ class ModelVersion:
 
     # Model artifacts
     model_path: Optional[str] = None
-    hyperparameters: Dict[str, Any] = field(default_factory=dict)
-    architecture_config: Dict[str, Any] = field(default_factory=dict)
+    hyperparameters: dict[str, Any] = field(default_factory=lambda: {})
+    architecture_config: dict[str, Any] = field(default_factory=lambda: {})
 
     # Performance metrics
-    training_metrics: Dict[str, Any] = field(default_factory=dict)
-    validation_metrics: Dict[str, Any] = field(default_factory=dict)
-    production_metrics: Dict[str, Any] = field(default_factory=dict)
+    training_metrics: dict[str, Any] = field(default_factory=lambda: {})
+    validation_metrics: dict[str, Any] = field(default_factory=lambda: {})
+    production_metrics: dict[str, Any] = field(default_factory=lambda: {})
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     deployed_at: Optional[datetime] = None
     deprecated_at: Optional[datetime] = None
 
@@ -247,7 +237,7 @@ class LearningPipeline:
     description: Optional[str] = None
 
     # Pipeline configuration
-    phases: List[LearningPhase] = field(
+    phases: list[LearningPhase] = field(
         default_factory=lambda: [
             LearningPhase.DATA_COLLECTION,
             LearningPhase.FEATURE_ENGINEERING,
@@ -259,24 +249,24 @@ class LearningPipeline:
     )
 
     # Model configuration
-    target_models: List[str] = field(default_factory=list)  # Model IDs
-    learning_strategies: List[LearningStrategy] = field(default_factory=list)
+    target_models: list[str] = field(default_factory=lambda: [])  # Model IDs
+    learning_strategies: list[LearningStrategy] = field(default_factory=lambda: [])
 
     # Data configuration
-    data_sources: List[str] = field(default_factory=list)
-    feature_engineering_config: Dict[str, Any] = field(default_factory=dict)
+    data_sources: list[str] = field(default_factory=lambda: [])
+    feature_engineering_config: dict[str, Any] = field(default_factory=lambda: {})
 
     # Training configuration
-    training_config: Dict[str, Any] = field(default_factory=dict)
-    validation_config: Dict[str, Any] = field(default_factory=dict)
+    training_config: dict[str, Any] = field(default_factory=lambda: {})
+    validation_config: dict[str, Any] = field(default_factory=lambda: {})
 
     # Deployment configuration
     deployment_strategy: str = "rolling_update"
-    rollback_config: Dict[str, Any] = field(default_factory=dict)
+    rollback_config: dict[str, Any] = field(default_factory=lambda: {})
 
     # Scheduling
-    schedule_config: Dict[str, Any] = field(default_factory=dict)
-    trigger_conditions: Dict[str, Any] = field(default_factory=dict)
+    schedule_config: dict[str, Any] = field(default_factory=lambda: {})
+    trigger_conditions: dict[str, Any] = field(default_factory=lambda: {})
 
     # Status
     is_active: bool = True
@@ -295,7 +285,9 @@ class LearningEngine:
     def __init__(self):
         """Initialize the learning engine"""
         # Configuration
-        self.db_manager = EnhancedDatabaseManager()  # Use enhanced version with required methods
+        self.db_manager = (
+            EnhancedDatabaseManager()
+        )  # Use enhanced version with required methods
         self.max_concurrent_sessions = get_config(
             "ai.learning.max_concurrent_sessions", 3
         )
@@ -315,21 +307,21 @@ class LearningEngine:
         self.confidence_tracker: Optional[AdvancedConfidenceTracker] = None
 
         # Learning state
-        self.active_sessions: Dict[str, LearningSession] = {}
-        self.learning_pipelines: Dict[str, LearningPipeline] = {}
-        self.model_versions: Dict[str, List[ModelVersion]] = defaultdict(list)
+        self.active_sessions: dict[str, LearningSession] = {}
+        self.learning_pipelines: dict[str, LearningPipeline] = {}
+        self.model_versions: dict[str, list[ModelVersion]] = defaultdict(list)
 
         # Performance tracking
-        self.session_history: deque = deque(maxlen=1000)
-        self.performance_metrics: Dict[str, Any] = defaultdict(dict)
-        self.adaptation_triggers: deque = deque(maxlen=500)
+        self.session_history: deque[LearningSession] = deque(maxlen=1000)
+        self.performance_metrics: dict[str, Any] = defaultdict(dict)
+        self.adaptation_triggers: deque[dict[str, Any]] = deque(maxlen=500)
 
         # Thread pool for CPU-intensive tasks
         self.executor = ThreadPoolExecutor(max_workers=4)
 
         # Adaptation monitoring
-        self.last_adaptation_check = datetime.utcnow()
-        self.market_regime_memory: deque = deque(maxlen=100)
+        self.last_adaptation_check = datetime.now(timezone.utc)
+        self.market_regime_memory: deque[dict[str, Any]] = deque(maxlen=100)
 
         logger.info(
             "Learning engine initialized",
@@ -342,7 +334,12 @@ class LearningEngine:
         await self.initialize()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Async context manager exit"""
         await self.cleanup()
 
@@ -399,7 +396,7 @@ class LearningEngine:
         model_id: str,
         learning_strategy: LearningStrategy,
         trigger_reason: Optional[str] = None,
-        market_conditions: Optional[Dict[str, Any]] = None,
+        market_conditions: Optional[dict[str, Any]] = None,
     ) -> str:
         """
         Start a new learning session for model improvement
@@ -433,7 +430,8 @@ class LearningEngine:
                 model_id=model_id,
                 learning_strategy=learning_strategy,
                 trigger_reason=trigger_reason,
-                market_conditions=market_conditions or {},  # Provide empty dict instead of None
+                market_conditions=market_conditions
+                or {},  # Provide empty dict instead of None
                 status="starting",
             )
 
@@ -481,7 +479,7 @@ class LearningEngine:
             # Mark session as completed
             session.status = "completed"
             session.success = True
-            session.end_time = datetime.utcnow()
+            session.end_time = datetime.now(timezone.utc)
             session.duration_seconds = (
                 session.end_time - session.start_time
             ).total_seconds()
@@ -496,7 +494,7 @@ class LearningEngine:
             session.status = "failed"
             session.success = False
             session.error_message = str(e)
-            session.end_time = datetime.utcnow()
+            session.end_time = datetime.now(timezone.utc)
             session.duration_seconds = (
                 session.end_time - session.start_time
             ).total_seconds()
@@ -718,7 +716,7 @@ class LearningEngine:
         self,
         model_id: str,
         trigger: AdaptationTrigger,
-        trigger_data: Optional[Dict[str, Any]] = None,
+        trigger_data: Optional[dict[str, Any]] = None,
     ) -> Optional[str]:
         """
         Trigger model adaptation based on various conditions
@@ -734,7 +732,9 @@ class LearningEngine:
         try:
             # Check if adaptation is needed
             adaptation_needed = await self._check_adaptation_needed(
-                model_id, trigger, trigger_data or {}  # Provide empty dict instead of None
+                model_id,
+                trigger,
+                trigger_data or {},  # Provide empty dict instead of None
             )
 
             if not adaptation_needed:
@@ -744,24 +744,28 @@ class LearningEngine:
                 return None
 
             # Determine learning strategy based on trigger
-            strategy = await self._determine_adaptation_strategy(trigger, trigger_data or {})  # Provide empty dict instead of None
+            strategy = await self._determine_adaptation_strategy(
+                trigger, trigger_data or {}
+            )  # Provide empty dict instead of None
 
             # Start learning session
             session_id = await self.start_learning_session(
                 model_id=model_id,
                 learning_strategy=strategy,
                 trigger_reason=f"Adaptation triggered by {trigger.value}",
-                market_conditions=trigger_data or {},  # Provide empty dict instead of None
+                market_conditions=trigger_data
+                or {},  # Provide empty dict instead of None
             )
 
             # Record adaptation trigger
             self.adaptation_triggers.append(
                 {
-                    "timestamp": datetime.utcnow(),
+                    "timestamp": datetime.now(timezone.utc),
                     "model_id": model_id,
                     "trigger": trigger.value,
                     "session_id": session_id,
-                    "trigger_data": trigger_data or {},  # Provide empty dict instead of None
+                    "trigger_data": trigger_data
+                    or {},  # Provide empty dict instead of None
                 }
             )
 
@@ -784,7 +788,7 @@ class LearningEngine:
         self,
         model_id: str,
         trigger: AdaptationTrigger,
-        trigger_data: Dict[str, Any],
+        trigger_data: dict[str, Any],
     ) -> bool:
         """Check if model adaptation is needed"""
         try:
@@ -830,7 +834,7 @@ class LearningEngine:
             return False
 
     async def _determine_adaptation_strategy(
-        self, trigger: AdaptationTrigger, trigger_data: Optional[Dict[str, Any]] = None
+        self, trigger: AdaptationTrigger, trigger_data: Optional[dict[str, Any]] = None
     ) -> LearningStrategy:
         """Determine the appropriate learning strategy for adaptation"""
         try:
@@ -848,7 +852,7 @@ class LearningEngine:
         except Exception:
             return LearningStrategy.SUPERVISED_LEARNING
 
-    async def get_learning_analytics(self) -> Dict[str, Any]:
+    async def get_learning_analytics(self) -> dict[str, Any]:
         """
         Get comprehensive learning analytics
 
@@ -856,7 +860,7 @@ class LearningEngine:
             Dictionary containing learning analytics
         """
         try:
-            analytics: Dict[str, Any] = {
+            analytics: dict[str, Any] = {
                 "active_sessions": len(self.active_sessions),
                 "total_sessions": len(self.session_history),
                 "learning_pipelines": len(self.learning_pipelines),
@@ -874,7 +878,7 @@ class LearningEngine:
                 )
 
             # Learning strategy distribution
-            strategy_counts = defaultdict(int)
+            strategy_counts: defaultdict[str, int] = defaultdict(int)
             for session in self.session_history:
                 strategy_counts[session.learning_strategy.value] += 1
             analytics["strategy_distribution"] = dict(strategy_counts)
@@ -883,9 +887,9 @@ class LearningEngine:
             analytics["performance_trends"] = await self._calculate_performance_trends()
 
             # Resource utilization
-            analytics["resource_utilization"] = (
-                await self._calculate_resource_utilization()
-            )
+            analytics[
+                "resource_utilization"
+            ] = await self._calculate_resource_utilization()
 
             return analytics
 
@@ -894,15 +898,11 @@ class LearningEngine:
             return {"error": str(e)}
 
     def _prepare_training_data(
-        self, training_data: List[Dict[str, Any]]
-    ) -> tuple[Any, Any]:
+        self, training_data: list[dict[str, Any]]
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int_]]:
         """Prepare training data for scikit-learn models"""
-        if not HAS_NUMPY or not np:
-            # This path should ideally not be taken if checks are done correctly before calling.
-            return ([], [])
-
-        features = []
-        labels = []
+        features: list[list[float]] = []
+        labels: list[int] = []
         for item in training_data:
             feature_vector = [
                 item.get("outcome_accuracy", 0.0) or 0.0,
@@ -913,11 +913,15 @@ class LearningEngine:
             labels.append(label)
 
         if not features:
-            return np.array([]), np.array([])
+            return cast(npt.NDArray[np.float64], np.array([])), cast(
+                npt.NDArray[np.int_], np.array([])
+            )
 
-        return np.array(features), np.array(labels)
+        return cast(npt.NDArray[np.float64], np.array(features)), cast(
+            npt.NDArray[np.int_], np.array(labels)
+        )
 
-    async def _collect_training_data(self, model_id: str) -> List[Dict[str, Any]]:
+    async def _collect_training_data(self, model_id: str) -> list[dict[str, Any]]:
         """Collect training data for model learning"""
         try:
             # Query database for historical predictions and outcomes
@@ -933,7 +937,7 @@ class LearningEngine:
             training_samples = get_config("ai.learning.training_samples", 10000)
             rows = await self.db_manager.fetch_all(query, (model_id, training_samples))
 
-            training_data = []
+            training_data: list[dict[str, Any]] = []
             for row in rows:
                 training_data.append(
                     {
@@ -953,7 +957,7 @@ class LearningEngine:
             logger.error("Failed to collect training data", error=str(e))
             return []
 
-    async def _collect_market_data(self) -> List[Dict[str, Any]]:
+    async def _collect_market_data(self) -> list[dict[str, Any]]:
         """Collect current market data for training"""
         try:
             # This would integrate with market data APIs
@@ -964,7 +968,7 @@ class LearningEngine:
             logger.error("Failed to collect market data", error=str(e))
             return []
 
-    async def _collect_external_knowledge(self) -> List[Dict[str, Any]]:
+    async def _collect_external_knowledge(self) -> list[dict[str, Any]]:
         """Collect external knowledge for RAG enhancement"""
         try:
             # This would integrate with news APIs, research feeds, etc.
@@ -975,7 +979,7 @@ class LearningEngine:
             logger.error("Failed to collect external knowledge", error=str(e))
             return []
 
-    async def _generate_features(self, session: LearningSession) -> List[str]:
+    async def _generate_features(self, session: LearningSession) -> list[str]:
         """Generate features for model training"""
         try:
             # Use AI to analyze and generate features
@@ -990,9 +994,14 @@ class LearningEngine:
                 analysis_response = await self.gemma3_client.analyze(analysis_request)
 
                 # Extract feature suggestions from AI analysis
-                features = []
-                if analysis_response.result and "key_points" in analysis_response.result:
-                    features = analysis_response.result["key_points"]
+                features: list[str] = []
+                if (
+                    analysis_response.result
+                    and "key_points" in analysis_response.result
+                ):
+                    key_points = analysis_response.result["key_points"]
+                    if isinstance(key_points, list):
+                        features = [str(k) for k in key_points]  # type: ignore
 
                 return features
 
@@ -1006,9 +1015,6 @@ class LearningEngine:
         self, session: LearningSession, num_samples: int
     ) -> Any:
         """Selects a model for training based on session and data size."""
-        if not HAS_SKLEARN or not LogisticRegression:
-            raise TrainingError("scikit-learn is not available for model selection")
-
         # Simple logic: use LogisticRegression for smaller datasets
         if num_samples < 100000:
             return LogisticRegression(random_state=42, max_iter=1000)
@@ -1017,7 +1023,7 @@ class LearningEngine:
             # from a different library (e.g., XGBoost, LightGBM)
             return LogisticRegression(random_state=42, max_iter=2000, solver="saga")
 
-    async def _select_features(self, features: List[str]) -> List[str]:
+    async def _select_features(self, features: list[str]) -> list[str]:
         """Select most relevant features"""
         try:
             # Simple feature selection - in practice this would be more sophisticated
@@ -1028,10 +1034,10 @@ class LearningEngine:
             logger.error("Failed to select features", error=str(e))
             return features
 
-    async def _get_training_config(self, session: LearningSession) -> Dict[str, Any]:
+    async def _get_training_config(self, session: LearningSession) -> dict[str, Any]:
         """Get training configuration for the session"""
         try:
-            base_config = {
+            base_config: dict[str, Any] = {
                 "epochs": 100,
                 "batch_size": 32,
                 "learning_rate": 0.001,
@@ -1056,7 +1062,7 @@ class LearningEngine:
             return {}
 
     async def _execute_supervised_training(
-        self, session: LearningSession, config: Dict[str, Any]
+        self, session: LearningSession, config: dict[str, Any]
     ):
         """Execute supervised learning training with scikit-learn"""
         try:
@@ -1071,18 +1077,12 @@ class LearningEngine:
             # Prepare features and labels
             X, y = self._prepare_training_data(training_data)
 
-            if not HAS_NUMPY or not np:
-                raise TrainingError("NumPy not available for training")
-
             if len(X) < 10:  # Minimum samples
                 raise TrainingError("Insufficient training data")
 
-            if not train_test_split:
-                raise TrainingError("train_test_split is not available")
-
             # Split data
-            stratify_arg = y if HAS_NUMPY and np and len(np.unique(y)) > 1 else None
-            X_train, X_test, y_train, y_test = train_test_split(
+            stratify_arg = y if len(np.unique(y)) > 1 else None
+            X_train, X_test, y_train, y_test = train_test_split(  # type: ignore
                 X,
                 y,
                 test_size=0.2,
@@ -1090,35 +1090,31 @@ class LearningEngine:
                 stratify=stratify_arg,
             )
 
-            if not StandardScaler:
-                raise TrainingError("StandardScaler is not available")
+            # Cast to proper types
+            X_train = cast(npt.NDArray[np.float64], X_train)
+            X_test = cast(npt.NDArray[np.float64], X_test)
+            y_train = cast(npt.NDArray[np.int_], y_train)
+            y_test = cast(npt.NDArray[np.int_], y_test)
+
             # Scale features
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_test_scaled = scaler.transform(X_test)
+            X_train_scaled = cast(npt.NDArray[np.float64], scaler.fit_transform(X_train))  # type: ignore
+            X_test_scaled = cast(npt.NDArray[np.float64], scaler.transform(X_test))  # type: ignore
 
             # Choose model based on data size and type
             model = self._select_model_for_training(session, len(X_train))
 
             # Train model
-            model.fit(X_train_scaled, y_train)
+            model.fit(X_train_scaled, y_train)  # type: ignore
 
             # Evaluate
-            y_pred = model.predict(X_test_scaled)
-            if not accuracy_score:
-                raise TrainingError("accuracy_score is not available")
-            accuracy = accuracy_score(y_test, y_pred)
+            y_pred = cast(npt.NDArray[np.int_], model.predict(X_test_scaled))  # type: ignore
+            accuracy = cast(float, accuracy_score(y_test, y_pred))  # type: ignore
 
             # Cross-validation
-            if not cross_val_score:
-                raise TrainingError("cross_val_score is not available")
-            cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
-            cv_mean = (
-                cv_scores.mean()
-                if HAS_NUMPY and np
-                else float(sum(cv_scores)) / len(cv_scores)
-            )
-            cv_std = cv_scores.std() if HAS_NUMPY and np else 0.0
+            cv_scores = cast(npt.NDArray[np.float64], cross_val_score(model, X_train_scaled, y_train, cv=5))  # type: ignore
+            cv_mean = cv_scores.mean()
+            cv_std = cv_scores.std()
 
             # Update session metrics
             session.hyperparameters.update(
@@ -1132,10 +1128,14 @@ class LearningEngine:
 
             session.final_metrics.update(
                 {
-                    "training_accuracy": float(accuracy),  # Convert to Python float for safety
+                    "training_accuracy": float(
+                        accuracy
+                    ),  # Convert to Python float for safety
                     "cv_mean_score": float(cv_mean),
                     "cv_std_score": float(cv_std),
-                    "training_samples": int(len(X_train)),  # Convert to int for type safety
+                    "training_samples": int(
+                        len(X_train)
+                    ),  # Convert to int for type safety
                     "test_samples": int(len(X_test)),
                     "feature_count": int(X.shape[1]) if hasattr(X, "shape") else 0,
                 }
@@ -1159,7 +1159,7 @@ class LearningEngine:
             raise TrainingError(f"Supervised training failed: {str(e)}")
 
     async def _execute_reinforcement_training(
-        self, session: LearningSession, config: Dict[str, Any]
+        self, session: LearningSession, config: dict[str, Any]
     ):
         """Execute reinforcement learning training (simplified implementation)"""
         try:
@@ -1181,12 +1181,9 @@ class LearningEngine:
 
             # Simulate training episodes
             total_reward = 0
-            for episode in range(episodes):
+            for _ in range(episodes):
                 # Simulate episode reward
-                if HAS_NUMPY and np:
-                    episode_reward = np.random.normal(10, 5)  # Random reward
-                else:
-                    episode_reward = 10  # Fallback if numpy is not available
+                episode_reward = np.random.normal(10, 5)  # Random reward
                 total_reward += episode_reward
 
             average_reward = total_reward / episodes
@@ -1214,7 +1211,7 @@ class LearningEngine:
             raise TrainingError(f"Reinforcement training failed: {str(e)}")
 
     async def _execute_online_training(
-        self, session: LearningSession, config: Dict[str, Any]
+        self, session: LearningSession, config: dict[str, Any]
     ):
         """Execute online learning training with incremental updates"""
         try:
@@ -1234,7 +1231,7 @@ class LearningEngine:
                 batch = training_data[i : i + batch_size]
 
                 # Process batch (placeholder for actual incremental learning)
-                batch_features, batch_labels = self._prepare_training_data(batch)
+                _, _ = self._prepare_training_data(batch)
 
                 # Simulate model update
                 batches_processed += 1
@@ -1267,7 +1264,7 @@ class LearningEngine:
             raise TrainingError(f"Online training failed: {str(e)}")
 
     async def _execute_transfer_training(
-        self, session: LearningSession, config: Dict[str, Any]
+        self, session: LearningSession, config: dict[str, Any]
     ):
         """Execute transfer learning training"""
         try:
@@ -1282,27 +1279,20 @@ class LearningEngine:
             X, y = self._prepare_training_data(training_data)
 
             # Use a pre-trained model and fine-tune
-            if HAS_SKLEARN and LogisticRegression:
-                base_model = LogisticRegression(random_state=42, max_iter=1000)
+            base_model = LogisticRegression(random_state=42, max_iter=1000)
 
-                # Simulate loading pre-trained weights (placeholder)
-                # In practice, would load from a base model
+            # Simulate loading pre-trained weights (placeholder)
+            # In practice, would load from a base model
 
-                # Fine-tune on new data
-                base_model.fit(X, y)
+            # Fine-tune on new data
+            base_model.fit(X, y)  # type: ignore
 
-                # Evaluate fine-tuning
-                if len(X) > 5 and cross_val_score:
-                    cv_scores = cross_val_score(base_model, X, y, cv=min(3, len(X)))
-                    cv_mean = (
-                        cv_scores.mean()
-                        if HAS_NUMPY and np
-                        else float(sum(cv_scores)) / len(cv_scores)
-                    )
-                else:
-                    cv_mean = 0.8  # Placeholder
+            # Evaluate fine-tuning
+            if len(X) > 5:
+                cv_scores = cast(npt.NDArray[np.float64], cross_val_score(base_model, X, y, cv=min(3, len(X))))  # type: ignore
+                cv_mean = cv_scores.mean()
             else:
-                cv_mean = 0.8  # Placeholder when sklearn not available
+                cv_mean = 0.8  # Placeholder
 
             session.final_metrics.update(
                 {
@@ -1327,7 +1317,7 @@ class LearningEngine:
             logger.error("Transfer training failed", error=str(e))
             raise TrainingError(f"Transfer training failed: {str(e)}")
 
-    async def _evaluate_model_performance(self, model_id: str) -> Dict[str, Any]:
+    async def _evaluate_model_performance(self, model_id: str) -> dict[str, Any]:
         """Evaluate model performance metrics"""
         try:
             # Get model from database
@@ -1336,7 +1326,7 @@ class LearningEngine:
                 return {}
 
             # Calculate performance metrics
-            metrics = {
+            metrics: dict[str, float | int | None] = {
                 "accuracy": model.win_rate,
                 "sharpe_ratio": model.sharpe_ratio,
                 "max_drawdown": model.max_drawdown,
@@ -1352,7 +1342,7 @@ class LearningEngine:
 
     async def _perform_cross_validation(
         self, session: LearningSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Perform cross-validation on the trained model"""
         try:
             # Placeholder for cross-validation
@@ -1368,8 +1358,8 @@ class LearningEngine:
             return {}
 
     async def _calculate_validation_metrics(
-        self, validation_results: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, validation_results: dict[str, Any]
+    ) -> dict[str, Any]:
         """Calculate validation metrics from cross-validation results"""
         try:
             return {
@@ -1404,14 +1394,14 @@ class LearningEngine:
             return False
 
     async def _perform_confidence_calibration(
-        self, model_id: str, predictions: List[AIPrediction]
-    ) -> Dict[str, Any]:
+        self, model_id: str, predictions: list[AIPrediction]
+    ) -> dict[str, Any]:
         """Perform confidence calibration for the model"""
         try:
             if not self.confidence_tracker:
                 return {}
 
-            calibration_results = []
+            calibration_results: list[float] = []
             for prediction in predictions:
                 metrics = await self.confidence_tracker.track_prediction_confidence(
                     prediction
@@ -1432,7 +1422,7 @@ class LearningEngine:
             logger.error("Confidence calibration failed", error=str(e))
             return {}
 
-    async def _get_recent_predictions(self, model_id: str) -> List[AIPrediction]:
+    async def _get_recent_predictions(self, model_id: str) -> list[AIPrediction]:
         """Get recent predictions for calibration"""
         try:
             query = """
@@ -1442,24 +1432,24 @@ class LearningEngine:
                 LIMIT ?
             """
 
-            cutoff_date = datetime.utcnow() - timedelta(days=30)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
             limit = get_config("ai.learning.calibration_samples", 1000)
 
             rows = await self.db_manager.fetch_all(
                 query, (model_id, cutoff_date, limit)
             )
 
-            predictions = []
+            predictions: list[AIPrediction] = []
             for row in rows:
                 # Convert row to AIPrediction object
                 prediction = AIPrediction(
                     prediction_id=row[0],
                     model_id=row[1],
                     prediction_type=PredictionType(row[5]),
-                    prediction_value=json.loads(row[2]) if row[2] else {},
+                    prediction_value=json.loads(row[1]) if row[1] else {},
                     confidence_score=row[3],
-                    input_features=json.loads(row[4]) if row[4] else {},
-                    market_context=json.loads(row[5]) if row[5] else {},
+                    input_features=json.loads(row[1]) if row[1] else {},
+                    market_context=json.loads(row[2]) if row[2] else {},
                 )
                 predictions.append(prediction)
 
@@ -1556,7 +1546,7 @@ class LearningEngine:
         try:
             # Update version status
             version.status = "deploying"
-            version.deployed_at = datetime.utcnow()
+            version.deployed_at = datetime.now(timezone.utc)
 
             # Placeholder for actual deployment logic
             # This would involve updating model registry, API endpoints, etc.
@@ -1590,7 +1580,7 @@ class LearningEngine:
                 (
                     version.version_number,
                     version.deployed_at,
-                    datetime.utcnow(),
+                    datetime.now(timezone.utc),
                     model_id,
                 ),
             )
@@ -1642,7 +1632,7 @@ class LearningEngine:
                 AND outcome_accuracy IS NOT NULL
             """
 
-            cutoff_date = datetime.utcnow() - timedelta(days=7)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
             row = await self.db_manager.fetch_one(query, (model_id, cutoff_date))
 
             return row[0] if row and row[0] else 0.0
@@ -1683,22 +1673,24 @@ class LearningEngine:
         except Exception as e:
             logger.error("Failed to save learning state", error=str(e))
 
-    async def _calculate_performance_trends(self) -> Dict[str, Any]:
+    async def _calculate_performance_trends(self) -> dict[str, Any]:
         """Calculate performance trends across learning sessions"""
         try:
             if not self.session_history:
                 return {}
 
             # Analyze session success rates over time
-            sessions_by_date = defaultdict(list)
+            sessions_by_date: defaultdict[date, list[LearningSession]] = defaultdict(
+                list
+            )
             for session in self.session_history:
                 date_key = session.start_time.date()
                 sessions_by_date[date_key].append(session)
 
-            trends = {}
-            for date, sessions in sorted(sessions_by_date.items()):
+            trends: dict[str, float] = {}
+            for session_date, sessions in sorted(sessions_by_date.items()):
                 success_rate = sum(1 for s in sessions if s.success) / len(sessions)
-                trends[str(date)] = success_rate
+                trends[str(session_date)] = success_rate
 
             return trends
 
@@ -1706,7 +1698,7 @@ class LearningEngine:
             logger.error("Failed to calculate performance trends", error=str(e))
             return {}
 
-    async def _calculate_resource_utilization(self) -> Dict[str, Any]:
+    async def _calculate_resource_utilization(self) -> dict[str, Any]:
         """Calculate resource utilization metrics"""
         try:
             return {
@@ -1714,7 +1706,9 @@ class LearningEngine:
                 "concurrent_session_limit": self.max_concurrent_sessions,
                 "utilization_rate": len(self.active_sessions)
                 / max(1, self.max_concurrent_sessions),  # Avoid division by zero
-                "thread_pool_active": len(self.executor._threads) if hasattr(self.executor, "_threads") else 0,
+                "thread_pool_active": len(self.executor._threads)
+                if hasattr(self.executor, "_threads")
+                else 0,
                 "memory_usage_estimate": "N/A",  # Would need system monitoring
             }
 
@@ -1722,7 +1716,7 @@ class LearningEngine:
             logger.error("Failed to calculate resource utilization", error=str(e))
             return {}
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform comprehensive health check on the learning engine
 
@@ -1730,12 +1724,12 @@ class LearningEngine:
             Dictionary containing health status and metrics
         """
         try:
-            health = {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "components": {},
-                "metrics": {},
-            }
+            health: dict[str, Any] = dict(
+                status="healthy",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                components={},
+                metrics={},
+            )
 
             # Check database connection
             try:
@@ -1784,7 +1778,7 @@ class LearningEngine:
         except Exception as e:
             return {
                 "status": "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": str(e),
             }
 
@@ -1812,7 +1806,7 @@ async def start_model_training(
 async def trigger_model_adaptation(
     model_id: str,
     trigger: AdaptationTrigger,
-    trigger_data: Optional[Dict[str, Any]] = None,
+    trigger_data: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
     """Trigger model adaptation"""
     await learning_engine.initialize()
@@ -1822,7 +1816,7 @@ async def trigger_model_adaptation(
         await learning_engine.cleanup()
 
 
-async def get_learning_engine_health() -> Dict[str, Any]:
+async def get_learning_engine_health() -> dict[str, Any]:
     """Get learning engine health status"""
     await learning_engine.initialize()
     try:
@@ -1831,7 +1825,7 @@ async def get_learning_engine_health() -> Dict[str, Any]:
         await learning_engine.cleanup()
 
 
-async def get_learning_analytics() -> Dict[str, Any]:
+async def get_learning_analytics() -> dict[str, Any]:
     """Get learning analytics"""
     await learning_engine.initialize()
     try:

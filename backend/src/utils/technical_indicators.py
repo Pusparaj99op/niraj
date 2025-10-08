@@ -13,10 +13,10 @@ Confidence scoring and data quality assessment
 import time
 import math
 import statistics
-from typing import Dict, List, Optional, Any, Tuple, Union, Sequence
-from datetime import datetime
+from typing import Dict, List, Optional, Any, Tuple, Union, Sequence, cast
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 
 from models.technical_indicator import IndicatorType, get_default_parameters
@@ -86,7 +86,7 @@ class CalculationResult:
     confidence_score: Optional[Decimal] = None
     data_points_used: int = 0
     calculation_time_ms: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class TechnicalIndicatorsCalculator:
@@ -151,7 +151,7 @@ class TechnicalIndicatorsCalculator:
             if use_cache and self.cache_enabled and cache_key in self._cache:
                 cached_result, cache_time = self._cache[cache_key]
                 # Check if cache is still valid (within 1 minute for real-time data)
-                if (datetime.utcnow() - cache_time).total_seconds() < 60:
+                if (datetime.now(timezone.utc) - cache_time).total_seconds() < 60:
                     self._cache_hits += 1
                     return cached_result
 
@@ -168,7 +168,7 @@ class TechnicalIndicatorsCalculator:
 
             # Cache result
             if self.cache_enabled and cache_key:
-                self._cache[cache_key] = (result, datetime.utcnow())
+                self._cache[cache_key] = (result, datetime.now(timezone.utc))
                 self._cleanup_cache()
 
             self._cache_misses += 1
@@ -223,10 +223,6 @@ class TechnicalIndicatorsCalculator:
             return self._calculate_adx(data, parameters)
         elif indicator_type == IndicatorType.PARABOLIC_SAR:
             return self._calculate_parabolic_sar(data, parameters)
-        elif indicator_type == IndicatorType.OBV:
-            return self._calculate_obv(data, parameters)
-        elif indicator_type == IndicatorType.VWAP:
-            return self._calculate_vwap(data, parameters)
         elif indicator_type == IndicatorType.PIVOT_POINTS:
             return self._calculate_pivot_points(data, parameters)
         elif indicator_type == IndicatorType.FIBONACCI_RETRACEMENT:
@@ -340,16 +336,19 @@ class TechnicalIndicatorsCalculator:
             )
 
         # Calculate price changes
-        changes = []
+        changes: List[float] = []
         for i in range(1, len(prices)):
             changes.append(float(prices[i] - prices[i - 1]))
 
         # Calculate gains and losses
-        gains = [change if change > 0 else 0 for change in changes[-period:]]
-        losses = [abs(change) if change < 0 else 0 for change in changes[-period:]]
+        gains: List[float] = []
+        losses: List[float] = []
+        for change in changes[-period:]:
+            gains.append(change if change > 0 else 0.0)
+            losses.append(abs(change) if change < 0 else 0.0)
 
-        avg_gain = statistics.mean(gains) if gains else 0
-        avg_loss = statistics.mean(losses) if losses else 0
+        avg_gain = statistics.mean(gains) if gains else 0.0
+        avg_loss = statistics.mean(losses) if losses else 0.0
 
         if avg_loss == 0:
             rsi = 100.0
@@ -382,13 +381,13 @@ class TechnicalIndicatorsCalculator:
         slow_ema = self._calculate_ema_values(prices, slow_period)
 
         # Calculate MACD line
-        macd_line = [fast - slow for fast, slow in zip(fast_ema, slow_ema)]
+        macd_line = [float(fast) - float(slow) for fast, slow in zip(fast_ema, slow_ema)]
 
         # Calculate signal line (EMA of MACD)
         signal_line = self._calculate_ema_values(macd_line, signal_period)
 
         # Calculate histogram
-        histogram = [macd - signal for macd, signal in zip(macd_line, signal_line)]
+        histogram = [float(macd) - float(signal) for macd, signal in zip(macd_line, signal_line)]
 
         # Get latest values
         latest_macd = macd_line[-1] if macd_line else 0
@@ -466,7 +465,7 @@ class TechnicalIndicatorsCalculator:
             )
 
         # Calculate %K
-        k_values = []
+        k_values: List[float] = []
         for i in range(k_period - 1, len(data)):
             period_data = data[i - k_period + 1 : i + 1]
             highest_high = max(float(point.high) for point in period_data)
@@ -478,12 +477,12 @@ class TechnicalIndicatorsCalculator:
                     (current_close - lowest_low) / (highest_high - lowest_low)
                 ) * 100
             else:
-                k_value = 50  # Neutral value when range is zero
+                k_value = 50.0  # Neutral value when range is zero
 
             k_values.append(k_value)
 
         # Calculate %D (SMA of %K)
-        d_values = []
+        d_values: List[float] = []
         for i in range(d_period - 1, len(k_values)):
             d_value = sum(k_values[i - d_period + 1 : i + 1]) / d_period
             d_values.append(d_value)
@@ -510,7 +509,7 @@ class TechnicalIndicatorsCalculator:
             )
 
         # Calculate True Range for each period
-        true_ranges = []
+        true_ranges: List[float] = []
         for i in range(1, len(data)):
             current = data[i]
             previous = data[i - 1]
@@ -542,9 +541,9 @@ class TechnicalIndicatorsCalculator:
             )
 
         # Calculate Directional Movement
-        dm_plus = []
-        dm_minus = []
-        tr_values = []
+        dm_plus: List[float] = []
+        dm_minus: List[float] = []
+        tr_values: List[float] = []
 
         for i in range(1, len(data)):
             current = data[i]
@@ -561,8 +560,8 @@ class TechnicalIndicatorsCalculator:
             move_up = float(current.high - previous.high)
             move_down = float(previous.low - current.low)
 
-            dm_plus_val = move_up if move_up > move_down and move_up > 0 else 0
-            dm_minus_val = move_down if move_down > move_up and move_down > 0 else 0
+            dm_plus_val = move_up if move_up > move_down and move_up > 0 else 0.0
+            dm_minus_val = move_down if move_down > move_up and move_down > 0 else 0.0
 
             dm_plus.append(dm_plus_val)
             dm_minus.append(dm_minus_val)
@@ -701,19 +700,19 @@ class TechnicalIndicatorsCalculator:
         period_data = data[-period:]
 
         # Calculate Money Flow Multiplier and Volume for each period
-        mf_volumes = []
+        mf_volumes: List[float] = []
 
         for point in period_data:
             # Money Flow Multiplier
             if point.high == point.low:
-                mfm = 0
+                mfm = 0.0
             else:
-                mfm = ((point.close - point.low) - (point.high - point.close)) / (
+                mfm = float((point.close - point.low) - (point.high - point.close)) / float(
                     point.high - point.low
                 )
 
             # Money Flow Volume
-            mfv = mfm * point.volume
+            mfv = mfm * float(point.volume)
             mf_volumes.append(mfv)
 
         # Calculate Chaikin Money Flow
@@ -721,7 +720,7 @@ class TechnicalIndicatorsCalculator:
         total_volume = sum(point.volume for point in period_data)
 
         if total_volume == 0:
-            chaikin_mf = 0
+            chaikin_mf = 0.0
         else:
             chaikin_mf = total_mfv / total_volume
 
@@ -1046,9 +1045,11 @@ class TechnicalIndicatorsCalculator:
 
         # Calculate ROC: ((current - previous) / previous) * 100
         current_price = float(data[-1].close)
-        previous_price = float(data[-(period + 1)].close)
 
-        if previous_price == 0:
+        previous_data_point = cast(MarketData, data[-(period + 1)])
+        previous_price = float(previous_data_point.close)
+
+        if previous_price == 0.0:
             roc = 0.0
         else:
             roc = ((current_price - previous_price) / previous_price) * 100
@@ -1070,19 +1071,19 @@ class TechnicalIndicatorsCalculator:
             )
 
         # Calculate typical prices and raw money flow
-        typical_prices = []
-        money_flows = []
+        typical_prices: List[float] = []
+        money_flows: List[float] = []
 
         for point in data[-(period + 1) :]:  # Include one extra for comparison
             typical_price = (
                 float(point.high) + float(point.low) + float(point.close)
             ) / 3
             typical_prices.append(typical_price)
-            money_flows.append(typical_price * point.volume)
+            money_flows.append(typical_price * float(point.volume))
 
         # Calculate positive and negative money flow
-        positive_flow = 0
-        negative_flow = 0
+        positive_flow = 0.0
+        negative_flow = 0.0
 
         for i in range(1, len(typical_prices)):
             if typical_prices[i] > typical_prices[i - 1]:
@@ -1127,7 +1128,7 @@ class TechnicalIndicatorsCalculator:
             raise InsufficientDataError("Could not calculate EMA for Keltner Channel")
 
         # Calculate ATR
-        atr_values = []
+        atr_values: List[float] = []
         for i in range(1, len(data)):
             current = data[i]
             previous = data[i - 1]
@@ -1365,7 +1366,14 @@ class TechnicalIndicatorsCalculator:
                 for point in data[-20:]
             )
         )
-        param_hash = hash(frozenset(parameters.items()) if parameters else frozenset())
+
+        # Ensure parameters are hashable by converting them to a frozenset of string tuples
+        if parameters:
+            param_tuple = tuple(sorted((k, str(v)) for k, v in parameters.items()))
+            param_hash = hash(param_tuple)
+        else:
+            param_hash = hash(())
+
         return f"{symbol}:{indicator_type.value}:{data_hash}:{param_hash}"
 
     def _cleanup_cache(self) -> None:
@@ -1382,7 +1390,7 @@ class TechnicalIndicatorsCalculator:
         """Get cache statistics"""
         total_requests = self._cache_hits + self._cache_misses
         hit_rate = (
-            (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
+            (self._cache_hits / total_requests * 100) if total_requests > 0 else 0.0
         )
 
         return {
@@ -1438,7 +1446,7 @@ def calculate_multiple_indicators(
     Returns:
         Dict[IndicatorType, CalculationResult]: Results for each indicator
     """
-    results = {}
+    results: Dict[IndicatorType, CalculationResult] = {}
 
     for indicator_type, parameters in indicators:
         try:
@@ -1469,7 +1477,7 @@ def validate_indicator_parameters(
     Returns:
         List[str]: List of validation errors
     """
-    errors = []
+    errors: List[str] = []
 
     try:
         if indicator_type in [IndicatorType.SMA, IndicatorType.EMA]:

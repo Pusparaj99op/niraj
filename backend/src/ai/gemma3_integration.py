@@ -11,8 +11,9 @@ import time
 import asyncio
 import aiohttp
 import structlog
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional, Type
+from types import TracebackType
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -88,9 +89,9 @@ class AnalysisRequest:
     """Request structure for Gemma3 analysis"""
 
     analysis_type: AnalysisType
-    input_data: Dict[str, Any]
-    context: Optional[Dict[str, Any]] = None
-    parameters: Optional[Dict[str, Any]] = None
+    input_data: dict[str, Any]
+    context: Optional[dict[str, Any]] = None
+    parameters: Optional[dict[str, Any]] = None
     max_tokens: int = 2048
     temperature: float = 0.7
     confidence_threshold: float = 0.6
@@ -102,13 +103,13 @@ class AnalysisResponse:
     """Response structure from Gemma3 analysis"""
 
     analysis_type: AnalysisType
-    result: Dict[str, Any]
+    result: dict[str, Any]
     confidence_score: float
     processing_time_ms: float
     model_version: str
     token_count: int
     raw_response: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=lambda: {})
     error: Optional[str] = None
 
 
@@ -122,8 +123,8 @@ class MarketContext:
     volume: int
     market_cap: Optional[float] = None
     sector: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    technical_indicators: Dict[str, float] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    technical_indicators: dict[str, float] = field(default_factory=lambda: {})
     news_sentiment: Optional[float] = None
 
 
@@ -176,7 +177,12 @@ class Gemma3Client:
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Async context manager exit"""
         await self.disconnect()
 
@@ -306,7 +312,7 @@ class Gemma3Client:
                     "provider": "Ollama",
                     "model_family": "Gemma",
                     "use_case": "Trading Analysis",
-                    "initialized_at": datetime.utcnow().isoformat(),
+                    "initialized_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -382,7 +388,7 @@ class Gemma3Client:
             response.metadata.update(
                 {
                     "request_id": f"req_{int(time.time())}_{self.total_requests}",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "input_hash": self._hash_input(request.input_data),
                 }
             )
@@ -490,7 +496,7 @@ class Gemma3Client:
 
         return prompt
 
-    def _build_sentiment_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_sentiment_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for market sentiment analysis"""
         return f"""
         Analyze the market sentiment from the following data:
@@ -503,7 +509,7 @@ class Gemma3Client:
         Provide sentiment score (-1 to 1), key sentiment drivers, and market implications.
         """
 
-    def _build_price_prediction_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_price_prediction_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for price prediction analysis"""
         return f"""
         Predict price movement based on the following market data:
@@ -516,7 +522,7 @@ class Gemma3Client:
         Provide direction (up/down/sideways), target price range, time horizon, and confidence level.
         """
 
-    def _build_technical_analysis_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_technical_analysis_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for technical analysis"""
         return f"""
         Perform technical analysis on the following data:
@@ -529,7 +535,7 @@ class Gemma3Client:
         Provide clear buy/sell/hold signals with reasoning.
         """
 
-    def _build_news_analysis_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_news_analysis_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for news analysis"""
         return f"""
         Analyze the impact of news on market movements:
@@ -542,7 +548,7 @@ class Gemma3Client:
         Provide sentiment score, impact assessment, and trading implications.
         """
 
-    def _build_risk_assessment_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_risk_assessment_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for risk assessment"""
         return f"""
         Assess the risk profile of the following position/strategy:
@@ -555,7 +561,7 @@ class Gemma3Client:
         Provide risk rating, key risk factors, and mitigation suggestions.
         """
 
-    def _build_strategy_recommendation_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_strategy_recommendation_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for strategy recommendation"""
         return f"""
         Recommend trading strategies based on current market conditions:
@@ -568,7 +574,7 @@ class Gemma3Client:
         Recommend specific strategies with entry/exit criteria and risk management.
         """
 
-    def _build_pattern_recognition_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_pattern_recognition_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for pattern recognition"""
         return f"""
         Identify patterns in the following market data:
@@ -581,7 +587,7 @@ class Gemma3Client:
         Describe identified patterns and their trading implications.
         """
 
-    def _build_correlation_analysis_prompt(self, data: Dict[str, Any]) -> str:
+    def _build_correlation_analysis_prompt(self, data: dict[str, Any]) -> str:
         """Build prompt for correlation analysis"""
         return f"""
         Analyze correlations in the following data:
@@ -600,7 +606,7 @@ class Gemma3Client:
         """Make API call to Ollama"""
         try:
             url = f"{self.base_url}/api/generate"
-            payload = {
+            payload: dict[str, Any] = {
                 "model": self.model_name,
                 "prompt": prompt,
                 "stream": False,
@@ -629,7 +635,7 @@ class Gemma3Client:
 
     def _parse_response(
         self, raw_response: str, analysis_type: AnalysisType
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Parse and structure the model response"""
         try:
             # Try to extract JSON from the response
@@ -638,7 +644,7 @@ class Gemma3Client:
 
             if json_start != -1 and json_end > json_start:
                 json_str = raw_response[json_start:json_end]
-                result = json.loads(json_str)
+                result: dict[str, Any] = json.loads(json_str)
             else:
                 # Fallback: structure unstructured response
                 result = {
@@ -664,7 +670,9 @@ class Gemma3Client:
 
             # Validate confidence score
             if isinstance(result.get("confidence"), (int, float)):
-                result["confidence"] = max(0.0, min(1.0, float(result["confidence"])))
+                result["confidence"] = max(
+                    0.0, min(1.0, float(result.get("confidence", 0.5)))
+                )
             else:
                 result["confidence"] = 0.5
 
@@ -683,13 +691,13 @@ class Gemma3Client:
                 "rationale": "Response format not as expected",
             }
 
-    def _calculate_confidence(self, result: Dict[str, Any], threshold: float) -> float:
+    def _calculate_confidence(self, result: dict[str, Any], threshold: float) -> float:
         """Calculate overall confidence score"""
         try:
             model_confidence = float(result.get("confidence", 0.5))
 
             # Adjust confidence based on response quality
-            quality_factors = []
+            quality_factors: list[float] = []
 
             # Check if analysis is detailed
             analysis_text = result.get("analysis", "")
@@ -697,8 +705,8 @@ class Gemma3Client:
                 quality_factors.append(0.1)
 
             # Check if key points are provided
-            key_points = result.get("key_points", [])
-            if isinstance(key_points, list) and len(key_points) >= 3:
+            key_points: list[str] = result.get("key_points", [])
+            if len(key_points) >= 3:
                 quality_factors.append(0.1)
 
             # Check if recommendation is specific
@@ -715,7 +723,7 @@ class Gemma3Client:
         except Exception:
             return 0.5
 
-    def _hash_input(self, input_data: Dict[str, Any]) -> str:
+    def _hash_input(self, input_data: dict[str, Any]) -> str:
         """Generate hash of input data for tracking"""
         import hashlib
 
@@ -738,7 +746,7 @@ class Gemma3Client:
             )
 
     async def _record_prediction(
-        self, request: AnalysisRequest, result: Dict[str, Any], confidence: float
+        self, request: AnalysisRequest, result: dict[str, Any], confidence: float
     ):
         """Record prediction for tracking and validation"""
         try:
@@ -760,7 +768,7 @@ class Gemma3Client:
                 confidence_score=confidence,
                 input_features=request.input_data,
                 market_context=request.context or {},
-                expiry_time=datetime.utcnow() + timedelta(hours=24),
+                expiry_time=datetime.now(timezone.utc) + timedelta(hours=24),
                 algorithm_parameters={
                     "max_tokens": request.max_tokens,
                     "temperature": request.temperature,
@@ -769,7 +777,7 @@ class Gemma3Client:
                 tags=["gemma3", "ollama", request.analysis_type.value],
                 prediction_metadata={
                     "model_version": self.model_name,
-                    "request_timestamp": datetime.utcnow().isoformat(),
+                    "request_timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -787,10 +795,15 @@ class Gemma3Client:
             logger.error("Failed to record prediction", error=str(e))
 
     async def analyze_market_sentiment(
-        self, market_data: Dict[str, Any], news_data: Optional[List[Dict[str, Any]]] = None
+        self,
+        market_data: dict[str, Any],
+        news_data: Optional[list[dict[str, Any]]] = None,
     ) -> AnalysisResponse:
         """Analyze overall market sentiment"""
-        input_data = {"market_data": market_data, "news_data": news_data or []}
+        input_data: dict[str, Any] = {
+            "market_data": market_data,
+            "news_data": news_data or [],
+        }
 
         request = AnalysisRequest(
             analysis_type=AnalysisType.MARKET_SENTIMENT,
@@ -804,7 +817,7 @@ class Gemma3Client:
         self, symbol: str, market_context: MarketContext, timeframe: str = "1d"
     ) -> AnalysisResponse:
         """Predict price movement for a specific symbol"""
-        input_data = {
+        input_data: dict[str, Any] = {
             "symbol": symbol,
             "current_price": market_context.current_price,
             "price_change_pct": market_context.price_change_pct,
@@ -815,7 +828,7 @@ class Gemma3Client:
             "market_cap": market_context.market_cap,
         }
 
-        context = {
+        context: dict[str, Any] = {
             "timestamp": market_context.timestamp.isoformat(),
             "news_sentiment": market_context.news_sentiment,
         }
@@ -832,15 +845,15 @@ class Gemma3Client:
     async def analyze_technical_indicators(
         self,
         symbol: str,
-        indicators: Dict[str, float],
-        chart_data: List[Dict[str, Any]],
+        indicators: dict[str, float],
+        chart_data: list[dict[str, Any]],
     ) -> AnalysisResponse:
         """Analyze technical indicators and chart patterns"""
-        input_data = {
+        input_data: dict[str, Any] = {
             "symbol": symbol,
             "indicators": indicators,
             "chart_data": chart_data[-100:],  # Last 100 data points
-            "analysis_timestamp": datetime.utcnow().isoformat(),
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         request = AnalysisRequest(
@@ -852,13 +865,13 @@ class Gemma3Client:
         return await self.analyze(request)
 
     async def assess_portfolio_risk(
-        self, portfolio_data: Dict[str, Any], market_conditions: Dict[str, Any]
+        self, portfolio_data: dict[str, Any], market_conditions: dict[str, Any]
     ) -> AnalysisResponse:
         """Assess portfolio risk and provide recommendations"""
-        input_data = {
+        input_data: dict[str, Any] = {
             "portfolio": portfolio_data,
             "market_conditions": market_conditions,
-            "assessment_time": datetime.utcnow().isoformat(),
+            "assessment_time": datetime.now(timezone.utc).isoformat(),
         }
 
         request = AnalysisRequest(
@@ -873,11 +886,11 @@ class Gemma3Client:
         self, market_regime: str, risk_tolerance: str, available_capital: float
     ) -> AnalysisResponse:
         """Recommend trading strategies based on current conditions"""
-        input_data = {
+        input_data: dict[str, Any] = {
             "market_regime": market_regime,
             "risk_tolerance": risk_tolerance,
             "available_capital": available_capital,
-            "recommendation_time": datetime.utcnow().isoformat(),
+            "recommendation_time": datetime.now(timezone.utc).isoformat(),
         }
 
         request = AnalysisRequest(
@@ -888,7 +901,7 @@ class Gemma3Client:
 
         return await self.analyze(request)
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> dict[str, Any]:
         """Get client performance metrics"""
         success_rate = (
             (self.successful_requests / self.total_requests)
@@ -896,7 +909,7 @@ class Gemma3Client:
             else 0.0
         )
 
-        metrics = {
+        metrics: dict[str, Any] = {
             "total_requests": self.total_requests,
             "successful_requests": self.successful_requests,
             "failed_requests": self.failed_requests,
@@ -913,7 +926,7 @@ class Gemma3Client:
 
         return metrics
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Perform health check on the Gemma3 integration"""
         try:
             if not self.is_connected:
@@ -956,7 +969,7 @@ gemma3_client = Gemma3Client()
 
 # Convenience functions
 async def get_market_sentiment(
-    market_data: Dict[str, Any], news_data: Optional[List[Dict[str, Any]]] = None
+    market_data: dict[str, Any], news_data: Optional[list[dict[str, Any]]] = None
 ) -> AnalysisResponse:
     """Get market sentiment analysis"""
     async with gemma3_client:
@@ -983,7 +996,7 @@ async def get_strategy_recommendation(
         )
 
 
-async def check_ai_health() -> Dict[str, Any]:
+async def check_ai_health() -> dict[str, Any]:
     """Check AI system health"""
     return await gemma3_client.health_check()
 
@@ -1006,6 +1019,7 @@ async def example_usage():
             "sma_50": 44200.0,
         },
         news_sentiment=0.3,
+        timestamp=datetime.now(timezone.utc),
     )
 
     async with gemma3_client:

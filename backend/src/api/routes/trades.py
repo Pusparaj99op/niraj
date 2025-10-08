@@ -36,6 +36,7 @@ from ...models.trade import (
     TradeValidationError,
     TradeNotFoundError,
     TradeExecutionError,
+    TradeORM,
 )
 
 # Initialize router with comprehensive configuration
@@ -159,7 +160,7 @@ def create_error_response(
             details=details,
             timestamp=datetime.now(timezone.utc).isoformat(),
             path=path,
-        ).dict(),
+        ).model_dump(),
     )
 
 
@@ -303,7 +304,7 @@ async def list_trades(
                     )
 
             # Build query filters
-            filters = {}
+            filters: Dict[str, Any] = {}
             if symbol:
                 filters["symbol"] = symbol
             if strategy_id:
@@ -322,7 +323,7 @@ async def list_trades(
                 filters["status"] = trade_status
 
             # Date range filtering
-            date_filters = {}
+            date_filters: Dict[str, str] = {}
             if start_date:
                 date_filters["start_date"] = start_date
             if end_date:
@@ -332,12 +333,11 @@ async def list_trades(
             async with db_manager.get_async_session() as session:
                 # Build query
                 from sqlalchemy import select, and_, func
-                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM)
 
                 # Apply filters
-                conditions = []
+                conditions: List[Any] = []
                 if filters.get("symbol"):
                     conditions.append(TradeORM.symbol == filters["symbol"])
                 if filters.get("strategy_id"):
@@ -376,9 +376,9 @@ async def list_trades(
                     trade_orms = trade_orms[:limit]
 
                 # Convert to response models
-                trades = []
+                trades: List[TradeResponse] = []
                 for trade_orm in trade_orms:
-                    trade_response = TradeResponse.from_orm(trade_orm)
+                    trade_response = TradeResponse.model_validate(trade_orm)
                     trades.append(trade_response)
 
                 # Get total count for pagination info
@@ -553,7 +553,6 @@ async def create_trade(
 
             # Save to database
             async with db_manager.get_async_session() as session:
-                from backend.src.models.trade import TradeORM
 
                 # Convert to ORM object
                 trade_orm = TradeORM(
@@ -582,7 +581,7 @@ async def create_trade(
                 await session.refresh(trade_orm)
 
                 # Convert back to response model
-                trade_response = TradeResponse.from_orm(trade_orm)
+                trade_response = TradeResponse.model_validate(trade_orm)
 
                 duration = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.info(
@@ -660,7 +659,6 @@ async def get_trade(
             # Query trade from database
             async with db_manager.get_async_session() as session:
                 from sqlalchemy import select
-                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM).where(TradeORM.trade_id == trade_id)
                 result = await session.execute(query)
@@ -670,7 +668,7 @@ async def get_trade(
                     raise TradeNotFoundError(trade_id)
 
                 # Convert to response model
-                trade_response = TradeResponse.from_orm(trade_orm)
+                trade_response = TradeResponse.model_validate(trade_orm)
 
                 duration = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.info(
@@ -773,7 +771,6 @@ async def update_trade(
             # Query and update trade
             async with db_manager.get_async_session() as session:
                 from sqlalchemy import select
-                from backend.src.models.trade import TradeORM
 
                 query = select(TradeORM).where(TradeORM.trade_id == trade_id)
                 result = await session.execute(query)
@@ -836,7 +833,7 @@ async def update_trade(
                         )
 
                 # Update trade
-                update_dict = {}
+                update_dict: Dict[str, Union[float, datetime]] = {}
                 if update_data.stop_loss is not None:
                     update_dict["current_stop_loss"] = update_data.stop_loss
                 if update_data.take_profit is not None:
@@ -853,7 +850,7 @@ async def update_trade(
                 await session.refresh(trade_orm)
 
                 # Convert to response model
-                trade_response = TradeResponse.from_orm(trade_orm)
+                trade_response = TradeResponse.model_validate(trade_orm)
 
                 duration = (datetime.now(timezone.utc) - start_time).total_seconds()
                 logger.info(
